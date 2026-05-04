@@ -1,0 +1,35 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "hexo-blog-admin",
+	"compatibility_date": "2026-04-30",
+	"main": "src/worker/index.ts",
+	"assets": {
+		"not_found_handling": "single-page-application"
+	},
+	"vars": {
+		"GITHUB_OWNER": "",
+		"GITHUB_REPO": "",
+		"GITHUB_BRANCH": "main",
+		"POSTS_DIR": "source/_posts",
+		"POST_ASSET_FOLDER": "true",
+		"ASSET_MODE": "post-folder",
+		"ASSET_CACHE": "r2-temp",
+		"R2_TEMP_PREFIX": "_draft-assets",
+		"BLOG_PUBLIC_URL": "",
+		"ADMIN_INDEX_PATH": "/admin-index.json",
+		"WORKFLOW_FILE": "deploy.yml"
+	},
+	"kv_namespaces": [
+		{
+			"binding": "BLOG_ADMIN_KV",
+			"id": "f42614c5739348e4a5dce47c4afc90bd"
+			// Add the real KV namespace id here before deployment if Wrangler requires it.
+		}
+	],
+	"r2_buckets": [
+		{
+			"binding": "BLOG_ASSET_CACHE",
+			"bucket_name": "hexo-blog-admin-cache"
+		}
+	]
+}
