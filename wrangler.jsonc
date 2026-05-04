@@ -3,6 +3,7 @@
 	"name": "hexo-blog-admin",
 	"compatibility_date": "2026-04-30",
 	"main": "src/worker/index.ts",
+	"keep_vars": true,
 	"assets": {
 		"not_found_handling": "single-page-application"
 	},

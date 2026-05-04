@@ -71,7 +71,7 @@ pnpm wrangler secret put GITHUB_TOKEN
 
 ## Worker Variables
 
-Configure these Worker variables in Cloudflare Workers Dashboard under Variables and Secrets. The project does not write normal `vars` in `wrangler.jsonc`, so `wrangler deploy` will not overwrite values maintained in the Cloudflare Dashboard.
+Configure these Worker variables in Cloudflare Workers Dashboard under Variables and Secrets. The project does not write normal `vars` in `wrangler.jsonc`, and sets `keep_vars: true`, so `wrangler deploy` will not overwrite values maintained in the Cloudflare Dashboard.
 
 ```txt
 GITHUB_OWNER=PLFJY

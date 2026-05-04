@@ -71,7 +71,7 @@ pnpm wrangler secret put GITHUB_TOKEN
 
 ## Worker Variables
 
-在 Cloudflare Workers Dashboard 的 Variables and Secrets 中配置这些变量。项目不在 `wrangler.jsonc` 写普通 `vars`，避免每次 `wrangler deploy` 覆盖你在 Cloudflare Dashboard 手动维护的值。
+在 Cloudflare Workers Dashboard 的 Variables and Secrets 中配置这些变量。项目不在 `wrangler.jsonc` 写普通 `vars`，并且设置了 `keep_vars: true`，避免每次 `wrangler deploy` 覆盖你在 Cloudflare Dashboard 手动维护的值。
 
 ```txt
 GITHUB_OWNER=PLFJY
