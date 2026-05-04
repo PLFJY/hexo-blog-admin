@@ -73,7 +73,7 @@ export function SettingsPage() {
           ))}
         </ul>
         <pre className={styles.codeBlock}>
-          <code>{JSON.stringify(state.setup.defaults, null, 2)}</code>
+          <code>{JSON.stringify(state.setup.config, null, 2)}</code>
         </pre>
       </section>
       <section className={styles.card}>

@@ -2,7 +2,7 @@
 
 简体中文 | [English](README.en.md)
 
-`hexo-blog-admin` 是一个基于 Vite + React + TypeScript 的 Hexo 博客管理后台 MVP，运行在 Cloudflare Workers 上。
+`hexo-blog-admin` 是一个基于 Vite + React + TypeScript 的 Hexo 博客管理后台，运行在 Cloudflare Workers 上。
 
 目标数据模型如下：
 
@@ -71,23 +71,33 @@ pnpm wrangler secret put GITHUB_TOKEN
 
 ## Worker Variables
 
-在 Cloudflare Workers Dashboard 的 Variables and Secrets 中配置这些变量：
+在 Cloudflare Workers Dashboard 的 Variables and Secrets 中配置这些变量。项目不在 `wrangler.jsonc` 写普通 `vars`，避免每次 `wrangler deploy` 覆盖你在 Cloudflare Dashboard 手动维护的值。
 
 ```txt
-GITHUB_OWNER
-GITHUB_REPO
-GITHUB_BRANCH
-POSTS_DIR
-POST_ASSET_FOLDER
-ASSET_MODE
-ASSET_CACHE
-R2_TEMP_PREFIX
-BLOG_PUBLIC_URL
-ADMIN_INDEX_PATH
-WORKFLOW_FILE
+GITHUB_OWNER=PLFJY
+GITHUB_REPO=blog
+GITHUB_BRANCH=main
+POSTS_DIR=source/_posts
+BLOG_PUBLIC_URL=https://你的博客域名
+ADMIN_INDEX_PATH=/admin-index.json
+WORKFLOW_FILE=Build Pages.yml
 ```
 
-MVP 默认值写在 `wrangler.jsonc` 中。当前兼容日期固定为 `2026-04-30`，这是已安装本地 Miniflare 运行时支持的最新日期；升级 Cloudflare 工具链后可以按需调高。
+变量用途：
+
+| 变量 | 用途 |
+| --- | --- |
+| `GITHUB_OWNER` | 博客仓库所属账号或组织，例如 `PLFJY`。 |
+| `GITHUB_REPO` | 博客仓库名，例如 `blog`。后台读取文章和发布草稿都会操作这个仓库。 |
+| `GITHUB_BRANCH` | 博客仓库发布分支，例如 `main`。读取文章、提交草稿和触发 Action 都使用这个分支。 |
+| `POSTS_DIR` | Hexo 文章目录，例如 `source/_posts`。用于计算 `relativeId` 对应的 Markdown 路径。 |
+| `BLOG_PUBLIC_URL` | 已部署博客的公开地址。后台会从这里读取 `ADMIN_INDEX_PATH`。 |
+| `ADMIN_INDEX_PATH` | 博客构建产物里的文章索引路径，例如 `/admin-index.json`。 |
+| `WORKFLOW_FILE` | 博客仓库里负责构建部署的 GitHub Actions workflow 文件名，例如 `Build Pages.yml` 或 `deploy.yml`。 |
+
+这些变量没有 fallback，也没有默认值。缺少任意一项时，后台会显示 SetupRequiredPage 并阻止进入主界面。
+
+当前兼容日期固定为 `2026-04-30`，这是已安装本地 Miniflare 运行时支持的最新日期；升级 Cloudflare 工具链后可以按需调高。
 
 ## KV 和 R2 绑定
 
@@ -110,7 +120,9 @@ BLOG_ADMIN_KV
 BLOG_ASSET_CACHE
 ```
 
-`wrangler.jsonc` 有意没有填写 KV namespace id。如果 Wrangler 在部署时要求 id，请把真实 id 补进去。
+`wrangler.jsonc` 可以保留 KV/R2 binding 声明。如果 Wrangler 在部署时要求 KV namespace id，请把真实 id 补进去。
+
+KV/R2 binding 同样是必需项：没有绑定 `BLOG_ADMIN_KV` 或 `BLOG_ASSET_CACHE` 时，后台不会进入主界面。
 
 ## 已实现的 MVP 功能
 
@@ -124,18 +136,25 @@ BLOG_ASSET_CACHE
   - `/api/github/repo`
   - `/api/index`
   - `/api/posts/tree`
+  - `/api/posts/content`
   - `/api/drafts`
+  - `/api/drafts/:id`
+  - `/api/drafts/publish`
   - `/api/deploy/latest`
+  - `/api/deploy/dispatch`
 - 缺少 Worker variables、secrets、KV、R2 bindings 时的 Setup Gate。
 - 前后端复用的 TypeScript API 和领域类型。
 - 面向文件夹分类文章和文章资源目录的 Hexo 路径工具函数。
-- GitHub、KV、R2、indexer、deploy 服务骨架，便于后续继续实现。
+- 从博客站点读取 `admin-index.json`，展示真实文章树。
+- 通过 GitHub REST API 读取文章 Markdown。
+- 基于 KV 的草稿创建、保存、读取和删除。
+- 将草稿通过 GitHub batch commit 发布到博客仓库。
+- 查询和触发 GitHub Actions 部署 workflow。
+- R2 草稿图片缓存服务骨架，便于后续接入图片上传 UI。
 
 ## 后续路线
 
-- 从 Hexo 构建产物生成并读取 `admin-index.json`。
-- 添加 Markdown 草稿编辑器。
 - 添加基于 R2 临时缓存的草稿图片上传 UI。
-- 实现 GitHub batch commit 发布。
-- 触发并监控 GitHub Actions 部署。
+- 添加更完整的 Markdown 编辑器体验。
+- 发布后刷新博客索引并同步部署状态。
 - 添加更完整的设置诊断和恢复流程。

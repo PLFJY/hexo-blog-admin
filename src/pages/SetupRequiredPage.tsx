@@ -34,9 +34,9 @@ export function SetupRequiredPage({ setup, onRefresh }: SetupRequiredPageProps) 
         </ul>
       </section>
       <section className={styles.card}>
-        <Title3>{t('setup.defaults')}</Title3>
+        <Title3>{t('setup.config')}</Title3>
         <pre className={styles.codeBlock}>
-          <code>{JSON.stringify(setup.defaults, null, 2)}</code>
+          <code>{JSON.stringify(setup.config, null, 2)}</code>
         </pre>
       </section>
       <section className={styles.card}>

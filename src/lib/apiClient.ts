@@ -26,3 +26,13 @@ export async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
 
   return payload as T
 }
+
+export async function sendJson<T>(path: string, method: 'POST' | 'PUT' | 'DELETE', body?: unknown): Promise<T> {
+  return getJson<T>(path, {
+    method,
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
+}

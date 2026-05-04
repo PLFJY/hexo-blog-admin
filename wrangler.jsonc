@@ -6,19 +6,6 @@
 	"assets": {
 		"not_found_handling": "single-page-application"
 	},
-	"vars": {
-		"GITHUB_OWNER": "",
-		"GITHUB_REPO": "",
-		"GITHUB_BRANCH": "main",
-		"POSTS_DIR": "source/_posts",
-		"POST_ASSET_FOLDER": "true",
-		"ASSET_MODE": "post-folder",
-		"ASSET_CACHE": "r2-temp",
-		"R2_TEMP_PREFIX": "_draft-assets",
-		"BLOG_PUBLIC_URL": "",
-		"ADMIN_INDEX_PATH": "/admin-index.json",
-		"WORKFLOW_FILE": "deploy.yml"
-	},
 	"kv_namespaces": [
 		{
 			"binding": "BLOG_ADMIN_KV",

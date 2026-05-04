@@ -9,3 +9,7 @@ export type DeployRecord = {
 export type DeployLatestResponse = {
   deploy: DeployRecord
 }
+
+export type DispatchDeployResponse = {
+  queued: boolean
+}

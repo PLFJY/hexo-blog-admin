@@ -7,12 +7,14 @@ export type HealthResponse = {
 export type SetupStatus = {
   configured: boolean
   missing: string[]
-  defaults: {
+  config: {
+    GITHUB_OWNER?: string
+    GITHUB_REPO?: string
     GITHUB_BRANCH: string
     POSTS_DIR: string
+    BLOG_PUBLIC_URL?: string
     ADMIN_INDEX_PATH: string
     WORKFLOW_FILE: string
-    R2_TEMP_PREFIX: string
   }
 }
 
@@ -32,4 +34,9 @@ export type SetupIncompleteError = {
 
 export type TodoResponse<T> = T & {
   message: string
+}
+
+export type ApiErrorResponse = {
+  error: string
+  message?: string
 }

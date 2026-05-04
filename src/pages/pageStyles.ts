@@ -30,6 +30,16 @@ export const usePageStyles = makeStyles({
     backgroundColor: tokens.colorNeutralBackground3,
     color: tokens.colorNeutralForeground1,
   },
+  editor: {
+    minHeight: '360px',
+    fontFamily: 'ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace',
+  },
+  row: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: tokens.spacingHorizontalM,
+    alignItems: 'center',
+  },
   inlineList: {
     display: 'flex',
     flexWrap: 'wrap',
