@@ -10,10 +10,10 @@ import { SettingsPage } from './pages/SettingsPage'
 export const router = createBrowserRouter([
   {
     path: '/',
-    element: <SetupGate />,
+    element: <AppShell />,
     children: [
       {
-        element: <AppShell />,
+        element: <SetupGate />,
         children: [
           { index: true, element: <DashboardPage /> },
           { path: 'posts', element: <PostsPage /> },

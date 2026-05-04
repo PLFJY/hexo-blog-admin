@@ -54,7 +54,7 @@ export function AppNav({ type, open, onOpenChange }: AppNavProps) {
     <NavDrawer
       className={styles.drawer}
       type={type}
-      open={open}
+      open={type === 'inline' ? true : open}
       selectedValue={selectedValue(location.pathname)}
       onOpenChange={(_, data: { open: boolean }) => onOpenChange?.(data.open)}
     >

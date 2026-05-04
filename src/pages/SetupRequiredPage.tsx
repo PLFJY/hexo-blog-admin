@@ -15,7 +15,7 @@ export function SetupRequiredPage({ setup, onRefresh }: SetupRequiredPageProps) 
   const { t } = useTranslation()
 
   return (
-    <main className={styles.page}>
+    <section className={styles.page}>
       <header className={styles.header}>
         <Title1>{t('setup.title')}</Title1>
         <Body1>{t('setup.description')}</Body1>
@@ -45,6 +45,6 @@ export function SetupRequiredPage({ setup, onRefresh }: SetupRequiredPageProps) 
           {t('actions.refresh')}
         </Button>
       </section>
-    </main>
+    </section>
   )
 }
