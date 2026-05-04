@@ -16,7 +16,7 @@
 	"r2_buckets": [
 		{
 			"binding": "BLOG_ASSET_CACHE"
-			// Bind this name to your own R2 bucket in Cloudflare.
+			// Bind this name to your own R2 bucket in Cloudflare. 
 		}
 	]
 }
