@@ -2,7 +2,7 @@
 
 简体中文 | [English](README.en.md)
 
-`hexo-blog-admin` 是一个基于 Vite + React + TypeScript 的 Hexo 博客管理后台，运行在 Cloudflare Workers 上。
+`hexo-blog-admin` 是一个基于 Vite + React + TypeScript 的 Hexo 博客管理后台，运行在 Cloudflare Workers 上
 
 目标数据模型如下：
 
