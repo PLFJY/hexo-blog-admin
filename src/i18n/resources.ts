@@ -45,6 +45,7 @@ export const resources = {
         commit: '提交',
         run: '运行记录',
         queued: '部署已触发',
+        polling: '正在刷新部署状态',
       },
       settings: {
         title: '设置',
@@ -125,6 +126,7 @@ export const resources = {
         commit: 'Commit',
         run: 'Workflow run',
         queued: 'Deploy queued',
+        polling: 'Refreshing deploy status',
       },
       settings: {
         title: 'Settings',

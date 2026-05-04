@@ -9,15 +9,14 @@
 	},
 	"kv_namespaces": [
 		{
-			"binding": "BLOG_ADMIN_KV",
-			"id": "f42614c5739348e4a5dce47c4afc90bd"
-			// Add the real KV namespace id here before deployment if Wrangler requires it.
+			"binding": "BLOG_ADMIN_KV"
+			// Bind this name to your own KV namespace in Cloudflare.
 		}
 	],
 	"r2_buckets": [
 		{
-			"binding": "BLOG_ASSET_CACHE",
-			"bucket_name": "hexo-blog-admin-cache"
+			"binding": "BLOG_ASSET_CACHE"
+			// Bind this name to your own R2 bucket in Cloudflare.
 		}
 	]
 }

@@ -101,13 +101,13 @@ The compatibility date is pinned to `2026-04-30`, the latest date supported by t
 
 ## KV And R2 Bindings
 
-Create a KV namespace for admin state and drafts:
+Create a KV namespace for admin state and drafts. The namespace name can be anything, but the Worker binding name must be `BLOG_ADMIN_KV`:
 
 ```bash
 pnpm wrangler kv namespace create BLOG_ADMIN_KV
 ```
 
-Create an R2 bucket for temporary draft assets:
+Create an R2 bucket for temporary draft assets. The bucket name can be anything, but the Worker binding name must be `BLOG_ASSET_CACHE`:
 
 ```bash
 pnpm wrangler r2 bucket create hexo-blog-admin-cache
@@ -120,7 +120,7 @@ BLOG_ADMIN_KV
 BLOG_ASSET_CACHE
 ```
 
-`wrangler.jsonc` can keep KV/R2 binding declarations. Add the real KV namespace id before deployment if Wrangler requires it.
+`wrangler.jsonc` only declares the binding names expected by the code. It does not specify your KV namespace id or R2 bucket name. Bind your own KV/R2 resources to the names above in the Cloudflare Dashboard.
 
 KV/R2 bindings are required too: without `BLOG_ADMIN_KV` or `BLOG_ASSET_CACHE`, the admin UI will remain blocked.
 

@@ -101,13 +101,13 @@ WORKFLOW_FILE=Build Pages.yml
 
 ## KV 和 R2 绑定
 
-创建用于后台状态和草稿的 KV namespace：
+创建用于后台状态和草稿的 KV namespace。namespace 名字可以自定，但 Worker binding 名必须是 `BLOG_ADMIN_KV`：
 
 ```bash
 pnpm wrangler kv namespace create BLOG_ADMIN_KV
 ```
 
-创建用于草稿图片临时缓存的 R2 bucket：
+创建用于草稿图片临时缓存的 R2 bucket。bucket 名字可以自定，但 Worker binding 名必须是 `BLOG_ASSET_CACHE`：
 
 ```bash
 pnpm wrangler r2 bucket create hexo-blog-admin-cache
@@ -120,7 +120,7 @@ BLOG_ADMIN_KV
 BLOG_ASSET_CACHE
 ```
 
-`wrangler.jsonc` 可以保留 KV/R2 binding 声明。如果 Wrangler 在部署时要求 KV namespace id，请把真实 id 补进去。
+`wrangler.jsonc` 只声明代码需要的 binding 名，不指定你的 KV namespace id，也不指定你的 R2 bucket name。请在 Cloudflare Dashboard 的 Worker Bindings 里把你自己的 KV/R2 绑定到上面的名称。
 
 KV/R2 binding 同样是必需项：没有绑定 `BLOG_ADMIN_KV` 或 `BLOG_ASSET_CACHE` 时，后台不会进入主界面。
 
