@@ -92,10 +92,10 @@ async function handleApiRequest(request: Request, env: WorkerEnv, pathname: stri
 }
 
 export default {
-  async fetch(request: Request, env: WorkerEnv): Promise<Response> {
+  fetch(request: Request, env: WorkerEnv): Promise<Response> {
     const url = new URL(request.url)
     if (url.pathname === ADMIN_BASE_PATH) {
-      return Response.redirect(`${url.origin}${ADMIN_BASE_PATH}/`, 308)
+      return Promise.resolve(Response.redirect(`${url.origin}${ADMIN_BASE_PATH}/`, 308))
     }
     const pathname = normalizePathname(url.pathname)
 
@@ -104,11 +104,7 @@ export default {
     }
 
     if (env.ASSETS) {
-      const response = await env.ASSETS.fetch(request)
-      if (response.status === 404 && !pathname.includes('.')) {
-        return env.ASSETS.fetch(new Request(`${url.origin}${ADMIN_BASE_PATH}/`, request))
-      }
-      return response
+      return env.ASSETS.fetch(request)
     }
 
     return new Response('Not Found', { status: 404 })
