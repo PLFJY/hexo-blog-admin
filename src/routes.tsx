@@ -8,6 +8,7 @@ import { DraftsPage } from './pages/DraftsPage'
 import { PostsPage } from './pages/PostsPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { LoginPage } from './pages/LoginPage'
+import { AppErrorPage } from './pages/AppErrorPage'
 
 function getRouterBasename() {
   const pathname = window.location.pathname
@@ -18,10 +19,12 @@ export const router = createBrowserRouter([
   {
     path: '/login',
     element: <LoginPage />,
+    errorElement: <AppErrorPage />,
   },
   {
     path: '/',
     element: <AppShell />,
+    errorElement: <AppErrorPage />,
     children: [
       {
         element: <SetupGate />,

@@ -1,12 +1,13 @@
 import { Button, Menu, MenuItem, MenuList, MenuPopover, MenuTrigger } from '@fluentui/react-components'
 import { TranslateRegular } from '@fluentui/react-icons'
 import { useTranslation } from 'react-i18next'
+import { safeSetLocalStorage } from '../lib/storage'
 
 export function LanguageSwitcher() {
   const { i18n, t } = useTranslation()
 
   const changeLanguage = (language: 'zh' | 'en') => {
-    window.localStorage.setItem('language', language)
+    safeSetLocalStorage('language', language)
     void i18n.changeLanguage(language)
   }
 

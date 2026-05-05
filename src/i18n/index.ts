@@ -1,10 +1,10 @@
 import i18n from 'i18next'
 import { initReactI18next } from 'react-i18next'
+import { safeGetLocalStorage } from '../lib/storage'
 import { resources } from './resources'
 
 const storedLanguage = () => {
-  if (typeof window === 'undefined') return undefined
-  const language = window.localStorage.getItem('language')
+  const language = safeGetLocalStorage('language')
   return language === 'zh' || language === 'en' ? language : undefined
 }
 
