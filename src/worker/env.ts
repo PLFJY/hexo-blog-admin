@@ -3,6 +3,8 @@ export type WorkerEnv = {
   GITHUB_REPO?: string
   GITHUB_BRANCH?: string
   GITHUB_TOKEN?: string
+  ADMIN_USERNAME?: string
+  ADMIN_PASSWORD?: string
   POSTS_DIR?: string
   BLOG_PUBLIC_URL?: string
   ADMIN_INDEX_PATH?: string

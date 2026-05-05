@@ -4,14 +4,16 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ErrorState } from '../components/ErrorState'
 import { LoadingState } from '../components/LoadingState'
-import { AssetCachePlaceholder } from '../features/assets/AssetCachePlaceholder'
+import { MarkdownAssetPanel } from '../components/MarkdownAssetPanel'
+import { MarkdownPreview } from '../components/MarkdownPreview'
 import { getJson, sendJson } from '../lib/apiClient'
 import type { DraftListResponse, DraftRecord, PublishDraftResponse } from '../shared/draftTypes'
+import type { DraftAsset, DraftAssetListResponse } from '../shared/assetTypes'
 import { usePageStyles } from './pageStyles'
 
 type DraftsState =
   | { status: 'loading' }
-  | { status: 'ready'; drafts: DraftRecord[]; editing: DraftRecord; message?: string }
+  | { status: 'ready'; drafts: DraftRecord[]; editing: DraftRecord; assets: DraftAsset[]; message?: string }
   | { status: 'error'; message: string }
 
 const emptyDraft = (): DraftRecord => ({
@@ -30,7 +32,14 @@ export function DraftsPage() {
   const load = () => {
     setState({ status: 'loading' })
     void getJson<DraftListResponse>('/api/drafts')
-      .then(({ drafts }) => setState({ status: 'ready', drafts, editing: drafts[0] ?? emptyDraft() }))
+      .then(({ drafts }) => {
+        const editing = drafts[0] ?? emptyDraft()
+        setState({ status: 'ready', drafts, editing, assets: [] })
+        if (editing.id) {
+          void getJson<DraftAssetListResponse>(`/api/assets?draftId=${encodeURIComponent(editing.id)}&relativeId=${encodeURIComponent(editing.relativeId)}`)
+            .then((response) => setState({ status: 'ready', drafts, editing, assets: response.manifest.assets }))
+        }
+      })
       .catch((error: unknown) =>
         setState({ status: 'error', message: error instanceof Error ? error.message : 'Unknown error' }),
       )
@@ -41,13 +50,20 @@ export function DraftsPage() {
     setState({ ...state, editing: { ...state.editing, ...patch } })
   }
 
+  const openDraft = (draft: DraftRecord) => {
+    if (state.status !== 'ready') return
+    setState({ ...state, editing: draft, assets: [] })
+    void getJson<DraftAssetListResponse>(`/api/assets?draftId=${encodeURIComponent(draft.id)}&relativeId=${encodeURIComponent(draft.relativeId)}`)
+      .then((response) => setState({ ...state, editing: draft, assets: response.manifest.assets }))
+  }
+
   const save = () => {
     if (state.status !== 'ready') return
     const method = state.editing.id ? 'PUT' : 'POST'
     const path = state.editing.id ? `/api/drafts/${encodeURIComponent(state.editing.id)}` : '/api/drafts'
     void sendJson<DraftRecord>(path, method, state.editing).then((draft) => {
       const drafts = [draft, ...state.drafts.filter((item) => item.id !== draft.id)]
-      setState({ status: 'ready', drafts, editing: draft, message: t('drafts.saved') })
+      setState({ status: 'ready', drafts, editing: draft, assets: state.assets.map((asset) => ({ ...asset, draftId: draft.id })), message: t('drafts.saved') })
     })
   }
 
@@ -55,7 +71,7 @@ export function DraftsPage() {
     if (state.status !== 'ready' || !state.editing.id) return
     void sendJson<{ deleted: boolean }>(`/api/drafts/${encodeURIComponent(state.editing.id)}`, 'DELETE').then(() => {
       const drafts = state.drafts.filter((item) => item.id !== state.editing.id)
-      setState({ status: 'ready', drafts, editing: drafts[0] ?? emptyDraft() })
+      setState({ status: 'ready', drafts, editing: drafts[0] ?? emptyDraft(), assets: [] })
     })
   }
 
@@ -69,9 +85,21 @@ export function DraftsPage() {
         status: 'ready',
         drafts,
         editing: drafts[0] ?? emptyDraft(),
+        assets: [],
         message: `${t('drafts.published')}: ${response.commitSha}`,
       })
     })
+  }
+
+  const insertMarkdown = (markdown: string) => {
+    if (state.status !== 'ready') return
+    const current = state.editing.markdown
+    updateEditing({ markdown: `${current}${current.endsWith('\n') ? '' : '\n'}${markdown}\n` })
+  }
+
+  const resolveImageSrc = (src: string) => {
+    const asset = state.status === 'ready' ? state.assets.find((item) => item.markdownPath === src) : undefined
+    return asset ? `/api/assets/blob?key=${encodeURIComponent(asset.key)}` : src
   }
 
   useEffect(load, [])
@@ -88,12 +116,12 @@ export function DraftsPage() {
       <section className={styles.card}>
         <div className={styles.row}>
           <Title3>{t('drafts.draftList')}</Title3>
-          <Button onClick={() => updateEditing(emptyDraft())}>{t('drafts.newDraft')}</Button>
+          <Button onClick={() => state.status === 'ready' && setState({ ...state, editing: emptyDraft(), assets: [] })}>{t('drafts.newDraft')}</Button>
         </div>
         <ul>
           {state.drafts.map((draft) => (
             <li key={draft.id}>
-              <Button appearance="subtle" onClick={() => updateEditing(draft)}>
+              <Button appearance="subtle" onClick={() => openDraft(draft)}>
                 {draft.title || draft.relativeId}
               </Button>
             </li>
@@ -113,6 +141,13 @@ export function DraftsPage() {
           </Button>
         </div>
         {state.message ? <Text>{state.message}</Text> : null}
+        <MarkdownAssetPanel
+          relativeId={state.editing.relativeId}
+          draftId={state.editing.id}
+          assets={state.assets}
+          onAssetsChange={(assets) => setState({ ...state, assets })}
+          onInsertMarkdown={insertMarkdown}
+        />
         <Field label={t('drafts.relativeIdLabel')}>
           <Input
             value={state.editing.relativeId}
@@ -124,15 +159,20 @@ export function DraftsPage() {
           <Input value={state.editing.title} onChange={(_, data) => updateEditing({ title: data.value })} />
         </Field>
         <Field label={t('drafts.markdownLabel')}>
-          <Textarea
-            className={styles.editor}
-            resize="vertical"
-            value={state.editing.markdown}
-            onChange={(_, data) => updateEditing({ markdown: data.value })}
-          />
+          <div className={styles.split}>
+            <Textarea
+              className={styles.editor}
+              resize="vertical"
+              value={state.editing.markdown}
+              onChange={(_, data) => updateEditing({ markdown: data.value })}
+            />
+            <section className={styles.card}>
+              <Title3>{t('posts.markdownPreview')}</Title3>
+              <MarkdownPreview markdown={state.editing.markdown} resolveImageSrc={resolveImageSrc} />
+            </section>
+          </div>
         </Field>
       </section>
-      <AssetCachePlaceholder />
     </section>
   )
 }

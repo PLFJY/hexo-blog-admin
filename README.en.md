@@ -32,6 +32,13 @@ pnpm install
 pnpm dev
 ```
 
+For local debugging, create `.dev.vars` in the project root. Do not commit this file:
+
+```env
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=local-admin-password
+```
+
 Useful checks:
 
 ```bash
@@ -69,6 +76,13 @@ Store the token as a Cloudflare Worker secret. Do not write it into repository f
 pnpm wrangler secret put GITHUB_TOKEN
 ```
 
+Store the built-in admin username and password as Worker secrets too:
+
+```bash
+pnpm wrangler secret put ADMIN_USERNAME
+pnpm wrangler secret put ADMIN_PASSWORD
+```
+
 ## Worker Variables
 
 Configure these Worker variables in Cloudflare Workers Dashboard under Variables and Secrets. The project does not write normal `vars` in `wrangler.jsonc`, and sets `keep_vars: true`, so `wrangler deploy` will not overwrite values maintained in the Cloudflare Dashboard.
@@ -96,6 +110,8 @@ Variable meanings:
 | `WORKFLOW_FILE` | GitHub Actions workflow filename in the blog repository, for example `Build Pages.yml` or `deploy.yml`. |
 
 These variables have no fallback and no default value. If any required item is missing, the app shows SetupRequiredPage and blocks the main admin UI.
+
+`ADMIN_USERNAME`, `ADMIN_PASSWORD`, and `GITHUB_TOKEN` are secrets and are not shown in the setup status. `ADMIN_USERNAME` is the built-in admin account. After logging in, add regular accounts from Settings; regular account passwords are stored in KV as salted hashes.
 
 The compatibility date is pinned to `2026-04-30`, the latest date supported by the installed local Miniflare runtime; bump it after upgrading Cloudflare tooling if needed.
 
@@ -132,6 +148,9 @@ KV/R2 bindings are required too: without `BLOG_ADMIN_KV` or `BLOG_ASSET_CACHE`, 
 - Chinese and English i18n with localStorage language preference.
 - Cloudflare Worker APIs:
   - `/api/health`
+  - `/api/auth/status`
+  - `/api/auth/login`
+  - `/api/auth/logout`
   - `/api/setup/status`
   - `/api/github/repo`
   - `/api/index`
@@ -143,18 +162,16 @@ KV/R2 bindings are required too: without `BLOG_ADMIN_KV` or `BLOG_ASSET_CACHE`, 
   - `/api/deploy/latest`
   - `/api/deploy/dispatch`
 - Setup gate for missing Worker variables, secrets, KV, and R2 bindings.
+- Dedicated admin login page backed by Worker Secrets `ADMIN_USERNAME` / `ADMIN_PASSWORD`.
+- Account management in Settings; regular account passwords are stored in KV as salted hashes.
 - Shared TypeScript API/domain types.
 - Hexo post path utility functions for folder-based post IDs and post-folder assets.
 - Reads `admin-index.json` from the blog site and shows the real post tree.
 - Reads post Markdown through the GitHub REST API.
 - Creates, saves, reads, and deletes drafts in KV.
+- Provides live Markdown preview for post and draft editing, including `==highlight==` syntax.
+- Uploads images from the Markdown editor into the R2 temporary cache and inserts the final Markdown image path.
+- Manages draft image cache entries, including listing and deleting temporary R2 images.
+- Publishes both Markdown and cached R2 draft images to the blog repository.
 - Publishes drafts to the blog repository through a GitHub batch commit.
 - Queries and dispatches the GitHub Actions deployment workflow.
-- Keeps the R2 draft asset cache service skeleton ready for the image upload UI.
-
-## Roadmap
-
-- Add draft image upload UI backed by R2 temporary cache.
-- Add a richer Markdown editing experience.
-- Refresh the blog index and deployment status after publishing.
-- Add richer settings diagnostics and recovery flows.

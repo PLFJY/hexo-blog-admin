@@ -1,10 +1,20 @@
 import type { DraftListResponse, PublishDraftRequest, PublishDraftResponse, SaveDraftRequest } from '../../shared/draftTypes'
 import type { WorkerEnv } from '../env'
 import { buildPostPaths } from '../../features/posts/postPathUtils'
+import { getDraftAsset, getDraftAssetManifest, deleteDraftAssetManifest } from '../services/assets/draftAssetCache'
 import { createBatchCommit } from '../services/github/githubGitCommit'
 import { deleteDraft, getDraft, listDrafts, saveDraft } from '../services/kv/kvDrafts'
 import { requireConfig } from '../utils/config'
 import { json } from '../utils/response'
+
+const arrayBufferToBase64 = (buffer: ArrayBuffer) => {
+  const bytes = new Uint8Array(buffer)
+  let binary = ''
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte)
+  }
+  return btoa(binary)
+}
 
 export async function handleDrafts(env: WorkerEnv): Promise<Response> {
   const response: DraftListResponse = {
@@ -31,6 +41,7 @@ export async function handleDraftById(env: WorkerEnv, request: Request, id: stri
   }
 
   if (request.method === 'DELETE') {
+    await deleteDraftAssetManifest(env, id)
     return json(await deleteDraft(env, id))
   }
 
@@ -56,8 +67,20 @@ export async function handlePublishDraft(env: WorkerEnv, request: Request): Prom
         encoding: 'utf-8',
         content: draft.markdown,
       },
+      ...(await Promise.all(
+        (await getDraftAssetManifest(env, draft.id, draft.relativeId)).assets.map(async (asset) => {
+          const object = await getDraftAsset(env, asset.key)
+          if (!object) return undefined
+          return {
+            path: asset.finalRepoPath,
+            encoding: 'base64' as const,
+            content: arrayBufferToBase64(await object.arrayBuffer()),
+          }
+        }),
+      )).filter((file): file is { path: string; encoding: 'base64'; content: string } => Boolean(file)),
     ],
   })
+  await deleteDraftAssetManifest(env, draft.id)
   await deleteDraft(env, draft.id)
 
   const response: PublishDraftResponse = {

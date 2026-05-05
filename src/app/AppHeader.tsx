@@ -1,6 +1,7 @@
 import { Button, Text, Title3, makeStyles, tokens } from '@fluentui/react-components'
-import { NavigationRegular } from '@fluentui/react-icons'
+import { ArrowExitRegular, NavigationRegular } from '@fluentui/react-icons'
 import { useTranslation } from 'react-i18next'
+import { sendJson } from '../lib/apiClient'
 import { LanguageSwitcher } from './LanguageSwitcher'
 
 const useStyles = makeStyles({
@@ -39,6 +40,12 @@ export function AppHeader({ onOpenMenu }: AppHeaderProps) {
   const styles = useStyles()
   const { t } = useTranslation()
 
+  const logout = () => {
+    void sendJson('/api/auth/logout', 'POST', {}).finally(() => {
+      window.location.reload()
+    })
+  }
+
   return (
     <header className={styles.root}>
       <Button
@@ -55,6 +62,7 @@ export function AppHeader({ onOpenMenu }: AppHeaderProps) {
         </Text>
       </div>
       <LanguageSwitcher />
+      <Button appearance="subtle" aria-label={t('actions.logout')} icon={<ArrowExitRegular />} onClick={logout} />
     </header>
   )
 }

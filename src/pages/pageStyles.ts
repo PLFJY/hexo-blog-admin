@@ -14,6 +14,14 @@ export const usePageStyles = makeStyles({
     display: 'grid',
     gap: tokens.spacingVerticalL,
   },
+  split: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+    gap: tokens.spacingHorizontalL,
+    '@media (max-width: 960px)': {
+      gridTemplateColumns: '1fr',
+    },
+  },
   card: {
     display: 'grid',
     gap: tokens.spacingVerticalM,

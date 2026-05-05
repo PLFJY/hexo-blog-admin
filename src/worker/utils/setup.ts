@@ -13,6 +13,8 @@ export function getSetupStatus(env: WorkerEnv): SetupStatus {
   if (!hasValue(env.ADMIN_INDEX_PATH)) missing.push('ADMIN_INDEX_PATH')
   if (!hasValue(env.WORKFLOW_FILE)) missing.push('WORKFLOW_FILE')
   if (!hasValue(env.GITHUB_TOKEN)) missing.push('GITHUB_TOKEN')
+  if (!hasValue(env.ADMIN_USERNAME)) missing.push('ADMIN_USERNAME')
+  if (!hasValue(env.ADMIN_PASSWORD)) missing.push('ADMIN_PASSWORD')
   if (!env.BLOG_ADMIN_KV) missing.push('BLOG_ADMIN_KV')
   if (!env.BLOG_ASSET_CACHE) missing.push('BLOG_ASSET_CACHE')
 

@@ -13,6 +13,7 @@ export class ApiError extends Error {
 export async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     ...init,
+    credentials: 'include',
     headers: {
       Accept: 'application/json',
       ...init?.headers,

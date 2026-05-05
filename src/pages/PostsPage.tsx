@@ -1,19 +1,21 @@
-import { Body1, Button, Text, Title1, Title3 } from '@fluentui/react-components'
-import { DocumentEditRegular, OpenRegular } from '@fluentui/react-icons'
+import { Body1, Button, Field, Text, Textarea, Title1, Title3 } from '@fluentui/react-components'
+import { DocumentEditRegular, SaveRegular } from '@fluentui/react-icons'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { EmptyState } from '../components/EmptyState'
 import { ErrorState } from '../components/ErrorState'
 import { LoadingState } from '../components/LoadingState'
-import { PostTreePlaceholder } from '../features/posts/PostTreePlaceholder'
+import { MarkdownAssetPanel } from '../components/MarkdownAssetPanel'
+import { MarkdownPreview } from '../components/MarkdownPreview'
 import { getJson, sendJson } from '../lib/apiClient'
 import type { DraftRecord } from '../shared/draftTypes'
+import type { DraftAsset } from '../shared/assetTypes'
 import type { PostContentResponse, PostFile, PostTreeNode, PostTreeResponse } from '../shared/postTypes'
 import { usePageStyles } from './pageStyles'
 
 type PostsState =
   | { status: 'loading' }
-  | { status: 'ready'; index: PostTreeResponse; selected?: PostContentResponse; message?: string }
+  | { status: 'ready'; index: PostTreeResponse; selected?: PostContentResponse; editingMarkdown?: string; assets: DraftAsset[]; message?: string }
   | { status: 'error'; message: string }
 
 type TreeProps = {
@@ -34,7 +36,7 @@ function PostTree({ nodes, onOpen }: TreeProps) {
               <PostTree nodes={node.children ?? []} onOpen={onOpen} />
             </>
           ) : (
-            <Button appearance="subtle" icon={<OpenRegular />} onClick={() => node.post && onOpen(node.post)}>
+            <Button appearance="subtle" icon={<DocumentEditRegular />} onClick={() => node.post && onOpen(node.post)}>
               {node.post?.title ?? node.name}
             </Button>
           )}
@@ -52,7 +54,7 @@ export function PostsPage() {
   const load = () => {
     setState({ status: 'loading' })
     void getJson<PostTreeResponse>('/api/posts/tree')
-      .then((index) => setState({ status: 'ready', index }))
+      .then((index) => setState({ status: 'ready', index, assets: [] }))
       .catch((error: unknown) =>
         setState({ status: 'error', message: error instanceof Error ? error.message : 'Unknown error' }),
       )
@@ -61,20 +63,36 @@ export function PostsPage() {
   const openPost = (post: PostFile) => {
     if (state.status !== 'ready') return
     void getJson<PostContentResponse>(`/api/posts/content?relativeId=${encodeURIComponent(post.relativeId)}`)
-      .then((selected) => setState({ ...state, selected, message: undefined }))
+      .then((selected) => setState({ ...state, selected, editingMarkdown: selected.markdown, assets: [], message: undefined }))
       .catch((error: unknown) =>
         setState({ ...state, message: error instanceof Error ? error.message : 'Unknown error' }),
       )
   }
 
-  const createDraft = () => {
+  const saveDraft = () => {
     if (state.status !== 'ready' || !state.selected) return
     const selected = state.selected
     void sendJson<DraftRecord>('/api/drafts', 'POST', {
       relativeId: selected.post.relativeId,
       title: selected.post.title,
-      markdown: selected.markdown,
-    }).then(() => setState({ ...state, message: t('drafts.saved') }))
+      markdown: state.editingMarkdown ?? selected.markdown,
+    }).then((draft) => setState({ ...state, message: t('drafts.saved'), assets: state.assets.map((asset) => ({ ...asset, draftId: draft.id })) }))
+  }
+
+  const updateMarkdown = (value: string) => {
+    if (state.status !== 'ready') return
+    setState({ ...state, editingMarkdown: value })
+  }
+
+  const insertMarkdown = (markdown: string) => {
+    if (state.status !== 'ready') return
+    const current = state.editingMarkdown ?? state.selected?.markdown ?? ''
+    setState({ ...state, editingMarkdown: `${current}${current.endsWith('\n') ? '' : '\n'}${markdown}\n` })
+  }
+
+  const resolveImageSrc = (src: string) => {
+    const asset = state.status === 'ready' ? state.assets.find((item) => item.markdownPath === src) : undefined
+    return asset ? `/api/assets/blob?key=${encodeURIComponent(asset.key)}` : src
   }
 
   useEffect(load, [])
@@ -102,17 +120,34 @@ export function PostsPage() {
         <section className={styles.card}>
           <div className={styles.row}>
             <Title3>{state.selected.post.title}</Title3>
-            <Button appearance="primary" icon={<DocumentEditRegular />} onClick={createDraft}>
+            <Button appearance="primary" icon={<SaveRegular />} onClick={saveDraft}>
               {t('posts.createDraft')}
             </Button>
           </div>
           <Text>{state.selected.post.relativeId}</Text>
-          <pre className={styles.codeBlock}>
-            <code>{state.selected.markdown}</code>
-          </pre>
+          <MarkdownAssetPanel
+            relativeId={state.selected.post.relativeId}
+            draftId={state.assets[0]?.draftId}
+            assets={state.assets}
+            onAssetsChange={(assets) => setState({ ...state, assets })}
+            onInsertMarkdown={insertMarkdown}
+          />
+          <div className={styles.split}>
+            <Field label={t('posts.editor')}>
+              <Textarea
+                className={styles.editor}
+                resize="vertical"
+                value={state.editingMarkdown ?? state.selected.markdown}
+                onChange={(_, data) => updateMarkdown(data.value)}
+              />
+            </Field>
+            <section className={styles.card}>
+              <Title3>{t('posts.markdownPreview')}</Title3>
+              <MarkdownPreview markdown={state.editingMarkdown ?? state.selected.markdown} resolveImageSrc={resolveImageSrc} />
+            </section>
+          </div>
         </section>
       ) : null}
-      <PostTreePlaceholder />
     </section>
   )
 }

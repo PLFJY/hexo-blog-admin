@@ -3,7 +3,7 @@ import type { WorkerEnv } from '../../env'
 
 const draftKey = (id: string) => `draft:${id}`
 
-const createId = (relativeId: string) =>
+export const createDraftId = (relativeId: string) =>
   relativeId
     .trim()
     .replace(/\\/g, '/')
@@ -29,7 +29,7 @@ export async function getDraft(env: WorkerEnv, id: string): Promise<DraftRecord 
 
 export async function saveDraft(env: WorkerEnv, request: SaveDraftRequest, id?: string): Promise<DraftRecord> {
   const now = new Date().toISOString()
-  const draftId = id ?? createId(request.relativeId)
+  const draftId = id ?? createDraftId(request.relativeId)
   const existing = await getDraft(env, draftId)
   const draft: DraftRecord = {
     id: draftId,

@@ -32,6 +32,13 @@ pnpm install
 pnpm dev
 ```
 
+本地调试可以在项目根目录创建 `.dev.vars`，这个文件不要提交：
+
+```env
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=本地管理员密码
+```
+
 常用检查：
 
 ```bash
@@ -69,6 +76,13 @@ Actions: Read and write
 pnpm wrangler secret put GITHUB_TOKEN
 ```
 
+内置管理员账号和密码保存为 Worker Secret：
+
+```bash
+pnpm wrangler secret put ADMIN_USERNAME
+pnpm wrangler secret put ADMIN_PASSWORD
+```
+
 ## Worker Variables
 
 在 Cloudflare Workers Dashboard 的 Variables and Secrets 中配置这些变量。项目不在 `wrangler.jsonc` 写普通 `vars`，并且设置了 `keep_vars: true`，避免每次 `wrangler deploy` 覆盖你在 Cloudflare Dashboard 手动维护的值。
@@ -96,6 +110,8 @@ WORKFLOW_FILE=Build Pages.yml
 | `WORKFLOW_FILE` | 博客仓库里负责构建部署的 GitHub Actions workflow 文件名，例如 `Build Pages.yml` 或 `deploy.yml`。 |
 
 这些变量没有 fallback，也没有默认值。缺少任意一项时，后台会显示 SetupRequiredPage 并阻止进入主界面。
+
+`ADMIN_USERNAME`、`ADMIN_PASSWORD` 和 `GITHUB_TOKEN` 是 secret，不会显示在配置状态里。`ADMIN_USERNAME` 对应内置管理员账号；登录后台后可以在设置页新增普通账号，普通账号密码会以加盐哈希保存到 KV。
 
 当前兼容日期固定为 `2026-04-30`，这是已安装本地 Miniflare 运行时支持的最新日期；升级 Cloudflare 工具链后可以按需调高。
 
@@ -132,6 +148,9 @@ KV/R2 binding 同样是必需项：没有绑定 `BLOG_ADMIN_KV` 或 `BLOG_ASSET_
 - 中文和英文 i18n，支持 localStorage 语言偏好。
 - Cloudflare Worker API：
   - `/api/health`
+  - `/api/auth/status`
+  - `/api/auth/login`
+  - `/api/auth/logout`
   - `/api/setup/status`
   - `/api/github/repo`
   - `/api/index`
@@ -143,18 +162,16 @@ KV/R2 binding 同样是必需项：没有绑定 `BLOG_ADMIN_KV` 或 `BLOG_ASSET_
   - `/api/deploy/latest`
   - `/api/deploy/dispatch`
 - 缺少 Worker variables、secrets、KV、R2 bindings 时的 Setup Gate。
+- 独立管理员登录页，内置管理员账号来自 Worker Secret `ADMIN_USERNAME` / `ADMIN_PASSWORD`。
+- 设置页账号管理，新增账号的密码以加盐哈希保存到 KV。
 - 前后端复用的 TypeScript API 和领域类型。
 - 面向文件夹分类文章和文章资源目录的 Hexo 路径工具函数。
 - 从博客站点读取 `admin-index.json`，展示真实文章树。
 - 通过 GitHub REST API 读取文章 Markdown。
 - 基于 KV 的草稿创建、保存、读取和删除。
+- 文章和草稿编辑时提供实时 Markdown 预览，并支持 `==高亮==` 语法。
+- 在 Markdown 编辑器中上传图片到 R2 临时缓存，自动插入最终 Markdown 图片路径。
+- 管理草稿图片缓存，支持查看和删除 R2 临时图片。
+- 发布草稿时，将 Markdown 和 R2 中的草稿图片一起提交到博客仓库。
 - 将草稿通过 GitHub batch commit 发布到博客仓库。
 - 查询和触发 GitHub Actions 部署 workflow。
-- R2 草稿图片缓存服务骨架，便于后续接入图片上传 UI。
-
-## 后续路线
-
-- 添加基于 R2 临时缓存的草稿图片上传 UI。
-- 添加更完整的 Markdown 编辑器体验。
-- 发布后刷新博客索引并同步部署状态。
-- 添加更完整的设置诊断和恢复流程。
