@@ -3,6 +3,7 @@ import { ArrowExitRegular, NavigationRegular } from '@fluentui/react-icons'
 import { useTranslation } from 'react-i18next'
 import { sendJson } from '../lib/apiClient'
 import { LanguageSwitcher } from './LanguageSwitcher'
+import { ThemeSwitcher } from './ThemeSwitcher'
 
 const useStyles = makeStyles({
   root: {
@@ -61,6 +62,7 @@ export function AppHeader({ onOpenMenu }: AppHeaderProps) {
           {t('app.subtitle')}
         </Text>
       </div>
+      <ThemeSwitcher />
       <LanguageSwitcher />
       <Button appearance="subtle" aria-label={t('actions.logout')} icon={<ArrowExitRegular />} onClick={logout} />
     </header>
