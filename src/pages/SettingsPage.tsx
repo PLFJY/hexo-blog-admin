@@ -18,7 +18,10 @@ const useSettingsStyles = makeStyles({
     ':disabled': {
       backgroundColor: tokens.colorNeutralBackgroundDisabled,
       color: tokens.colorNeutralForegroundDisabled,
-      borderColor: tokens.colorNeutralStrokeDisabled,
+      borderTopColor: tokens.colorNeutralStrokeDisabled,
+      borderRightColor: tokens.colorNeutralStrokeDisabled,
+      borderBottomColor: tokens.colorNeutralStrokeDisabled,
+      borderLeftColor: tokens.colorNeutralStrokeDisabled,
     },
   },
   confirmSurface: { display: 'grid', gap: tokens.spacingVerticalM, width: '300px' },

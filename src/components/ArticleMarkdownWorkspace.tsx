@@ -12,15 +12,20 @@ const useStyles = makeStyles({
     gap: tokens.spacingHorizontalL,
     alignItems: 'start',
     width: '100%',
+    minWidth: 0,
+    maxWidth: '100%',
+    boxSizing: 'border-box',
+    overflow: 'hidden',
     '@media (max-width: 960px)': {
-      gridTemplateColumns: '1fr',
+      gridTemplateColumns: 'minmax(0, 1fr)',
     },
   },
-  previewColumn: {
-    paddingTop: '36px',
-    '@media (max-width: 960px)': {
-      paddingTop: 0,
-    },
+  column: {
+    minWidth: 0,
+    maxWidth: '100%',
+    overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column',
   },
 })
 
@@ -77,15 +82,21 @@ export function ArticleMarkdownWorkspace({
 
   return (
     <div className={styles.root}>
-      <MarkdownEditor
-        value={markdown}
-        onChange={onChange}
-        onScrollRatioChange={setPreviewScrollRatio}
-        insertRequest={insertRequest}
-        onInsertConsumed={onInsertConsumed}
-      />
-      <div className={styles.previewColumn}>
-        <MarkdownPreview markdown={markdown} resolveResourceUrl={resolveResourceUrl} scrollRatio={previewScrollRatio} />
+      <div className={styles.column}>
+        <MarkdownEditor
+          value={markdown}
+          onChange={onChange}
+          onScrollRatioChange={setPreviewScrollRatio}
+          insertRequest={insertRequest}
+          onInsertConsumed={onInsertConsumed}
+        />
+      </div>
+      <div className={styles.column}>
+        <MarkdownPreview
+          markdown={markdown}
+          resolveResourceUrl={resolveResourceUrl}
+          scrollRatio={previewScrollRatio}
+        />
       </div>
     </div>
   )

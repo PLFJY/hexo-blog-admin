@@ -5,11 +5,17 @@ export const usePageStyles = makeStyles({
     display: 'grid',
     gap: tokens.spacingVerticalXL,
     width: '100%',
-    maxWidth: 'none',
+    maxWidth: '100%',
+    boxSizing: 'border-box',
+    overflowX: 'hidden',
   },
   header: {
     display: 'grid',
     gap: tokens.spacingVerticalS,
+    minWidth: 0,
+    '& > *': {
+      overflowWrap: 'anywhere',
+    },
   },
   grid: {
     display: 'grid',
@@ -31,8 +37,16 @@ export const usePageStyles = makeStyles({
     borderRadius: tokens.borderRadiusMedium,
     backgroundColor: tokens.colorNeutralBackground2,
     transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+    minWidth: 0,
+    boxSizing: 'border-box',
+    '@media (max-width: 480px)': {
+      padding: tokens.spacingVerticalL,
+    },
     ':hover': {
-      borderColor: tokens.colorNeutralStroke1Hover,
+      borderTopColor: tokens.colorNeutralStroke1Hover,
+      borderRightColor: tokens.colorNeutralStroke1Hover,
+      borderBottomColor: tokens.colorNeutralStroke1Hover,
+      borderLeftColor: tokens.colorNeutralStroke1Hover,
       boxShadow: tokens.shadow4,
     },
   },
@@ -53,6 +67,10 @@ export const usePageStyles = makeStyles({
     flexWrap: 'wrap',
     gap: tokens.spacingHorizontalM,
     alignItems: 'center',
+    '@media (max-width: 480px)': {
+      flexDirection: 'column',
+      alignItems: 'stretch',
+    },
   },
   inlineList: {
     display: 'flex',

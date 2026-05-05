@@ -19,6 +19,16 @@ import type { PostAsset } from '../shared/postTypes'
 import { usePageStyles } from './pageStyles'
 
 const useSourceEditorStyles = makeStyles({
+  headerRow: {
+    display: 'grid',
+    gap: tokens.spacingVerticalS,
+    minWidth: 0,
+    width: '100%',
+    maxWidth: '100%',
+    '& h1, & span': {
+      overflowWrap: 'anywhere',
+    },
+  },
   statusPanel: {
     display: 'grid',
     gap: tokens.spacingVerticalS,
@@ -27,6 +37,8 @@ const useSourceEditorStyles = makeStyles({
     borderLeft: `4px solid ${tokens.colorBrandForeground1}`,
     borderRadius: tokens.borderRadiusMedium,
     backgroundColor: tokens.colorBrandBackground2,
+    minWidth: 0,
+    overflowWrap: 'anywhere',
   },
   dangerPrimaryButton: {
     color: tokens.colorNeutralForegroundOnBrand,
@@ -35,7 +47,10 @@ const useSourceEditorStyles = makeStyles({
     ':disabled': {
       backgroundColor: tokens.colorNeutralBackgroundDisabled,
       color: tokens.colorNeutralForegroundDisabled,
-      borderColor: tokens.colorNeutralStrokeDisabled,
+      borderTopColor: tokens.colorNeutralStrokeDisabled,
+      borderRightColor: tokens.colorNeutralStrokeDisabled,
+      borderBottomColor: tokens.colorNeutralStrokeDisabled,
+      borderLeftColor: tokens.colorNeutralStrokeDisabled,
     },
   },
   overlay: {
@@ -44,25 +59,33 @@ const useSourceEditorStyles = makeStyles({
     zIndex: 1000,
     display: 'grid',
     placeItems: 'center',
-    padding: tokens.spacingHorizontalXXL,
+    padding: tokens.spacingHorizontalM,
     backgroundColor: 'rgba(0, 0, 0, 0.48)',
   },
   decisionPanel: {
     display: 'grid',
     gap: tokens.spacingVerticalL,
     width: 'min(560px, 100%)',
-    padding: tokens.spacingVerticalXXL,
+    padding: tokens.spacingVerticalXL,
     borderRadius: tokens.borderRadiusLarge,
     boxShadow: tokens.shadow64,
     backgroundColor: tokens.colorNeutralBackground1,
+    boxSizing: 'border-box',
+    '@media (max-width: 480px)': {
+      padding: tokens.spacingVerticalL,
+    },
   },
   decisionActions: {
     display: 'flex',
     flexWrap: 'wrap',
     justifyContent: 'flex-end',
     gap: tokens.spacingHorizontalM,
+    '@media (max-width: 480px)': {
+      flexDirection: 'column',
+      alignItems: 'stretch',
+    },
   },
-  confirmSurface: { display: 'grid', gap: tokens.spacingVerticalM, width: '320px' },
+  confirmSurface: { display: 'grid', gap: tokens.spacingVerticalM, width: 'min(320px, 90vw)' },
 })
 
 type State =
@@ -225,7 +248,7 @@ export function SourcePostEditorPage() {
 
   return (
     <section className={styles.page}>
-      <header className={styles.header}>
+      <header className={`${styles.header} ${localStyles.headerRow}`}>
         <Title1>{state.post.post.title}</Title1>
         <Body1>{state.post.post.relativeId}</Body1>
       </header>
@@ -383,17 +406,17 @@ function ChangeIdDialog({
       .finally(() => setBusy(false))
   }
   return (
-    <>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.spacingVerticalS, minWidth: 0 }}>
       <Button onClick={() => setOpen((current) => !current)} disabled={disabled || busy}>{t('posts.changeId')}</Button>
       {open ? (
-        <section>
+        <section style={{ display: 'grid', gap: tokens.spacingVerticalS, padding: tokens.spacingVerticalS }}>
           <Field label={t('posts.newRelativeId')}>
             <Input value={value} onChange={(_, data) => setValue(data.value)} />
           </Field>
-          <Text>{t('posts.changeIdDescription')}</Text>
+          <Text size={200}>{t('posts.changeIdDescription')}</Text>
           <Button appearance="primary" onClick={submit} disabled={busy || !value.trim()}>{busy ? t('actions.submitting') : t('actions.confirm')}</Button>
         </section>
       ) : null}
-    </>
+    </div>
   )
 }

@@ -15,6 +15,8 @@ const useStyles = makeStyles({
   root: {
     height: '560px',
     minWidth: 0,
+    width: '100%',
+    maxWidth: '100%',
     overflow: 'auto',
     boxSizing: 'border-box',
     padding: tokens.spacingVerticalXL,

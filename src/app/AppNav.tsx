@@ -1,8 +1,10 @@
 import {
   NavDrawer,
   NavDrawerBody,
+  NavDrawerHeader,
   NavItem,
   Button,
+  Title2,
   makeStyles,
   tokens,
 } from '@fluentui/react-components'
@@ -22,10 +24,24 @@ import { useLocation, useNavigate } from 'react-router'
 const useStyles = makeStyles({
   drawer: {
     borderRight: `1px solid ${tokens.colorNeutralStroke2}`,
-    height: 'calc(100vh - 64px)',
     minWidth: 0,
+    height: '100%',
+    display: 'flex',
+    flexDirection: 'column',
     transition: 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
     overflowX: 'hidden',
+  },
+  inlineDrawer: {
+    height: 'calc(100vh - 64px)',
+  },
+  overlayDrawer: {
+    height: '100vh',
+  },
+  header: {
+    padding: `${tokens.spacingVerticalL} ${tokens.spacingHorizontalL}`,
+    display: 'flex',
+    alignItems: 'center',
+    gap: tokens.spacingHorizontalS,
   },
   collapseButton: {
     margin: tokens.spacingHorizontalS,
@@ -70,13 +86,19 @@ export function AppNav({ type, open, onOpenChange, collapsed, onCollapsedChange 
 
   return (
     <NavDrawer
-      className={styles.drawer}
+      className={`${styles.drawer} ${type === 'inline' ? styles.inlineDrawer : styles.overlayDrawer}`}
       type={type}
       open={type === 'inline' ? true : open}
       selectedValue={selectedValue(location.pathname)}
       style={type === 'inline' && collapsed ? { width: '72px' } : undefined}
       onOpenChange={(_, data: { open: boolean }) => onOpenChange?.(data.open)}
+      modalProps={type === 'overlay' ? { shouldFocusFirstFocusableItem: true } : undefined}
     >
+      {type === 'overlay' && (
+        <NavDrawerHeader className={styles.header}>
+          <Title2>Hexo Admin</Title2>
+        </NavDrawerHeader>
+      )}
       <NavDrawerBody>
         {type === 'inline' ? (
           <Button

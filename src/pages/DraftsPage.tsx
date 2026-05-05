@@ -42,7 +42,10 @@ const useDraftStyles = makeStyles({
     backgroundColor: tokens.colorNeutralBackground1,
     transition: 'all 0.15s cubic-bezier(0.4, 0, 0.2, 1)',
     ':hover': {
-      borderColor: tokens.colorNeutralStroke1Hover,
+      borderTopColor: tokens.colorNeutralStroke1Hover,
+      borderRightColor: tokens.colorNeutralStroke1Hover,
+      borderBottomColor: tokens.colorNeutralStroke1Hover,
+      borderLeftColor: tokens.colorNeutralStroke1Hover,
       backgroundColor: tokens.colorNeutralBackground1Hover,
     },
   },
@@ -69,7 +72,10 @@ const useDraftStyles = makeStyles({
     ':disabled': {
       backgroundColor: tokens.colorNeutralBackgroundDisabled,
       color: tokens.colorNeutralForegroundDisabled,
-      borderColor: tokens.colorNeutralStrokeDisabled,
+      borderTopColor: tokens.colorNeutralStrokeDisabled,
+      borderRightColor: tokens.colorNeutralStrokeDisabled,
+      borderBottomColor: tokens.colorNeutralStrokeDisabled,
+      borderLeftColor: tokens.colorNeutralStrokeDisabled,
     },
   },
   confirmSurface: {

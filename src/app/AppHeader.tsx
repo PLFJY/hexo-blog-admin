@@ -13,6 +13,7 @@ const useStyles = makeStyles({
     gap: tokens.spacingHorizontalM,
     minHeight: '64px',
     padding: `0 ${tokens.spacingHorizontalXXL}`,
+    backgroundColor: tokens.colorNeutralBackground1,
     '@media (max-width: 720px)': {
       padding: `0 ${tokens.spacingHorizontalM}`,
     },

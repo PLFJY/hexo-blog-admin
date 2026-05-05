@@ -28,14 +28,8 @@ const useStyles = makeStyles({
   },
   metrics: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
     gap: tokens.spacingHorizontalM,
-    '@media (max-width: 960px)': {
-      gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-    },
-    '@media (max-width: 560px)': {
-      gridTemplateColumns: '1fr',
-    },
   },
   metricCard: {
     display: 'grid',
@@ -46,7 +40,10 @@ const useStyles = makeStyles({
     backgroundColor: tokens.colorNeutralBackground2,
     transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
     ':hover': {
-      borderColor: tokens.colorNeutralStroke1Hover,
+      borderTopColor: tokens.colorNeutralStroke1Hover,
+      borderRightColor: tokens.colorNeutralStroke1Hover,
+      borderBottomColor: tokens.colorNeutralStroke1Hover,
+      borderLeftColor: tokens.colorNeutralStroke1Hover,
       boxShadow: tokens.shadow4,
       transform: 'translateY(-2px)',
     },
@@ -80,7 +77,10 @@ const useStyles = makeStyles({
     backgroundColor: tokens.colorNeutralBackground1,
     transition: 'all 0.1s cubic-bezier(0.4, 0, 0.2, 1)',
     ':hover': {
-      borderColor: tokens.colorNeutralStroke1Hover,
+      borderTopColor: tokens.colorNeutralStroke1Hover,
+      borderRightColor: tokens.colorNeutralStroke1Hover,
+      borderBottomColor: tokens.colorNeutralStroke1Hover,
+      borderLeftColor: tokens.colorNeutralStroke1Hover,
       backgroundColor: tokens.colorNeutralBackground1Hover,
     },
   },

@@ -45,6 +45,9 @@ export async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   if (!response.ok) {
+    if (response.status === 401 && !path.includes('/auth/status')) {
+      window.location.reload()
+    }
     const message =
       typeof payload === 'object' &&
       payload !== null &&

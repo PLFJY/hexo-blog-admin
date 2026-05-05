@@ -20,6 +20,8 @@ const useStyles = makeStyles({
     display: 'grid',
     gap: tokens.spacingVerticalXS,
     minWidth: 0,
+    width: '100%',
+    boxSizing: 'border-box',
   },
   toolbar: {
     display: 'flex',
@@ -30,6 +32,8 @@ const useStyles = makeStyles({
   root: {
     height: '560px',
     minWidth: 0,
+    width: '100%',
+    maxWidth: '100%',
     overflow: 'hidden',
     boxSizing: 'border-box',
     border: `1px solid ${tokens.colorNeutralStroke2}`,
@@ -38,10 +42,13 @@ const useStyles = makeStyles({
     '& .cm-editor': {
       height: '560px',
       fontSize: '14px',
+      maxWidth: '100%',
+      overflowX: 'hidden',
     },
     '& .cm-scroller': {
       height: '560px',
       overflow: 'auto',
+      maxWidth: '100%',
       fontFamily: 'ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace',
     },
     '& .cm-content': {

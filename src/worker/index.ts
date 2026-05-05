@@ -18,7 +18,7 @@ import {
 } from './routes/postRoutes'
 import { json } from './utils/response'
 import { getSetupStatus } from './utils/setup'
-import { isAuthenticated } from './utils/auth'
+import { clearSessionCookie, isAuthenticated } from './utils/auth'
 
 const health: HealthResponse = {
   ok: true,
@@ -52,7 +52,10 @@ async function handleApiRequest(request: Request, env: WorkerEnv, pathname: stri
   if (pathname === '/api/auth/login' && request.method === 'POST') return handleLogin(request, env)
   if (pathname === '/api/auth/logout' && request.method === 'POST') return handleLogout(request)
   if (!authBypassPaths.has(pathname) && !(await isAuthenticated(request, env))) {
-    return json({ error: 'UNAUTHORIZED' }, { status: 401 })
+    return json({ error: 'UNAUTHORIZED' }, {
+      status: 401,
+      headers: { 'set-cookie': clearSessionCookie(request) },
+    })
   }
 
   if (pathname === '/api/github/repo') return handleGitHubRepo(env)
@@ -100,6 +103,10 @@ export default {
       return handleApiRequest(request, env, pathname)
     }
 
-    return env.ASSETS.fetch(request)
+    if (env.ASSETS) {
+      return env.ASSETS.fetch(request)
+    }
+
+    return new Response('Not Found', { status: 404 })
   },
-} satisfies ExportedHandler<WorkerEnv & { ASSETS: Fetcher }>
+} satisfies ExportedHandler<WorkerEnv & { ASSETS?: Fetcher }>
