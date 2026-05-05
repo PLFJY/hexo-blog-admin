@@ -34,10 +34,25 @@ export async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
       ...init?.headers,
     },
   })
-  const payload = (await response.json()) as unknown
+  const text = await response.text()
+  let payload: unknown = null
+  if (text) {
+    try {
+      payload = JSON.parse(text) as unknown
+    } catch {
+      payload = { message: text }
+    }
+  }
 
   if (!response.ok) {
-    throw new ApiError(response.statusText || 'Request failed', response.status, payload)
+    const message =
+      typeof payload === 'object' &&
+      payload !== null &&
+      'message' in payload &&
+      typeof payload.message === 'string'
+        ? payload.message
+        : response.statusText || 'Request failed'
+    throw new ApiError(message, response.status, payload)
   }
 
   return payload as T

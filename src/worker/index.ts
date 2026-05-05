@@ -2,7 +2,7 @@ import type { HealthResponse } from '../shared/apiTypes'
 import type { WorkerEnv } from './env'
 import { handleAssetBlob, handleAssets } from './routes/assetRoutes'
 import { handleAuthStatus, handleCreateUser, handleDeleteUser, handleListUsers, handleLogin, handleLogout } from './routes/authRoutes'
-import { handleSetupStatus } from './routes/configRoutes'
+import { handlePublicConfig, handleSetupStatus } from './routes/configRoutes'
 import { handleDeployStatus, handleDispatchDeploy, handleLatestDeploy } from './routes/deployRoutes'
 import { handleCreateDraft, handleDraftById, handleDrafts, handlePublishDraft } from './routes/draftRoutes'
 import { handleGitHubRepo } from './routes/githubRoutes'
@@ -33,6 +33,7 @@ function normalizePathname(pathname: string) {
 async function handleApiRequest(request: Request, env: WorkerEnv, pathname: string): Promise<Response> {
   if (pathname === '/api/health') return json(health)
   if (pathname === '/api/setup/status') return handleSetupStatus(env)
+  if (pathname === '/api/config/public') return handlePublicConfig(env)
   if (pathname === '/api/auth/status') return handleAuthStatus(request, env)
 
   const setup = getSetupStatus(env)

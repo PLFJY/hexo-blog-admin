@@ -28,8 +28,11 @@ export async function getDraftAssetManifest(
 }
 
 async function saveManifest(env: WorkerEnv, manifest: DraftAssetManifest) {
+  if (!env.BLOG_ADMIN_KV) {
+    throw new Error('BLOG_ADMIN_KV binding is not configured')
+  }
   const updated = { ...manifest, updatedAt: new Date().toISOString() }
-  await env.BLOG_ADMIN_KV?.put(manifestKey(manifest.draftId), JSON.stringify(updated))
+  await env.BLOG_ADMIN_KV.put(manifestKey(manifest.draftId), JSON.stringify(updated))
   return updated
 }
 
@@ -43,6 +46,9 @@ export async function putDraftAsset(
     body: ArrayBuffer
   },
 ): Promise<{ asset: DraftAsset; manifest: DraftAssetManifest }> {
+  if (!env.BLOG_ASSET_CACHE) {
+    throw new Error('BLOG_ASSET_CACHE binding is not configured')
+  }
   const draftId = createDraftId(options.relativeId)
   const filename = normalizeFilename(options.filename)
   const key = `draft-assets/${draftId}/${crypto.randomUUID()}-${filename}`
@@ -62,7 +68,7 @@ export async function putDraftAsset(
     markdownPath: paths.markdownPath,
     finalRepoPath: paths.finalRepoPath,
   }
-  await env.BLOG_ASSET_CACHE?.put(key, options.body, {
+  await env.BLOG_ASSET_CACHE.put(key, options.body, {
     httpMetadata: {
       contentType: asset.contentType,
     },

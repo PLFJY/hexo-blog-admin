@@ -1,6 +1,8 @@
 import { markdown } from '@codemirror/lang-markdown'
 import CodeMirror from '@uiw/react-codemirror'
+import type { EditorView, ViewUpdate } from '@uiw/react-codemirror'
 import { makeStyles, tokens } from '@fluentui/react-components'
+import { useEffect, useState } from 'react'
 import { useAppTheme } from '../app/ThemeProvider'
 
 const useStyles = makeStyles({
@@ -29,11 +31,32 @@ const useStyles = makeStyles({
 type MarkdownEditorProps = {
   value: string
   onChange: (value: string) => void
+  onScrollRatioChange?: (ratio: number) => void
 }
 
-export function MarkdownEditor({ value, onChange }: MarkdownEditorProps) {
+export function MarkdownEditor({ value, onChange, onScrollRatioChange }: MarkdownEditorProps) {
   const styles = useStyles()
   const { resolvedMode } = useAppTheme()
+  const [editorView, setEditorView] = useState<EditorView | null>(null)
+
+  useEffect(() => {
+    if (!editorView || !onScrollRatioChange) return undefined
+    const scrollDom = editorView.scrollDOM
+    const handleScroll = () => {
+      const maxScrollTop = scrollDom.scrollHeight - scrollDom.clientHeight
+      onScrollRatioChange(maxScrollTop > 0 ? scrollDom.scrollTop / maxScrollTop : 0)
+    }
+    scrollDom.addEventListener('scroll', handleScroll, { passive: true })
+    handleScroll()
+    return () => scrollDom.removeEventListener('scroll', handleScroll)
+  }, [editorView, onScrollRatioChange])
+
+  const handleUpdate = (update: ViewUpdate) => {
+    if (!onScrollRatioChange || !update.scrollChanged) return
+    const scrollDom = update.view.scrollDOM
+    const maxScrollTop = scrollDom.scrollHeight - scrollDom.clientHeight
+    onScrollRatioChange(maxScrollTop > 0 ? scrollDom.scrollTop / maxScrollTop : 0)
+  }
 
   return (
     <CodeMirror
@@ -44,6 +67,8 @@ export function MarkdownEditor({ value, onChange }: MarkdownEditorProps) {
       theme={resolvedMode}
       extensions={[markdown()]}
       onChange={onChange}
+      onCreateEditor={(view) => setEditorView(view)}
+      onUpdate={handleUpdate}
       basicSetup={{
         foldGutter: true,
         highlightActiveLine: true,

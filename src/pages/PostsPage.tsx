@@ -5,18 +5,20 @@ import { useTranslation } from 'react-i18next'
 import { EmptyState } from '../components/EmptyState'
 import { ErrorState } from '../components/ErrorState'
 import { LoadingState } from '../components/LoadingState'
+import { ArticleMarkdownWorkspace } from '../components/ArticleMarkdownWorkspace'
 import { MarkdownAssetPanel } from '../components/MarkdownAssetPanel'
-import { MarkdownEditor } from '../components/MarkdownEditor'
-import { MarkdownPreview } from '../components/MarkdownPreview'
-import { buildApiUrl, getJson, sendJson } from '../lib/apiClient'
+import { getJson, sendJson } from '../lib/apiClient'
+import { resolveMarkdownResourceUrl } from '../lib/markdownResource'
+import type { PublicConfigResponse } from '../shared/apiTypes'
 import type { DraftRecord } from '../shared/draftTypes'
+import { extractFrontMatterTitle } from '../shared/frontMatter'
 import type { DraftAsset } from '../shared/assetTypes'
 import type { PostContentResponse, PostFile, PostTreeNode, PostTreeResponse } from '../shared/postTypes'
 import { usePageStyles } from './pageStyles'
 
 type PostsState =
   | { status: 'loading' }
-  | { status: 'ready'; index: PostTreeResponse; selected?: PostContentResponse; editingMarkdown?: string; assets: DraftAsset[]; message?: string }
+  | { status: 'ready'; index: PostTreeResponse; selected?: PostContentResponse; editingMarkdown?: string; assets: DraftAsset[]; publicConfig?: PublicConfigResponse; message?: string }
   | { status: 'error'; message: string }
 
 type TreeProps = {
@@ -51,11 +53,17 @@ export function PostsPage() {
   const styles = usePageStyles()
   const { t } = useTranslation()
   const [state, setState] = useState<PostsState>({ status: 'loading' })
+  const [assetObjectUrls, setAssetObjectUrls] = useState<Record<string, string>>({})
 
   const load = () => {
     setState({ status: 'loading' })
     void getJson<PostTreeResponse>('/posts/tree')
-      .then((index) => setState({ status: 'ready', index, assets: [] }))
+      .then((index) => {
+        setState({ status: 'ready', index, assets: [] })
+        void getJson<PublicConfigResponse>('/config/public').then((publicConfig) =>
+          setState((current) => (current.status === 'ready' ? { ...current, publicConfig } : current)),
+        )
+      })
       .catch((error: unknown) =>
         setState({ status: 'error', message: error instanceof Error ? error.message : 'Unknown error' }),
       )
@@ -75,7 +83,7 @@ export function PostsPage() {
     const selected = state.selected
     void sendJson<DraftRecord>('/drafts', 'POST', {
       relativeId: selected.post.relativeId,
-      title: selected.post.title,
+      title: extractFrontMatterTitle(state.editingMarkdown ?? selected.markdown),
       markdown: state.editingMarkdown ?? selected.markdown,
     }).then((draft) => setState({ ...state, message: t('drafts.saved'), assets: state.assets.map((asset) => ({ ...asset, draftId: draft.id })) }))
   }
@@ -91,9 +99,15 @@ export function PostsPage() {
     setState({ ...state, editingMarkdown: `${current}${current.endsWith('\n') ? '' : '\n'}${markdown}\n` })
   }
 
-  const resolveImageSrc = (src: string) => {
-    const asset = state.status === 'ready' ? state.assets.find((item) => item.markdownPath === src) : undefined
-    return asset ? buildApiUrl(`/assets/blob?key=${encodeURIComponent(asset.key)}`) : src
+  const resolveResourceUrl = (src: string) => {
+    if (state.status !== 'ready' || !state.selected) return src
+    return resolveMarkdownResourceUrl({
+      src,
+      relativeId: state.selected.post.relativeId,
+      publicConfig: state.publicConfig,
+      assets: state.assets,
+      assetObjectUrls,
+    })
   }
 
   useEffect(load, [])
@@ -133,15 +147,15 @@ export function PostsPage() {
             onAssetsChange={(assets) => setState({ ...state, assets })}
             onInsertMarkdown={insertMarkdown}
           />
-          <div className={styles.split}>
-            <Field label={t('posts.editor')}>
-              <MarkdownEditor value={state.editingMarkdown ?? state.selected.markdown} onChange={updateMarkdown} />
-            </Field>
-            <section className={styles.card}>
-              <Title3>{t('posts.markdownPreview')}</Title3>
-              <MarkdownPreview markdown={state.editingMarkdown ?? state.selected.markdown} resolveImageSrc={resolveImageSrc} />
-            </section>
-          </div>
+          <Field label={t('posts.editor')}>
+            <ArticleMarkdownWorkspace
+              markdown={state.editingMarkdown ?? state.selected.markdown}
+              onChange={updateMarkdown}
+              resolveResourceUrl={resolveResourceUrl}
+              assets={state.assets}
+              onAssetObjectUrlsChange={setAssetObjectUrls}
+            />
+          </Field>
         </section>
       ) : null}
     </section>

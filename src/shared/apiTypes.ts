@@ -18,6 +18,8 @@ export type SetupStatus = {
   }
 }
 
+export type PublicConfigResponse = SetupStatus['config']
+
 export type GitHubRepoStatus = {
   connected: boolean
   fullName?: string

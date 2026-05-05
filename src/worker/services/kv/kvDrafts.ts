@@ -1,4 +1,5 @@
 import type { DraftRecord, SaveDraftRequest } from '../../../shared/draftTypes'
+import { extractFrontMatterTitle } from '../../../shared/frontMatter'
 import type { WorkerEnv } from '../../env'
 
 const draftKey = (id: string) => `draft:${id}`
@@ -57,7 +58,7 @@ export async function saveDraft(env: WorkerEnv, request: SaveDraftRequest, id?: 
   const draft: DraftRecord = {
     id: draftId,
     relativeId,
-    title: request.title,
+    title: extractFrontMatterTitle(request.markdown),
     markdown: request.markdown,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,

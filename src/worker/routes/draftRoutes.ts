@@ -1,4 +1,5 @@
 import type { DraftListResponse, PublishDraftRequest, PublishDraftResponse, SaveDraftRequest } from '../../shared/draftTypes'
+import { extractFrontMatterTitle } from '../../shared/frontMatter'
 import type { WorkerEnv } from '../env'
 import { buildPostPaths } from '../../features/posts/postPathUtils'
 import { getDraftAsset, getDraftAssetManifest, deleteDraftAssetManifest } from '../services/assets/draftAssetCache'
@@ -69,7 +70,7 @@ export async function handlePublishDraft(env: WorkerEnv, request: Request): Prom
   })
   const commit = await createBatchCommit(env, {
     branch: body.branch || config.GITHUB_BRANCH,
-    message: body.message || `Publish ${draft.title}`,
+    message: body.message || `Publish ${extractFrontMatterTitle(draft.markdown) || draft.relativeId}`,
     files: [
       {
         path: paths.postPath,

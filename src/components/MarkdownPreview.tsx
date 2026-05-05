@@ -1,23 +1,100 @@
+import MarkdownIt from 'markdown-it'
+import markdownItAbbr from 'markdown-it-abbr'
+import markdownItDeflist from 'markdown-it-deflist'
+import markdownItFootnote from 'markdown-it-footnote'
+import markdownItKatex from 'markdown-it-katex'
+import markdownItMark from 'markdown-it-mark'
+import markdownItSub from 'markdown-it-sub'
+import markdownItSup from 'markdown-it-sup'
 import { makeStyles, tokens } from '@fluentui/react-components'
-import type { ReactNode } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
+import 'katex/dist/katex.min.css'
+import { extractFrontMatterTitle, stripFrontMatter } from '../shared/frontMatter'
 
 const useStyles = makeStyles({
   root: {
-    display: 'grid',
-    gap: tokens.spacingVerticalM,
+    minHeight: '560px',
+    maxHeight: '72vh',
+    overflow: 'auto',
+    padding: tokens.spacingVerticalXL,
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    borderRadius: tokens.borderRadiusMedium,
+    backgroundColor: tokens.colorNeutralBackground1,
+    color: tokens.colorNeutralForeground1,
     lineHeight: tokens.lineHeightBase400,
-    '& h1': { margin: 0 },
-    '& h2': { margin: 0 },
-    '& h3': { margin: 0 },
-    '& p': { margin: 0 },
+    '& > :first-child': {
+      marginTop: 0,
+    },
+    '& > :last-child': {
+      marginBottom: 0,
+    },
+    '& h1': {
+      margin: `0 0 ${tokens.spacingVerticalL}`,
+      fontSize: '28px',
+      lineHeight: '36px',
+      fontWeight: tokens.fontWeightSemibold,
+      letterSpacing: 0,
+      overflowWrap: 'anywhere',
+    },
+    '& h2': {
+      margin: `${tokens.spacingVerticalXL} 0 ${tokens.spacingVerticalM}`,
+      fontSize: '22px',
+      lineHeight: '30px',
+      fontWeight: tokens.fontWeightSemibold,
+      letterSpacing: 0,
+      overflowWrap: 'anywhere',
+    },
+    '& h3': {
+      margin: `${tokens.spacingVerticalL} 0 ${tokens.spacingVerticalS}`,
+      fontSize: '18px',
+      lineHeight: '26px',
+      fontWeight: tokens.fontWeightSemibold,
+      letterSpacing: 0,
+      overflowWrap: 'anywhere',
+    },
+    '& p, & li': {
+      overflowWrap: 'anywhere',
+    },
+    '& a': {
+      color: tokens.colorBrandForegroundLink,
+    },
+    '& blockquote': {
+      marginLeft: 0,
+      marginRight: 0,
+      paddingLeft: tokens.spacingHorizontalM,
+      borderLeft: `3px solid ${tokens.colorNeutralStroke1}`,
+      color: tokens.colorNeutralForeground2,
+    },
+    '& code': {
+      fontFamily: 'ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace',
+    },
+    '& :not(pre) > code': {
+      padding: '2px 4px',
+      borderRadius: tokens.borderRadiusSmall,
+      backgroundColor: tokens.colorNeutralBackground3,
+    },
     '& pre': {
       overflowX: 'auto',
       padding: tokens.spacingVerticalM,
       borderRadius: tokens.borderRadiusMedium,
       backgroundColor: tokens.colorNeutralBackground3,
     },
-    '& code': {
-      fontFamily: 'ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace',
+    '& table': {
+      width: '100%',
+      borderCollapse: 'collapse',
+      overflow: 'auto',
+    },
+    '& th, & td': {
+      padding: `${tokens.spacingVerticalS} ${tokens.spacingHorizontalS}`,
+      border: `1px solid ${tokens.colorNeutralStroke2}`,
+      verticalAlign: 'top',
+    },
+    '& th': {
+      backgroundColor: tokens.colorNeutralBackground3,
+    },
+    '& img': {
+      maxWidth: '100%',
+      borderRadius: tokens.borderRadiusMedium,
     },
     '& mark': {
       padding: '0 3px',
@@ -25,125 +102,72 @@ const useStyles = makeStyles({
       color: tokens.colorNeutralForegroundInverted,
       backgroundColor: tokens.colorPaletteYellowForeground1,
     },
-    '& blockquote': {
-      margin: 0,
-      paddingLeft: tokens.spacingHorizontalM,
-      borderLeft: `3px solid ${tokens.colorNeutralStroke1}`,
-      color: tokens.colorNeutralForeground2,
-    },
-    '& img': {
-      maxWidth: '100%',
-      borderRadius: tokens.borderRadiusMedium,
+    '& .katex-display': {
+      overflowX: 'auto',
+      overflowY: 'hidden',
+      padding: `${tokens.spacingVerticalS} 0`,
     },
   },
 })
 
 type MarkdownPreviewProps = {
   markdown: string
-  resolveImageSrc?: (src: string) => string
+  resolveResourceUrl?: (src: string) => string
+  scrollRatio?: number
 }
 
-const inlinePattern = /(`[^`]+`|!\[[^\]]*]\([^)]+\)|\[[^\]]+]\([^)]+\)|==[^=]+==|\*\*[^*]+\*\*|\*[^*]+\*)/g
-
-function renderInline(text: string, resolveImageSrc?: (src: string) => string): ReactNode[] {
-  return text.split(inlinePattern).filter(Boolean).map((part, index) => {
-    if (part.startsWith('==') && part.endsWith('==')) {
-      return <mark key={index}>{part.slice(2, -2)}</mark>
-    }
-    if (part.startsWith('**') && part.endsWith('**')) {
-      return <strong key={index}>{part.slice(2, -2)}</strong>
-    }
-    if (part.startsWith('*') && part.endsWith('*')) {
-      return <em key={index}>{part.slice(1, -1)}</em>
-    }
-    if (part.startsWith('`') && part.endsWith('`')) {
-      return <code key={index}>{part.slice(1, -1)}</code>
-    }
-    if (part.startsWith('![')) {
-      const match = /^!\[([^\]]*)]\(([^)]+)\)$/.exec(part)
-      return match ? <img key={index} alt={match[1]} src={resolveImageSrc?.(match[2]) ?? match[2]} /> : part
-    }
-    if (part.startsWith('[')) {
-      const match = /^\[([^\]]+)]\(([^)]+)\)$/.exec(part)
-      return match ? <a key={index} href={match[2]} target="_blank" rel="noreferrer">{match[1]}</a> : part
-    }
-    return part
+function createMarkdownRenderer(resolveResourceUrl?: (src: string) => string) {
+  const md = new MarkdownIt({
+    html: true,
+    linkify: true,
+    typographer: false,
+    breaks: false,
   })
+    .use(markdownItAbbr)
+    .use(markdownItDeflist)
+    .use(markdownItFootnote)
+    .use(markdownItKatex)
+    .use(markdownItMark)
+    .use(markdownItSub)
+    .use(markdownItSup)
+
+  const defaultImageRenderer = md.renderer.rules.image
+  md.renderer.rules.image = (tokens, index, options, env, self) => {
+    const token = tokens[index]
+    const src = token.attrGet('src')
+    if (src) token.attrSet('src', resolveResourceUrl?.(src) ?? src)
+    return defaultImageRenderer ? defaultImageRenderer(tokens, index, options, env, self) : self.renderToken(tokens, index, options)
+  }
+
+  const defaultLinkOpenRenderer = md.renderer.rules.link_open
+  md.renderer.rules.link_open = (tokens, index, options, env, self) => {
+    const token = tokens[index]
+    const href = token.attrGet('href')
+    if (href) token.attrSet('href', resolveResourceUrl?.(href) ?? href)
+    token.attrSet('target', '_blank')
+    token.attrSet('rel', 'noreferrer')
+    return defaultLinkOpenRenderer ? defaultLinkOpenRenderer(tokens, index, options, env, self) : self.renderToken(tokens, index, options)
+  }
+
+  return md
 }
 
-export function MarkdownPreview({ markdown, resolveImageSrc }: MarkdownPreviewProps) {
+export function MarkdownPreview({ markdown, resolveResourceUrl, scrollRatio }: MarkdownPreviewProps) {
   const styles = useStyles()
-  const lines = markdown.replace(/\r\n/g, '\n').split('\n')
-  const blocks: ReactNode[] = []
-  let paragraph: string[] = []
-  let list: string[] = []
-  let code: string[] | null = null
+  const rootRef = useRef<HTMLDivElement>(null)
+  const renderer = useMemo(() => createMarkdownRenderer(resolveResourceUrl), [resolveResourceUrl])
+  const html = useMemo(() => {
+    const title = extractFrontMatterTitle(markdown)
+    const body = stripFrontMatter(markdown)
+    return renderer.render(`${title ? `# ${title}\n\n` : ''}${body}`)
+  }, [markdown, renderer])
 
-  const flushParagraph = () => {
-    if (paragraph.length > 0) {
-      blocks.push(<p key={`p-${blocks.length}`}>{renderInline(paragraph.join(' '), resolveImageSrc)}</p>)
-      paragraph = []
-    }
-  }
-  const flushList = () => {
-    if (list.length > 0) {
-      blocks.push(
-        <ul key={`ul-${blocks.length}`}>
-          {list.map((item, index) => <li key={index}>{renderInline(item, resolveImageSrc)}</li>)}
-        </ul>,
-      )
-      list = []
-    }
-  }
+  useEffect(() => {
+    if (scrollRatio === undefined || !rootRef.current) return
+    const element = rootRef.current
+    const maxScrollTop = element.scrollHeight - element.clientHeight
+    element.scrollTop = maxScrollTop > 0 ? maxScrollTop * scrollRatio : 0
+  }, [scrollRatio, html])
 
-  for (const line of lines) {
-    if (line.startsWith('```')) {
-      if (code) {
-        blocks.push(<pre key={`code-${blocks.length}`}><code>{code.join('\n')}</code></pre>)
-        code = null
-      } else {
-        flushParagraph()
-        flushList()
-        code = []
-      }
-      continue
-    }
-    if (code) {
-      code.push(line)
-      continue
-    }
-    if (!line.trim()) {
-      flushParagraph()
-      flushList()
-      continue
-    }
-    const heading = /^(#{1,3})\s+(.+)$/.exec(line)
-    if (heading) {
-      flushParagraph()
-      flushList()
-      const level = heading[1].length
-      const content = renderInline(heading[2], resolveImageSrc)
-      blocks.push(level === 1 ? <h1 key={blocks.length}>{content}</h1> : level === 2 ? <h2 key={blocks.length}>{content}</h2> : <h3 key={blocks.length}>{content}</h3>)
-      continue
-    }
-    const item = /^[-*]\s+(.+)$/.exec(line)
-    if (item) {
-      flushParagraph()
-      list.push(item[1])
-      continue
-    }
-    if (line.startsWith('> ')) {
-      flushParagraph()
-      flushList()
-      blocks.push(<blockquote key={blocks.length}>{renderInline(line.slice(2), resolveImageSrc)}</blockquote>)
-      continue
-    }
-    paragraph.push(line)
-  }
-
-  flushParagraph()
-  flushList()
-  if (code) blocks.push(<pre key={`code-${blocks.length}`}><code>{code.join('\n')}</code></pre>)
-
-  return <div className={styles.root}>{blocks}</div>
+  return <div className={styles.root} ref={rootRef} dangerouslySetInnerHTML={{ __html: html }} />
 }
