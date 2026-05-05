@@ -3,7 +3,7 @@ import type { WorkerEnv } from '../env'
 import { buildPostPaths } from '../../features/posts/postPathUtils'
 import { getDraftAsset, getDraftAssetManifest, deleteDraftAssetManifest } from '../services/assets/draftAssetCache'
 import { createBatchCommit } from '../services/github/githubGitCommit'
-import { deleteDraft, getDraft, listDrafts, saveDraft } from '../services/kv/kvDrafts'
+import { deleteDraft, getDraft, isValidRelativeId, listDrafts, saveDraft } from '../services/kv/kvDrafts'
 import { requireConfig } from '../utils/config'
 import { json } from '../utils/response'
 
@@ -26,6 +26,9 @@ export async function handleDrafts(env: WorkerEnv): Promise<Response> {
 
 export async function handleCreateDraft(env: WorkerEnv, request: Request): Promise<Response> {
   const body = (await request.json()) as SaveDraftRequest
+  if (!isValidRelativeId(body.relativeId)) {
+    return json({ error: 'BAD_REQUEST', message: 'relativeId is required' }, { status: 400 })
+  }
   return json(await saveDraft(env, body), { status: 201 })
 }
 
@@ -37,6 +40,9 @@ export async function handleDraftById(env: WorkerEnv, request: Request, id: stri
 
   if (request.method === 'PUT') {
     const body = (await request.json()) as SaveDraftRequest
+    if (!isValidRelativeId(body.relativeId)) {
+      return json({ error: 'BAD_REQUEST', message: 'relativeId is required' }, { status: 400 })
+    }
     return json(await saveDraft(env, body, id))
   }
 
@@ -52,6 +58,9 @@ export async function handlePublishDraft(env: WorkerEnv, request: Request): Prom
   const body = (await request.json()) as PublishDraftRequest
   const draft = await getDraft(env, body.draftId)
   if (!draft) return json({ error: 'NOT_FOUND', message: 'Draft not found' }, { status: 404 })
+  if (!isValidRelativeId(draft.relativeId)) {
+    return json({ error: 'BAD_REQUEST', message: 'relativeId is required' }, { status: 400 })
+  }
 
   const config = requireConfig(env)
   const paths = buildPostPaths({

@@ -47,6 +47,7 @@ export const resources = {
         published: '草稿已发布',
         deployTracking: '正在跟踪部署状态',
         indexSynced: '文章索引已刷新',
+        relativeIdRequired: '请先填写有效的文章 ID，例如 ap-csa/00-about-ap-csa',
       },
       assets: {
         title: '图片缓存',
@@ -152,6 +153,7 @@ export const resources = {
         published: 'Draft published',
         deployTracking: 'Tracking deployment status',
         indexSynced: 'Post index refreshed',
+        relativeIdRequired: 'Enter a valid post ID first, for example ap-csa/00-about-ap-csa',
       },
       assets: {
         title: 'Image cache',

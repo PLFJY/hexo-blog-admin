@@ -12,8 +12,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@codemirror/lang-markdown": "^6.5.0",
     "@fluentui/react-components": "^9.73.8",
     "@fluentui/react-icons": "^2.0.316",
+    "@uiw/react-codemirror": "^4.25.9",
     "i18next": "^26.0.8",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",

@@ -1,4 +1,4 @@
-import { Body1, Button, Field, Text, Textarea, Title1, Title3 } from '@fluentui/react-components'
+import { Body1, Button, Field, Text, Title1, Title3 } from '@fluentui/react-components'
 import { DocumentEditRegular, SaveRegular } from '@fluentui/react-icons'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -6,6 +6,7 @@ import { EmptyState } from '../components/EmptyState'
 import { ErrorState } from '../components/ErrorState'
 import { LoadingState } from '../components/LoadingState'
 import { MarkdownAssetPanel } from '../components/MarkdownAssetPanel'
+import { MarkdownEditor } from '../components/MarkdownEditor'
 import { MarkdownPreview } from '../components/MarkdownPreview'
 import { buildApiUrl, getJson, sendJson } from '../lib/apiClient'
 import type { DraftRecord } from '../shared/draftTypes'
@@ -134,12 +135,7 @@ export function PostsPage() {
           />
           <div className={styles.split}>
             <Field label={t('posts.editor')}>
-              <Textarea
-                className={styles.editor}
-                resize="vertical"
-                value={state.editingMarkdown ?? state.selected.markdown}
-                onChange={(_, data) => updateMarkdown(data.value)}
-              />
+              <MarkdownEditor value={state.editingMarkdown ?? state.selected.markdown} onChange={updateMarkdown} />
             </Field>
             <section className={styles.card}>
               <Title3>{t('posts.markdownPreview')}</Title3>

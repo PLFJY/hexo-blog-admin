@@ -1,10 +1,11 @@
-import { Body1, Button, Field, Input, Text, Textarea, Title1, Title3 } from '@fluentui/react-components'
+import { Body1, Button, Field, Input, Text, Title1, Title3 } from '@fluentui/react-components'
 import { DeleteRegular, RocketRegular, SaveRegular } from '@fluentui/react-icons'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ErrorState } from '../components/ErrorState'
 import { LoadingState } from '../components/LoadingState'
 import { MarkdownAssetPanel } from '../components/MarkdownAssetPanel'
+import { MarkdownEditor } from '../components/MarkdownEditor'
 import { MarkdownPreview } from '../components/MarkdownPreview'
 import { StatusBadge } from '../components/StatusBadge'
 import { buildApiUrl, getJson, sendJson } from '../lib/apiClient'
@@ -35,6 +36,14 @@ const emptyDraft = (): DraftRecord => ({
   markdown: '---\ntitle: \ndate: \ntags:\n---\n\n',
   updatedAt: new Date().toISOString(),
 })
+
+const isValidRelativeId = (relativeId: string) => {
+  const normalized = relativeId.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '').replace(/\/+/g, '/')
+  if (!normalized) return false
+  if (normalized.startsWith('.') || normalized.includes('..')) return false
+  if (normalized.split('/').some((part) => !part || part === '.' || part === '..' || part === '.git')) return false
+  return /^[a-zA-Z0-9][a-zA-Z0-9/_-]*[a-zA-Z0-9_-]$/.test(normalized)
+}
 
 export function DraftsPage() {
   const styles = usePageStyles()
@@ -72,12 +81,20 @@ export function DraftsPage() {
 
   const save = () => {
     if (state.status !== 'ready') return
+    if (!isValidRelativeId(state.editing.relativeId)) {
+      setState({ ...state, message: t('drafts.relativeIdRequired') })
+      return
+    }
     const method = state.editing.id ? 'PUT' : 'POST'
     const path = state.editing.id ? `/drafts/${encodeURIComponent(state.editing.id)}` : '/drafts'
-    void sendJson<DraftRecord>(path, method, state.editing).then((draft) => {
-      const drafts = [draft, ...state.drafts.filter((item) => item.id !== draft.id)]
-      setState({ status: 'ready', drafts, editing: draft, assets: state.assets.map((asset) => ({ ...asset, draftId: draft.id })), message: t('drafts.saved') })
-    })
+    void sendJson<DraftRecord>(path, method, state.editing)
+      .then((draft) => {
+        const drafts = [draft, ...state.drafts.filter((item) => item.id !== draft.id)]
+        setState({ status: 'ready', drafts, editing: draft, assets: state.assets.map((asset) => ({ ...asset, draftId: draft.id })), message: t('drafts.saved') })
+      })
+      .catch((error: unknown) =>
+        setState({ ...state, message: error instanceof Error ? error.message : 'Unknown error' }),
+      )
   }
 
   const remove = () => {
@@ -90,6 +107,10 @@ export function DraftsPage() {
 
   const publish = () => {
     if (state.status !== 'ready' || !state.editing.id) return
+    if (!isValidRelativeId(state.editing.relativeId)) {
+      setState({ ...state, message: t('drafts.relativeIdRequired') })
+      return
+    }
     void sendJson<PublishDraftResponse>('/drafts/publish', 'POST', {
       draftId: state.editing.id,
     }).then((response) => {
@@ -188,6 +209,7 @@ export function DraftsPage() {
 
   if (state.status === 'loading') return <LoadingState />
   if (state.status === 'error') return <ErrorState message={state.message} onRetry={load} />
+  const relativeIdValid = isValidRelativeId(state.editing.relativeId)
 
   return (
     <section className={styles.page}>
@@ -212,10 +234,10 @@ export function DraftsPage() {
       </section>
       <section className={styles.card}>
         <div className={styles.row}>
-          <Button appearance="primary" icon={<SaveRegular />} onClick={save}>
+          <Button appearance="primary" icon={<SaveRegular />} onClick={save} disabled={!relativeIdValid}>
             {t('drafts.saveDraft')}
           </Button>
-          <Button icon={<RocketRegular />} onClick={publish} disabled={!state.editing.id}>
+          <Button icon={<RocketRegular />} onClick={publish} disabled={!state.editing.id || !relativeIdValid}>
             {t('drafts.publishDraft')}
           </Button>
           <Button icon={<DeleteRegular />} onClick={remove} disabled={!state.editing.id}>
@@ -242,6 +264,8 @@ export function DraftsPage() {
             value={state.editing.relativeId}
             onChange={(_, data) => updateEditing({ relativeId: data.value })}
             placeholder="ap-csa/00-about-ap-csa"
+            validationState={relativeIdValid ? undefined : 'error'}
+            validationMessage={relativeIdValid ? undefined : t('drafts.relativeIdRequired')}
           />
         </Field>
         <Field label={t('drafts.titleLabel')}>
@@ -249,12 +273,7 @@ export function DraftsPage() {
         </Field>
         <Field label={t('drafts.markdownLabel')}>
           <div className={styles.split}>
-            <Textarea
-              className={styles.editor}
-              resize="vertical"
-              value={state.editing.markdown}
-              onChange={(_, data) => updateEditing({ markdown: data.value })}
-            />
+            <MarkdownEditor value={state.editing.markdown} onChange={(markdown) => updateEditing({ markdown })} />
             <section className={styles.card}>
               <Title3>{t('posts.markdownPreview')}</Title3>
               <MarkdownPreview markdown={state.editing.markdown} resolveImageSrc={resolveImageSrc} />
