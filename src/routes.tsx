@@ -14,11 +14,6 @@ import { LoginPage } from './pages/LoginPage'
 import { AppErrorPage } from './pages/AppErrorPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 
-function getRouterBasename() {
-  const pathname = window.location.pathname
-  return pathname === '/admin' || pathname.startsWith('/admin/') ? '/admin' : '/'
-}
-
 export const router = createBrowserRouter([
   {
     path: '/login',
@@ -52,6 +47,4 @@ export const router = createBrowserRouter([
       { path: '*', element: <NotFoundPage /> },
     ],
   },
-], {
-  basename: getRouterBasename(),
-})
+])

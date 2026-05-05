@@ -140,11 +140,9 @@ BLOG_ASSET_CACHE
 
 KV/R2 bindings are required too: without `BLOG_ADMIN_KV` or `BLOG_ASSET_CACHE`, the admin UI will remain blocked.
 
-## Dual Entrypoint Deployment
+## Deployment Entrypoint
 
-The same Worker/React app supports both a dedicated admin subdomain and a blog subpath. The frontend detects the current URL automatically, so you do not need separate builds for each entrypoint.
-
-### Option A: dedicated admin subdomain
+This project only supports deployment on a dedicated admin subdomain. The app runs at the root path `/`, and APIs are fixed under `/api/*`.
 
 Cloudflare Worker route example:
 
@@ -152,40 +150,25 @@ Cloudflare Worker route example:
 admin.example.com/*
 ```
 
+For the current deployment, use:
+
+```txt
+admin.blog.plfjy.top/*
+```
+
 Visit:
 
 ```txt
-https://admin.example.com/
+https://admin.blog.plfjy.top/
 ```
 
-API paths in this mode:
+API paths:
 
 ```txt
 /api/*
 ```
 
-### Option B: blog subpath
-
-Cloudflare Worker route examples:
-
-```txt
-blog.example.com/admin
-blog.example.com/admin/*
-```
-
-Visit:
-
-```txt
-https://blog.example.com/admin/
-```
-
-API paths in this mode:
-
-```txt
-/admin/api/*
-```
-
-Both route styles can point to the same Worker at the same time. `/admin` redirects to `/admin/`, and other blog paths should continue to use the existing blog service. The build uses `base: "./"`, and React Router selects the basename dynamically.
+If you previously configured blog subpath routes such as `blog.plfjy.top/admin` or `blog.plfjy.top/admin/*`, remove them from Cloudflare Worker routes. The admin no longer supports being mounted under the blog subpath.
 
 ## Blog Repository admin-index.json Setup
 

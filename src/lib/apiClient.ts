@@ -10,11 +10,6 @@ export class ApiError extends Error {
   }
 }
 
-export function getAppBasePath() {
-  const pathname = window.location.pathname
-  return pathname === '/admin' || pathname.startsWith('/admin/') ? '/admin' : ''
-}
-
 export function buildApiUrl(path: string) {
   let normalized = path.startsWith('/') ? path : `/${path}`
 
@@ -22,7 +17,7 @@ export function buildApiUrl(path: string) {
     normalized = normalized.slice('/api'.length)
   }
 
-  return `${getAppBasePath()}/api${normalized}`
+  return `/api${normalized}`
 }
 
 export async function getJson<T>(path: string, init?: RequestInit): Promise<T> {

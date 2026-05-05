@@ -26,54 +26,28 @@ const health: HealthResponse = {
   runtime: 'cloudflare-workers',
 }
 
-const ADMIN_BASE_PATH = '/admin'
 const setupBypassPaths = new Set(['/api/health', '/api/setup/status'])
 const authBypassPaths = new Set(['/api/health', '/api/setup/status', '/api/auth/status', '/api/auth/login'])
 
-/**
- * 规范化路径，移除 /admin 前缀
- */
-function normalizePathname(pathname: string) {
-  if (pathname === ADMIN_BASE_PATH) return '/'
-  if (pathname.startsWith(`${ADMIN_BASE_PATH}/`)) {
-    return pathname.slice(ADMIN_BASE_PATH.length) || '/'
-  }
-  return pathname
+function isStaticAssetPath(pathname: string) {
+  return (
+    pathname.startsWith('/assets/') ||
+    pathname === '/favicon.ico' ||
+    pathname === '/robots.txt' ||
+    /\.[a-zA-Z0-9]+$/.test(pathname)
+  )
 }
 
-/**
- * 判断是否应该作为 SPA 路由处理（返回 index.html）
- */
 function shouldServeSpa(pathname: string): boolean {
-  // 排除 API 请求
   if (pathname.startsWith('/api/')) return false
-  // 排除带有文件扩展名的请求（如 .js, .css, .ico, .png 等）
-  if (pathname.includes('.') && !pathname.endsWith('/')) return false
-  // 排除明显的静态目录
-  if (pathname.startsWith('/assets/')) return false
-  
+  if (isStaticAssetPath(pathname)) return false
   return true
 }
 
-/**
- * 将请求重写到根目录的 index.html
- */
-function rewriteToIndex(request: Request): Request {
+function rewriteToIndexRequest(request: Request): Request {
   const url = new URL(request.url)
-  url.pathname = '/' // 静态资源包的根目录通常是 index.html
+  url.pathname = '/index.html'
   return new Request(url.toString(), request)
-}
-
-/**
- * 处理 /admin/assets/* 到 /assets/* 的重写
- */
-function rewriteAdminAsset(request: Request): Request | null {
-  const url = new URL(request.url)
-  if (url.pathname.startsWith(`${ADMIN_BASE_PATH}/assets/`)) {
-    url.pathname = url.pathname.slice(ADMIN_BASE_PATH.length)
-    return new Request(url.toString(), request)
-  }
-  return null
 }
 
 async function handleApiRequest(request: Request, env: WorkerEnv, pathname: string): Promise<Response> {
@@ -132,32 +106,17 @@ async function handleApiRequest(request: Request, env: WorkerEnv, pathname: stri
 export default {
   async fetch(request: Request, env: WorkerEnv): Promise<Response> {
     const url = new URL(request.url)
-    
-    // 1. 处理 /admin 基础路径重定向
-    if (url.pathname === ADMIN_BASE_PATH) {
-      return Response.redirect(`${url.origin}${ADMIN_BASE_PATH}/`, 308)
-    }
+    const pathname = url.pathname
 
-    const pathname = normalizePathname(url.pathname)
-
-    // 2. 处理 API 请求
     if (pathname.startsWith('/api/')) {
       return handleApiRequest(request, env, pathname)
     }
 
     if (env.ASSETS) {
-      // 3. 处理 /admin/assets/* 到 /assets/* 的重写
-      const assetRequest = rewriteAdminAsset(request)
-      if (assetRequest) {
-        return env.ASSETS.fetch(assetRequest)
-      }
-
-      // 4. 处理 SPA 路由回退 (fallback to index.html)
       if (shouldServeSpa(pathname)) {
-        return env.ASSETS.fetch(rewriteToIndex(request))
+        return env.ASSETS.fetch(rewriteToIndexRequest(request))
       }
 
-      // 5. 其他静态资源请求
       return env.ASSETS.fetch(request)
     }
 

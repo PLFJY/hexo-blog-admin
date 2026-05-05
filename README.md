@@ -140,11 +140,9 @@ BLOG_ASSET_CACHE
 
 KV/R2 binding 同样是必需项：没有绑定 `BLOG_ADMIN_KV` 或 `BLOG_ASSET_CACHE` 时，后台不会进入主界面。
 
-## 双入口部署
+## 部署入口
 
-同一套 Worker/React 应用同时支持独立后台子域名和博客子路径访问。前端会根据当前 URL 自动判断入口，不需要为不同入口构建两份产物。
-
-### 方案 A：独立 admin 子域名
+本项目只支持独立后台子域名部署，应用运行在根路径 `/`，API 固定为 `/api/*`。
 
 Cloudflare Worker route 示例：
 
@@ -152,40 +150,25 @@ Cloudflare Worker route 示例：
 admin.example.com/*
 ```
 
-访问：
+你的实际部署可以使用：
 
 ```txt
-https://admin.example.com/
+admin.blog.plfjy.top/*
 ```
 
-该模式下 API 路径为：
+访问入口：
+
+```txt
+https://admin.blog.plfjy.top/
+```
+
+API 路径：
 
 ```txt
 /api/*
 ```
 
-### 方案 B：挂到博客子路径
-
-Cloudflare Worker route 示例：
-
-```txt
-blog.example.com/admin
-blog.example.com/admin/*
-```
-
-访问：
-
-```txt
-https://blog.example.com/admin/
-```
-
-该模式下 API 路径为：
-
-```txt
-/admin/api/*
-```
-
-两种 route 可以同时保留并指向同一个 Worker。`/admin` 会自动跳转到 `/admin/`，主博客的其他路径仍然走原本的博客服务。构建配置使用 `base: "./"`，React Router 会动态选择 basename。
+如果以前配置过博客子路径 route，例如 `blog.plfjy.top/admin` 或 `blog.plfjy.top/admin/*`，可以从 Cloudflare Worker routes 中删除。后台不再支持挂载到博客子路径。
 
 ## 博客仓库侧配置 admin-index.json
 

@@ -38,11 +38,6 @@ async function sign(env: WorkerEnv, username: string, expiresAt: number) {
   return digest(`${username}.${expiresAt}.${env.ADMIN_PASSWORD ?? ''}`)
 }
 
-function getCookiePath(request: Request) {
-  const pathname = new URL(request.url).pathname
-  return pathname === '/admin' || pathname.startsWith('/admin/') ? '/admin' : '/'
-}
-
 function userKey(username: string) {
   return `${userPrefix}${username.toLowerCase()}`
 }
@@ -61,12 +56,12 @@ export async function createSessionCookie(env: WorkerEnv, request: Request, user
   const signature = await sign(env, username, expiresAt)
   const secure = new URL(request.url).protocol === 'https:' ? '; Secure' : ''
   const value = `${encodeURIComponent(username)}.${expiresAt}.${signature}`
-  return `${cookieName}=${value}; HttpOnly${secure}; SameSite=Lax; Path=${getCookiePath(request)}; Max-Age=${sessionMaxAgeSeconds}`
+  return `${cookieName}=${value}; HttpOnly${secure}; SameSite=Lax; Path=/; Max-Age=${sessionMaxAgeSeconds}`
 }
 
 export function clearSessionCookie(request: Request) {
   const secure = new URL(request.url).protocol === 'https:' ? '; Secure' : ''
-  return `${cookieName}=; HttpOnly${secure}; SameSite=Lax; Path=${getCookiePath(request)}; Max-Age=0`
+  return `${cookieName}=; HttpOnly${secure}; SameSite=Lax; Path=/; Max-Age=0`
 }
 
 export async function getSessionUser(request: Request, env: WorkerEnv): Promise<AuthUser | null> {
