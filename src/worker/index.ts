@@ -18,13 +18,19 @@ const health: HealthResponse = {
   runtime: 'cloudflare-workers',
 }
 
+const ADMIN_BASE_PATH = '/admin'
 const setupBypassPaths = new Set(['/api/health', '/api/setup/status'])
 const authBypassPaths = new Set(['/api/health', '/api/setup/status', '/api/auth/status', '/api/auth/login'])
 
-async function handleApiRequest(request: Request, env: WorkerEnv): Promise<Response> {
-  const url = new URL(request.url)
-  const pathname = url.pathname
+function normalizePathname(pathname: string) {
+  if (pathname === ADMIN_BASE_PATH) return '/'
+  if (pathname.startsWith(`${ADMIN_BASE_PATH}/`)) {
+    return pathname.slice(ADMIN_BASE_PATH.length) || '/'
+  }
+  return pathname
+}
 
+async function handleApiRequest(request: Request, env: WorkerEnv, pathname: string): Promise<Response> {
   if (pathname === '/api/health') return json(health)
   if (pathname === '/api/setup/status') return handleSetupStatus(env)
   if (pathname === '/api/auth/status') return handleAuthStatus(request, env)
@@ -67,9 +73,13 @@ async function handleApiRequest(request: Request, env: WorkerEnv): Promise<Respo
 export default {
   fetch(request: Request, env: WorkerEnv): Promise<Response> {
     const url = new URL(request.url)
+    if (url.pathname === ADMIN_BASE_PATH) {
+      return Promise.resolve(Response.redirect(`${url.origin}${ADMIN_BASE_PATH}/`, 308))
+    }
+    const pathname = normalizePathname(url.pathname)
 
-    if (url.pathname.startsWith('/api/')) {
-      return handleApiRequest(request, env)
+    if (pathname.startsWith('/api/')) {
+      return handleApiRequest(request, env, pathname)
     }
 
     return env.ASSETS.fetch(request)

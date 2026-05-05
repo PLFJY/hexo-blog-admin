@@ -7,7 +7,7 @@ import { ErrorState } from '../components/ErrorState'
 import { LoadingState } from '../components/LoadingState'
 import { MarkdownAssetPanel } from '../components/MarkdownAssetPanel'
 import { MarkdownPreview } from '../components/MarkdownPreview'
-import { getJson, sendJson } from '../lib/apiClient'
+import { buildApiUrl, getJson, sendJson } from '../lib/apiClient'
 import type { DraftRecord } from '../shared/draftTypes'
 import type { DraftAsset } from '../shared/assetTypes'
 import type { PostContentResponse, PostFile, PostTreeNode, PostTreeResponse } from '../shared/postTypes'
@@ -53,7 +53,7 @@ export function PostsPage() {
 
   const load = () => {
     setState({ status: 'loading' })
-    void getJson<PostTreeResponse>('/api/posts/tree')
+    void getJson<PostTreeResponse>('/posts/tree')
       .then((index) => setState({ status: 'ready', index, assets: [] }))
       .catch((error: unknown) =>
         setState({ status: 'error', message: error instanceof Error ? error.message : 'Unknown error' }),
@@ -62,7 +62,7 @@ export function PostsPage() {
 
   const openPost = (post: PostFile) => {
     if (state.status !== 'ready') return
-    void getJson<PostContentResponse>(`/api/posts/content?relativeId=${encodeURIComponent(post.relativeId)}`)
+    void getJson<PostContentResponse>(`/posts/content?relativeId=${encodeURIComponent(post.relativeId)}`)
       .then((selected) => setState({ ...state, selected, editingMarkdown: selected.markdown, assets: [], message: undefined }))
       .catch((error: unknown) =>
         setState({ ...state, message: error instanceof Error ? error.message : 'Unknown error' }),
@@ -72,7 +72,7 @@ export function PostsPage() {
   const saveDraft = () => {
     if (state.status !== 'ready' || !state.selected) return
     const selected = state.selected
-    void sendJson<DraftRecord>('/api/drafts', 'POST', {
+    void sendJson<DraftRecord>('/drafts', 'POST', {
       relativeId: selected.post.relativeId,
       title: selected.post.title,
       markdown: state.editingMarkdown ?? selected.markdown,
@@ -92,7 +92,7 @@ export function PostsPage() {
 
   const resolveImageSrc = (src: string) => {
     const asset = state.status === 'ready' ? state.assets.find((item) => item.markdownPath === src) : undefined
-    return asset ? `/api/assets/blob?key=${encodeURIComponent(asset.key)}` : src
+    return asset ? buildApiUrl(`/assets/blob?key=${encodeURIComponent(asset.key)}`) : src
   }
 
   useEffect(load, [])

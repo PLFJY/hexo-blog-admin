@@ -140,6 +140,144 @@ BLOG_ASSET_CACHE
 
 KV/R2 bindings are required too: without `BLOG_ADMIN_KV` or `BLOG_ASSET_CACHE`, the admin UI will remain blocked.
 
+## Dual Entrypoint Deployment
+
+The same Worker/React app supports both a dedicated admin subdomain and a blog subpath. The frontend detects the current URL automatically, so you do not need separate builds for each entrypoint.
+
+### Option A: dedicated admin subdomain
+
+Cloudflare Worker route example:
+
+```txt
+admin.example.com/*
+```
+
+Visit:
+
+```txt
+https://admin.example.com/
+```
+
+API paths in this mode:
+
+```txt
+/api/*
+```
+
+### Option B: blog subpath
+
+Cloudflare Worker route examples:
+
+```txt
+blog.example.com/admin
+blog.example.com/admin/*
+```
+
+Visit:
+
+```txt
+https://blog.example.com/admin/
+```
+
+API paths in this mode:
+
+```txt
+/admin/api/*
+```
+
+Both route styles can point to the same Worker at the same time. `/admin` redirects to `/admin/`, and other blog paths should continue to use the existing blog service. The build uses `base: "./"`, and React Router selects the basename dynamically.
+
+## Blog Repository admin-index.json Setup
+
+The admin post list comes from the publicly deployed `admin-index.json` file on the blog site. Your Hexo blog repository needs to generate this file into `public/` and publish it together with the blog output.
+
+Recommended script path:
+
+```txt
+tools/generate-admin-index.mjs
+```
+
+The script should scan:
+
+```txt
+source/_posts/**/*.md
+```
+
+And output:
+
+```txt
+public/admin-index.json
+```
+
+The index should contain at least:
+
+```json
+{
+  "version": 1,
+  "generatedAt": "2026-05-05T00:00:00.000Z",
+  "postsDir": "source/_posts",
+  "assetMode": "post-folder",
+  "posts": [
+    {
+      "relativeId": "ap-csa/00-about-ap-csa",
+      "title": "AP CSA 00 - About AP Computer Science A",
+      "path": "source/_posts/ap-csa/00-about-ap-csa.md",
+      "folderPath": "ap-csa",
+      "postSlug": "00-about-ap-csa",
+      "assetDir": "source/_posts/ap-csa/00-about-ap-csa/",
+      "markdownAssetPrefix": "00-about-ap-csa",
+      "assets": [
+        {
+          "filename": "ap-csa-range.png",
+          "repoPath": "source/_posts/ap-csa/00-about-ap-csa/ap-csa-range.png",
+          "markdownPath": "00-about-ap-csa/ap-csa-range.png"
+        }
+      ]
+    }
+  ],
+  "tree": []
+}
+```
+
+Add this script to the blog repository `package.json`:
+
+```json
+{
+  "scripts": {
+    "generate:admin-index": "node tools/generate-admin-index.mjs"
+  }
+}
+```
+
+Then run it in the blog repository GitHub Actions after the Hexo build and before Pages/static deployment:
+
+```yaml
+- name: Build
+  run: npm run build
+
+- name: Generate admin index
+  run: npm run generate:admin-index
+
+- name: Deploy
+  uses: peaceiris/actions-gh-pages@v4
+  with:
+    github_token: ${{ secrets.GITHUB_TOKEN }}
+    publish_dir: ./public
+```
+
+After deployment, the blog should expose:
+
+```txt
+https://your-blog-domain/admin-index.json
+```
+
+Set `BLOG_PUBLIC_URL` and `ADMIN_INDEX_PATH` to match that URL:
+
+```txt
+BLOG_PUBLIC_URL=https://your-blog-domain
+ADMIN_INDEX_PATH=/admin-index.json
+```
+
 ## Implemented Features
 
 - React 19 + Vite + TypeScript app shell.

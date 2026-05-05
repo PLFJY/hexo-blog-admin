@@ -41,7 +41,7 @@ export function AppHeader({ onOpenMenu }: AppHeaderProps) {
   const { t } = useTranslation()
 
   const logout = () => {
-    void sendJson('/api/auth/logout', 'POST', {}).finally(() => {
+    void sendJson('/auth/logout', 'POST', {}).finally(() => {
       window.location.reload()
     })
   }

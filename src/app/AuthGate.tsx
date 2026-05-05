@@ -14,7 +14,7 @@ export function AuthGate() {
 
   const load = () => {
     setState({ status: 'loading' })
-    void getJson<{ authenticated: boolean }>('/api/auth/status')
+    void getJson<{ authenticated: boolean }>('/auth/status')
       .then((result) => setState({ status: 'ready', authenticated: result.authenticated }))
       .catch((error: unknown) =>
         setState({ status: 'error', message: error instanceof Error ? error.message : 'Unknown error' }),

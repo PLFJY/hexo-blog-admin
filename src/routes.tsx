@@ -9,6 +9,11 @@ import { PostsPage } from './pages/PostsPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { LoginPage } from './pages/LoginPage'
 
+function getRouterBasename() {
+  const pathname = window.location.pathname
+  return pathname === '/admin' || pathname.startsWith('/admin/') ? '/admin' : '/'
+}
+
 export const router = createBrowserRouter([
   {
     path: '/login',
@@ -35,4 +40,6 @@ export const router = createBrowserRouter([
       },
     ],
   },
-])
+], {
+  basename: getRouterBasename(),
+})

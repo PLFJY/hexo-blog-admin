@@ -34,9 +34,9 @@ export function SettingsPage() {
   const load = () => {
     setState({ status: 'loading' })
     void Promise.all([
-      getJson<SetupStatus>('/api/setup/status'),
-      getJson<GitHubRepoStatus>('/api/github/repo').catch(githubFallback),
-      getJson<{ users: AuthUser[] }>('/api/users'),
+      getJson<SetupStatus>('/setup/status'),
+      getJson<GitHubRepoStatus>('/github/repo').catch(githubFallback),
+      getJson<{ users: AuthUser[] }>('/users'),
     ])
       .then(([setup, github, users]) => setState({ status: 'ready', setup, github, users: users.users }))
       .catch((error: unknown) => {
@@ -52,12 +52,12 @@ export function SettingsPage() {
   const github = state.github
   const githubConnected = 'connected' in github && github.connected
   const createUser = (request: CreateUserRequest) => {
-    void sendJson<AuthUser>('/api/users', 'POST', request).then((user) =>
+    void sendJson<AuthUser>('/users', 'POST', request).then((user) =>
       setState({ ...state, users: [...state.users, user] }),
     )
   }
   const deleteUser = (username: string) => {
-    void sendJson<{ deleted: boolean }>(`/api/users/${encodeURIComponent(username)}`, 'DELETE').then(() =>
+    void sendJson<{ deleted: boolean }>(`/users/${encodeURIComponent(username)}`, 'DELETE').then(() =>
       setState({ ...state, users: state.users.filter((user) => user.username !== username) }),
     )
   }

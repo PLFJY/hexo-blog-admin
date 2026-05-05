@@ -48,7 +48,7 @@ export function MarkdownAssetPanel({
 
   const refresh = () => {
     if (!draftId) return
-    void getJson<DraftAssetListResponse>(`/api/assets?draftId=${encodeURIComponent(draftId)}&relativeId=${encodeURIComponent(relativeId)}`)
+    void getJson<DraftAssetListResponse>(`/assets?draftId=${encodeURIComponent(draftId)}&relativeId=${encodeURIComponent(relativeId)}`)
       .then((response) => onAssetsChange(response.manifest.assets))
   }
 
@@ -56,7 +56,7 @@ export function MarkdownAssetPanel({
     const form = new FormData()
     form.set('relativeId', relativeId)
     form.set('file', file)
-    void getJson<DraftAssetUploadResponse>('/api/assets', {
+    void getJson<DraftAssetUploadResponse>('/assets', {
       method: 'POST',
       body: form,
     }).then((response) => {
@@ -67,7 +67,7 @@ export function MarkdownAssetPanel({
   }
 
   const remove = (asset: DraftAsset) => {
-    void sendJson<{ deleted: boolean }>(`/api/assets?key=${encodeURIComponent(asset.key)}`, 'DELETE').then(() => {
+    void sendJson<{ deleted: boolean }>(`/assets?key=${encodeURIComponent(asset.key)}`, 'DELETE').then(() => {
       onAssetsChange(assets.filter((item) => item.key !== asset.key))
       setMessage(t('assets.deleted'))
     })

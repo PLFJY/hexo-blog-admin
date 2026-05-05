@@ -16,7 +16,7 @@ export function SetupGate() {
 
   const load = () => {
     setState({ status: 'loading' })
-    void getJson<SetupStatus>('/api/setup/status')
+    void getJson<SetupStatus>('/setup/status')
       .then((setup) => setState({ status: 'ready', setup }))
       .catch((error: unknown) => {
         const message = error instanceof Error ? error.message : 'Unknown error'

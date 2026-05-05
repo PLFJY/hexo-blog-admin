@@ -140,6 +140,144 @@ BLOG_ASSET_CACHE
 
 KV/R2 binding 同样是必需项：没有绑定 `BLOG_ADMIN_KV` 或 `BLOG_ASSET_CACHE` 时，后台不会进入主界面。
 
+## 双入口部署
+
+同一套 Worker/React 应用同时支持独立后台子域名和博客子路径访问。前端会根据当前 URL 自动判断入口，不需要为不同入口构建两份产物。
+
+### 方案 A：独立 admin 子域名
+
+Cloudflare Worker route 示例：
+
+```txt
+admin.example.com/*
+```
+
+访问：
+
+```txt
+https://admin.example.com/
+```
+
+该模式下 API 路径为：
+
+```txt
+/api/*
+```
+
+### 方案 B：挂到博客子路径
+
+Cloudflare Worker route 示例：
+
+```txt
+blog.example.com/admin
+blog.example.com/admin/*
+```
+
+访问：
+
+```txt
+https://blog.example.com/admin/
+```
+
+该模式下 API 路径为：
+
+```txt
+/admin/api/*
+```
+
+两种 route 可以同时保留并指向同一个 Worker。`/admin` 会自动跳转到 `/admin/`，主博客的其他路径仍然走原本的博客服务。构建配置使用 `base: "./"`，React Router 会动态选择 basename。
+
+## 博客仓库侧配置 admin-index.json
+
+后台的文章列表来自博客站点公开发布的 `admin-index.json`。你的 Hexo 博客仓库需要在构建产物 `public/` 中生成这个文件，并且在部署博客前把它一起发布出去。
+
+推荐做法是在博客仓库新增一个脚本，例如：
+
+```txt
+tools/generate-admin-index.mjs
+```
+
+脚本需要扫描：
+
+```txt
+source/_posts/**/*.md
+```
+
+并输出：
+
+```txt
+public/admin-index.json
+```
+
+索引至少需要包含：
+
+```json
+{
+  "version": 1,
+  "generatedAt": "2026-05-05T00:00:00.000Z",
+  "postsDir": "source/_posts",
+  "assetMode": "post-folder",
+  "posts": [
+    {
+      "relativeId": "ap-csa/00-about-ap-csa",
+      "title": "AP CSA 00 - 关于AP Computer Science A",
+      "path": "source/_posts/ap-csa/00-about-ap-csa.md",
+      "folderPath": "ap-csa",
+      "postSlug": "00-about-ap-csa",
+      "assetDir": "source/_posts/ap-csa/00-about-ap-csa/",
+      "markdownAssetPrefix": "00-about-ap-csa",
+      "assets": [
+        {
+          "filename": "ap-csa-range.png",
+          "repoPath": "source/_posts/ap-csa/00-about-ap-csa/ap-csa-range.png",
+          "markdownPath": "00-about-ap-csa/ap-csa-range.png"
+        }
+      ]
+    }
+  ],
+  "tree": []
+}
+```
+
+在博客仓库 `package.json` 中添加：
+
+```json
+{
+  "scripts": {
+    "generate:admin-index": "node tools/generate-admin-index.mjs"
+  }
+}
+```
+
+然后在博客仓库的 GitHub Actions 中，放到 Hexo 构建之后、Pages/静态站点部署之前：
+
+```yaml
+- name: Build
+  run: npm run build
+
+- name: Generate admin index
+  run: npm run generate:admin-index
+
+- name: Deploy
+  uses: peaceiris/actions-gh-pages@v4
+  with:
+    github_token: ${{ secrets.GITHUB_TOKEN }}
+    publish_dir: ./public
+```
+
+这样部署后的博客应能访问：
+
+```txt
+https://你的博客域名/admin-index.json
+```
+
+后台的 `BLOG_PUBLIC_URL` 和 `ADMIN_INDEX_PATH` 需要对应这个地址，例如：
+
+```txt
+BLOG_PUBLIC_URL=https://你的博客域名
+ADMIN_INDEX_PATH=/admin-index.json
+```
+
 ## 已实现的功能
 
 - React 19 + Vite + TypeScript 应用外壳。

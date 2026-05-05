@@ -50,7 +50,7 @@ export function LoginPage({ onLoggedIn }: LoginPageProps) {
 
   const login = () => {
     setError('')
-    void sendJson<{ authenticated: boolean }>('/api/auth/login', 'POST', { username, password })
+    void sendJson<{ authenticated: boolean }>('/auth/login', 'POST', { username, password })
       .then(() => {
         onLoggedIn?.()
         navigate('/')

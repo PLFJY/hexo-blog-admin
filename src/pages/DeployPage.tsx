@@ -21,7 +21,7 @@ export function DeployPage() {
   const pollTimer = useRef<number | undefined>(undefined)
 
   const load = (message?: string) =>
-    getJson<DeployLatestResponse>('/api/deploy/latest')
+    getJson<DeployLatestResponse>('/deploy/latest')
       .then((data) => setState({ status: 'ready', data, message }))
       .catch((error: unknown) =>
         setState({ status: 'error', message: error instanceof Error ? error.message : 'Unknown error' }),
@@ -30,7 +30,7 @@ export function DeployPage() {
   const startPolling = (attempt = 0) => {
     window.clearTimeout(pollTimer.current)
     pollTimer.current = window.setTimeout(() => {
-      void getJson<DeployLatestResponse>('/api/deploy/latest').then((data) => {
+      void getJson<DeployLatestResponse>('/deploy/latest').then((data) => {
         const shouldContinue =
           attempt < 8 && (data.deploy.status === 'queued' || data.deploy.status === 'in_progress' || data.deploy.status === 'idle')
         setState({ status: 'ready', data, message: shouldContinue ? t('deploy.polling') : undefined })
@@ -41,7 +41,7 @@ export function DeployPage() {
 
   const dispatch = () => {
     if (state.status !== 'ready') return
-    void sendJson<DispatchDeployResponse>('/api/deploy/dispatch', 'POST', {}).then(() =>
+    void sendJson<DispatchDeployResponse>('/deploy/dispatch', 'POST', {}).then(() =>
       {
         setState({ ...state, message: t('deploy.queued') })
         startPolling()

@@ -6,7 +6,7 @@ import { ErrorState } from '../components/ErrorState'
 import { LoadingState } from '../components/LoadingState'
 import { MarkdownAssetPanel } from '../components/MarkdownAssetPanel'
 import { MarkdownPreview } from '../components/MarkdownPreview'
-import { getJson, sendJson } from '../lib/apiClient'
+import { buildApiUrl, getJson, sendJson } from '../lib/apiClient'
 import type { DraftListResponse, DraftRecord, PublishDraftResponse } from '../shared/draftTypes'
 import type { DraftAsset, DraftAssetListResponse } from '../shared/assetTypes'
 import { usePageStyles } from './pageStyles'
@@ -31,12 +31,12 @@ export function DraftsPage() {
 
   const load = () => {
     setState({ status: 'loading' })
-    void getJson<DraftListResponse>('/api/drafts')
+    void getJson<DraftListResponse>('/drafts')
       .then(({ drafts }) => {
         const editing = drafts[0] ?? emptyDraft()
         setState({ status: 'ready', drafts, editing, assets: [] })
         if (editing.id) {
-          void getJson<DraftAssetListResponse>(`/api/assets?draftId=${encodeURIComponent(editing.id)}&relativeId=${encodeURIComponent(editing.relativeId)}`)
+          void getJson<DraftAssetListResponse>(`/assets?draftId=${encodeURIComponent(editing.id)}&relativeId=${encodeURIComponent(editing.relativeId)}`)
             .then((response) => setState({ status: 'ready', drafts, editing, assets: response.manifest.assets }))
         }
       })
@@ -53,14 +53,14 @@ export function DraftsPage() {
   const openDraft = (draft: DraftRecord) => {
     if (state.status !== 'ready') return
     setState({ ...state, editing: draft, assets: [] })
-    void getJson<DraftAssetListResponse>(`/api/assets?draftId=${encodeURIComponent(draft.id)}&relativeId=${encodeURIComponent(draft.relativeId)}`)
+    void getJson<DraftAssetListResponse>(`/assets?draftId=${encodeURIComponent(draft.id)}&relativeId=${encodeURIComponent(draft.relativeId)}`)
       .then((response) => setState({ ...state, editing: draft, assets: response.manifest.assets }))
   }
 
   const save = () => {
     if (state.status !== 'ready') return
     const method = state.editing.id ? 'PUT' : 'POST'
-    const path = state.editing.id ? `/api/drafts/${encodeURIComponent(state.editing.id)}` : '/api/drafts'
+    const path = state.editing.id ? `/drafts/${encodeURIComponent(state.editing.id)}` : '/drafts'
     void sendJson<DraftRecord>(path, method, state.editing).then((draft) => {
       const drafts = [draft, ...state.drafts.filter((item) => item.id !== draft.id)]
       setState({ status: 'ready', drafts, editing: draft, assets: state.assets.map((asset) => ({ ...asset, draftId: draft.id })), message: t('drafts.saved') })
@@ -69,7 +69,7 @@ export function DraftsPage() {
 
   const remove = () => {
     if (state.status !== 'ready' || !state.editing.id) return
-    void sendJson<{ deleted: boolean }>(`/api/drafts/${encodeURIComponent(state.editing.id)}`, 'DELETE').then(() => {
+    void sendJson<{ deleted: boolean }>(`/drafts/${encodeURIComponent(state.editing.id)}`, 'DELETE').then(() => {
       const drafts = state.drafts.filter((item) => item.id !== state.editing.id)
       setState({ status: 'ready', drafts, editing: drafts[0] ?? emptyDraft(), assets: [] })
     })
@@ -77,7 +77,7 @@ export function DraftsPage() {
 
   const publish = () => {
     if (state.status !== 'ready' || !state.editing.id) return
-    void sendJson<PublishDraftResponse>('/api/drafts/publish', 'POST', {
+    void sendJson<PublishDraftResponse>('/drafts/publish', 'POST', {
       draftId: state.editing.id,
     }).then((response) => {
       const drafts = state.drafts.filter((item) => item.id !== state.editing.id)
@@ -99,7 +99,7 @@ export function DraftsPage() {
 
   const resolveImageSrc = (src: string) => {
     const asset = state.status === 'ready' ? state.assets.find((item) => item.markdownPath === src) : undefined
-    return asset ? `/api/assets/blob?key=${encodeURIComponent(asset.key)}` : src
+    return asset ? buildApiUrl(`/assets/blob?key=${encodeURIComponent(asset.key)}`) : src
   }
 
   useEffect(load, [])
