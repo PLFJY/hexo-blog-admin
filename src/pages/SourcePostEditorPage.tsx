@@ -1,4 +1,4 @@
-import { Body1, Button, Field, Input, Popover, PopoverSurface, PopoverTrigger, Text, Title1, Title2, Title3, makeStyles, tokens } from '@fluentui/react-components'
+import { Body1, Button, Field, Input, Popover, PopoverSurface, PopoverTrigger, Text, Title1, Title2, Title3, makeStyles, mergeClasses, tokens } from '@fluentui/react-components'
 import { ArrowLeftRegular, DeleteRegular, SaveRegular } from '@fluentui/react-icons'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -248,7 +248,7 @@ export function SourcePostEditorPage() {
 
   return (
     <section className={styles.page}>
-      <header className={`${styles.header} ${localStyles.headerRow}`}>
+      <header className={mergeClasses(styles.header, localStyles.headerRow)}>
         <Title1>{state.post.post.title}</Title1>
         <Body1>{state.post.post.relativeId}</Body1>
       </header>

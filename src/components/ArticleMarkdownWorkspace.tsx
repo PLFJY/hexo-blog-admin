@@ -1,4 +1,4 @@
-import { makeStyles, tokens } from '@fluentui/react-components'
+import { makeStyles, mergeClasses, tokens } from '@fluentui/react-components'
 import { useEffect, useState } from 'react'
 import { MarkdownEditor } from './MarkdownEditor'
 import { MarkdownPreview } from './MarkdownPreview'
@@ -97,7 +97,7 @@ export function ArticleMarkdownWorkspace({
           onInsertConsumed={onInsertConsumed}
         />
       </div>
-      <div className={`${styles.column} ${styles.previewColumn}`}>
+      <div className={mergeClasses(styles.column, styles.previewColumn)}>
         <MarkdownPreview
           markdown={markdown}
           resolveResourceUrl={resolveResourceUrl}

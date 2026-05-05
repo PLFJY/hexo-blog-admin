@@ -1,4 +1,4 @@
-import { Body1, Button, Field, Input, Popover, PopoverSurface, PopoverTrigger, Text, Title1, makeStyles, tokens } from '@fluentui/react-components'
+import { Body1, Button, Field, Input, Popover, PopoverSurface, PopoverTrigger, Text, Title1, makeStyles, mergeClasses, tokens } from '@fluentui/react-components'
 import { DeleteRegular, RocketRegular, SaveRegular } from '@fluentui/react-icons'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -284,7 +284,7 @@ export function DraftEditorPage() {
           <ChangeIdNote />
         </div>
         {showStatusPanel ? (
-          <section className={`${localStyles.statusPanel} ${panelTone}`}>
+          <section className={mergeClasses(localStyles.statusPanel, panelTone)}>
             <div className={localStyles.statusPanelHeader}>
               <Text weight="semibold">{t('drafts.statusPanelTitle')}</Text>
               {state.deploy ? (

@@ -13,6 +13,7 @@ import {
   Text,
   Title3,
   makeStyles,
+  mergeClasses,
   tokens,
 } from '@fluentui/react-components'
 import { CopyRegular, DeleteRegular, ImageAddRegular, OpenRegular, RenameRegular } from '@fluentui/react-icons'
@@ -293,7 +294,7 @@ export function MarkdownAssetPanel({
         }}
       />
       {message ? (
-        <div className={`${styles.message} ${message.kind === 'success' ? styles.successMessage : message.kind === 'error' ? styles.errorMessage : ''}`}>
+        <div className={mergeClasses(styles.message, message.kind === 'success' ? styles.successMessage : message.kind === 'error' ? styles.errorMessage : undefined)}>
           <Text>{message.text}</Text>
         </div>
       ) : null}

@@ -6,6 +6,7 @@ import {
   Button,
   Title2,
   makeStyles,
+  mergeClasses,
   tokens,
 } from '@fluentui/react-components'
 import {
@@ -86,7 +87,7 @@ export function AppNav({ type, open, onOpenChange, collapsed, onCollapsedChange 
 
   return (
     <NavDrawer
-      className={`${styles.drawer} ${type === 'inline' ? styles.inlineDrawer : styles.overlayDrawer}`}
+      className={mergeClasses(styles.drawer, type === 'inline' ? styles.inlineDrawer : styles.overlayDrawer)}
       type={type}
       open={type === 'inline' ? true : open}
       selectedValue={selectedValue(location.pathname)}
