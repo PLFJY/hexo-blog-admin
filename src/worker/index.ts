@@ -92,19 +92,34 @@ async function handleApiRequest(request: Request, env: WorkerEnv, pathname: stri
 }
 
 export default {
-  fetch(request: Request, env: WorkerEnv): Promise<Response> {
+  async fetch(request: Request, env: WorkerEnv): Promise<Response> {
     const url = new URL(request.url)
+    
+    // 1. 处理 /admin 基础路径重定向
     if (url.pathname === ADMIN_BASE_PATH) {
-      return Promise.resolve(Response.redirect(`${url.origin}${ADMIN_BASE_PATH}/`, 308))
+      return Response.redirect(`${url.origin}${ADMIN_BASE_PATH}/`, 308)
     }
+    
     const pathname = normalizePathname(url.pathname)
 
+    // 2. 处理 API 请求
     if (pathname.startsWith('/api/')) {
       return handleApiRequest(request, env, pathname)
     }
 
+    // 3. 处理静态资源与 SPA 路由回退
     if (env.ASSETS) {
-      return env.ASSETS.fetch(request)
+      const response = await env.ASSETS.fetch(request)
+      
+      // 如果资源不存在 (404) 且不是请求具体的文件（不含 . 符号）
+      // 则回退到 index.html，交给前端路由处理
+      if (response.status === 404 && !pathname.includes('.')) {
+        const indexUrl = new URL(request.url)
+        indexUrl.pathname = ADMIN_BASE_PATH + '/' // 始终请求入口文件
+        return env.ASSETS.fetch(new Request(indexUrl, request))
+      }
+      
+      return response
     }
 
     return new Response('Not Found', { status: 404 })
