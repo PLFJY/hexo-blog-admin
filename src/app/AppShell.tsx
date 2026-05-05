@@ -11,9 +11,10 @@ const useStyles = makeStyles({
   },
   body: {
     display: 'grid',
-    gridTemplateColumns: '280px minmax(0, 1fr)',
+    height: 'calc(100vh - 64px)',
     '@media (max-width: 720px)': {
       display: 'block',
+      height: 'auto',
     },
   },
   desktopNav: {
@@ -23,6 +24,7 @@ const useStyles = makeStyles({
   },
   main: {
     minWidth: 0,
+    overflow: 'auto',
     padding: tokens.spacingHorizontalXXL,
     '@media (max-width: 720px)': {
       padding: tokens.spacingHorizontalM,
@@ -33,14 +35,15 @@ const useStyles = makeStyles({
 export function AppShell() {
   const styles = useStyles()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [navCollapsed, setNavCollapsed] = useState(false)
 
   return (
     <div className={styles.root}>
       <AppHeader onOpenMenu={() => setMobileOpen(true)} />
       <AppNav type="overlay" open={mobileOpen} onOpenChange={setMobileOpen} />
-      <div className={styles.body}>
+      <div className={styles.body} style={{ gridTemplateColumns: navCollapsed ? '72px minmax(0, 1fr)' : '280px minmax(0, 1fr)' }}>
         <aside className={styles.desktopNav}>
-          <AppNav type="inline" />
+          <AppNav type="inline" collapsed={navCollapsed} onCollapsedChange={setNavCollapsed} />
         </aside>
         <main className={styles.main}>
           <Outlet />

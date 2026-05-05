@@ -25,3 +25,45 @@ export type DraftAssetUploadResponse = {
   asset: DraftAsset
   manifest: DraftAssetManifest
 }
+
+export type ImageWarehouseSourceAsset = {
+  kind: 'source'
+  filename: string
+  repoPath: string
+  markdownPath: string
+  size?: number
+  publicUrl?: string
+}
+
+export type ImageWarehouseTempAsset = DraftAsset & {
+  kind: 'temp'
+}
+
+export type ImageWarehouseAsset = ImageWarehouseSourceAsset | ImageWarehouseTempAsset
+
+export type RenameDraftAssetResponse = {
+  asset: DraftAsset
+  manifest: DraftAssetManifest
+}
+
+export type AssetCacheGroup = {
+  draftId: string
+  relativeId: string
+  assets: DraftAsset[]
+  count: number
+  totalSize: number
+  updatedAt: string
+}
+
+export type AssetCacheListResponse = {
+  groups: AssetCacheGroup[]
+}
+
+export type DeleteAssetCacheRequest = {
+  keys?: string[]
+  draftIds?: string[]
+}
+
+export type DeleteAssetCacheResponse = {
+  deleted: number
+}

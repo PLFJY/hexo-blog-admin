@@ -1,4 +1,4 @@
-import { Button, Body1, Field, Input, Text, Title1, Title3 } from '@fluentui/react-components'
+import { Button, Body1, Field, Input, Popover, PopoverSurface, PopoverTrigger, Text, Title1, Title3, makeStyles, tokens } from '@fluentui/react-components'
 import { ArrowClockwiseRegular, DeleteRegular } from '@fluentui/react-icons'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -9,6 +9,16 @@ import { ApiError, getJson, sendJson } from '../lib/apiClient'
 import type { GitHubRepoStatus, SetupIncompleteError, SetupStatus } from '../shared/apiTypes'
 import type { AuthUser, CreateUserRequest } from '../shared/authTypes'
 import { usePageStyles } from './pageStyles'
+
+const useSettingsStyles = makeStyles({
+  dangerPrimaryButton: {
+    color: tokens.colorNeutralForegroundOnBrand,
+    backgroundColor: tokens.colorPaletteRedBackground3,
+    ':hover': { color: tokens.colorNeutralForegroundOnBrand, backgroundColor: tokens.colorPaletteRedForeground1 },
+  },
+  confirmSurface: { display: 'grid', gap: tokens.spacingVerticalM, width: '300px' },
+  confirmActions: { display: 'flex', justifyContent: 'flex-end', gap: tokens.spacingHorizontalS },
+})
 
 type SettingsState =
   | { status: 'loading' }
@@ -137,22 +147,38 @@ function UserManager({ users, onCreate, onDelete }: UserManagerProps) {
       </div>
       <ul>
         {users.map((user) => (
-          <li key={user.username}>
+          <li key={user.username} style={{margin: '10px 0 0 0'}}>
             <div className={styles.row}>
               <Text>{user.username}</Text>
               <Text>{user.builtIn ? t('auth.builtInAdmin') : user.role}</Text>
-              <Button
-                appearance="subtle"
-                icon={<DeleteRegular />}
-                disabled={user.builtIn}
-                onClick={() => onDelete(user.username)}
-              >
-                {t('auth.deleteUser')}
-              </Button>
+              <DeleteUserPopover disabled={user.builtIn} username={user.username} onConfirm={() => onDelete(user.username)} />
             </div>
           </li>
         ))}
       </ul>
     </section>
+  )
+}
+
+function DeleteUserPopover({ username, disabled, onConfirm }: { username: string; disabled?: boolean; onConfirm: () => void }) {
+  const styles = useSettingsStyles()
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  return (
+    <Popover open={open} onOpenChange={(_, data) => setOpen(data.open)}>
+      <PopoverTrigger disableButtonEnhancement>
+        <Button appearance="primary" className={styles.dangerPrimaryButton} icon={<DeleteRegular />} disabled={disabled}>
+          {t('auth.deleteUser')}
+        </Button>
+      </PopoverTrigger>
+      <PopoverSurface className={styles.confirmSurface}>
+        <Text weight="semibold">确认删除账号？</Text>
+        <Text>将删除账号 {username}。此操作不能撤销。</Text>
+        <div className={styles.confirmActions}>
+          <Button onClick={() => setOpen(false)}>取消</Button>
+          <Button appearance="primary" className={styles.dangerPrimaryButton} icon={<DeleteRegular />} onClick={() => { setOpen(false); onConfirm() }}>确认删除</Button>
+        </div>
+      </PopoverSurface>
+    </Popover>
   )
 }

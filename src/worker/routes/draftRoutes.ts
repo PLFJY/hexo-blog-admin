@@ -1,12 +1,19 @@
 import type { DraftListResponse, PublishDraftRequest, PublishDraftResponse, SaveDraftRequest } from '../../shared/draftTypes'
-import { extractFrontMatterTitle } from '../../shared/frontMatter'
+import { ensureFrontMatterDate, extractFrontMatterTitle } from '../../shared/frontMatter'
 import type { WorkerEnv } from '../env'
 import { buildPostPaths } from '../../features/posts/postPathUtils'
-import { getDraftAsset, getDraftAssetManifest, deleteDraftAssetManifest } from '../services/assets/draftAssetCache'
+import { getDraftAsset, getDraftAssetManifest, deleteDraftAssetManifest, moveDraftAssetManifest } from '../services/assets/draftAssetCache'
 import { createBatchCommit } from '../services/github/githubGitCommit'
 import { deleteDraft, getDraft, isValidRelativeId, listDrafts, saveDraft } from '../services/kv/kvDrafts'
 import { requireConfig } from '../utils/config'
 import { json } from '../utils/response'
+
+const replaceMarkdownAssetPrefix = (markdown: string, oldRelativeId: string, newRelativeId: string) => {
+  const oldSlug = buildPostPaths({ postsDir: '', relativeId: oldRelativeId }).postSlug
+  const newSlug = buildPostPaths({ postsDir: '', relativeId: newRelativeId }).postSlug
+  if (!oldSlug || !newSlug || oldSlug === newSlug) return markdown
+  return markdown.split(`${oldSlug}/`).join(`${newSlug}/`)
+}
 
 const arrayBufferToBase64 = (buffer: ArrayBuffer) => {
   const bytes = new Uint8Array(buffer)
@@ -30,7 +37,7 @@ export async function handleCreateDraft(env: WorkerEnv, request: Request): Promi
   if (!isValidRelativeId(body.relativeId)) {
     return json({ error: 'BAD_REQUEST', message: 'relativeId is required' }, { status: 400 })
   }
-  return json(await saveDraft(env, body), { status: 201 })
+  return json(await saveDraft(env, { ...body, markdown: ensureFrontMatterDate(body.markdown) }), { status: 201 })
 }
 
 export async function handleDraftById(env: WorkerEnv, request: Request, id: string): Promise<Response> {
@@ -44,7 +51,21 @@ export async function handleDraftById(env: WorkerEnv, request: Request, id: stri
     if (!isValidRelativeId(body.relativeId)) {
       return json({ error: 'BAD_REQUEST', message: 'relativeId is required' }, { status: 400 })
     }
-    return json(await saveDraft(env, body, id))
+    const existing = await getDraft(env, id)
+    const config = requireConfig(env)
+    const markdown =
+      existing && existing.relativeId !== body.relativeId
+        ? replaceMarkdownAssetPrefix(body.markdown, existing.relativeId, body.relativeId)
+        : body.markdown
+    const draft = await saveDraft(env, { ...body, markdown }, id)
+    if (existing && existing.relativeId !== draft.relativeId) {
+      await moveDraftAssetManifest(env, {
+        draftId: draft.id,
+        relativeId: draft.relativeId,
+        postsDir: config.POSTS_DIR,
+      })
+    }
+    return json(draft)
   }
 
   if (request.method === 'DELETE') {
@@ -68,14 +89,15 @@ export async function handlePublishDraft(env: WorkerEnv, request: Request): Prom
     postsDir: config.POSTS_DIR,
     relativeId: draft.relativeId,
   })
+  const markdown = ensureFrontMatterDate(draft.markdown)
   const commit = await createBatchCommit(env, {
     branch: body.branch || config.GITHUB_BRANCH,
-    message: body.message || `Publish ${extractFrontMatterTitle(draft.markdown) || draft.relativeId}`,
+    message: body.message || `Publish ${extractFrontMatterTitle(markdown) || draft.relativeId}`,
     files: [
       {
         path: paths.postPath,
         encoding: 'utf-8',
-        content: draft.markdown,
+        content: markdown,
       },
       ...(await Promise.all(
         (await getDraftAssetManifest(env, draft.id, draft.relativeId)).assets.map(async (asset) => {

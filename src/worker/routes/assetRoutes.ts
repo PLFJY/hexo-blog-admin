@@ -1,5 +1,14 @@
 import type { WorkerEnv } from '../env'
-import { getDraftAsset, getDraftAssetManifest, putDraftAsset, deleteDraftAsset } from '../services/assets/draftAssetCache'
+import type { DeleteAssetCacheRequest } from '../../shared/assetTypes'
+import {
+  getDraftAsset,
+  getDraftAssetManifest,
+  putDraftAsset,
+  deleteDraftAsset,
+  renameDraftAsset,
+  listDraftAssetManifests,
+  deleteDraftAssets,
+} from '../services/assets/draftAssetCache'
 import { requireConfig } from '../utils/config'
 import { json } from '../utils/response'
 
@@ -8,6 +17,11 @@ type JsonAssetUploadRequest = {
   filename?: string
   contentType?: string
   contentBase64?: string
+}
+
+type RenameAssetRequest = {
+  key?: string
+  filename?: string
 }
 
 const base64ToArrayBuffer = (base64: string) => {
@@ -25,7 +39,19 @@ export async function handleAssets(env: WorkerEnv, request: Request): Promise<Re
   const relativeId = url.searchParams.get('relativeId') ?? draftId ?? ''
 
   if (request.method === 'GET') {
-    if (!draftId) return json({ error: 'BAD_REQUEST', message: 'draftId is required' }, { status: 400 })
+    if (!draftId) {
+      const manifests = await listDraftAssetManifests(env)
+      return json({
+        groups: manifests.map((manifest) => ({
+          draftId: manifest.draftId,
+          relativeId: manifest.relativeId,
+          assets: manifest.assets,
+          count: manifest.assets.length,
+          totalSize: manifest.assets.reduce((sum, asset) => sum + (asset.size || 0), 0),
+          updatedAt: manifest.updatedAt,
+        })),
+      })
+    }
     return json({ manifest: await getDraftAssetManifest(env, draftId, relativeId) })
   }
 
@@ -94,6 +120,34 @@ export async function handleAssets(env: WorkerEnv, request: Request): Promise<Re
     return json(await deleteDraftAsset(env, key))
   }
 
+  return json({ error: 'METHOD_NOT_ALLOWED' }, { status: 405 })
+}
+
+export async function handleAssetRename(env: WorkerEnv, request: Request): Promise<Response> {
+  if (request.method !== 'POST') return json({ error: 'METHOD_NOT_ALLOWED' }, { status: 405 })
+  const body = (await request.json()) as RenameAssetRequest
+  if (!body.key || !body.filename) return json({ error: 'BAD_REQUEST', message: 'key and filename are required' }, { status: 400 })
+  return json(await renameDraftAsset(env, body.key, body.filename, requireConfig(env).POSTS_DIR))
+}
+
+export async function handleAssetCache(env: WorkerEnv, request: Request): Promise<Response> {
+  if (request.method === 'GET') {
+    const manifests = await listDraftAssetManifests(env)
+    return json({
+      groups: manifests.map((manifest) => ({
+        draftId: manifest.draftId,
+        relativeId: manifest.relativeId,
+        assets: manifest.assets,
+        count: manifest.assets.length,
+        totalSize: manifest.assets.reduce((sum, asset) => sum + (asset.size || 0), 0),
+        updatedAt: manifest.updatedAt,
+      })),
+    })
+  }
+  if (request.method === 'DELETE') {
+    const body = (await request.json().catch(() => ({}))) as DeleteAssetCacheRequest
+    return json(await deleteDraftAssets(env, body))
+  }
   return json({ error: 'METHOD_NOT_ALLOWED' }, { status: 405 })
 }
 

@@ -13,9 +13,10 @@ import { extractFrontMatterTitle, stripFrontMatter } from '../shared/frontMatter
 
 const useStyles = makeStyles({
   root: {
-    minHeight: '560px',
-    maxHeight: '72vh',
+    height: '560px',
+    minWidth: 0,
     overflow: 'auto',
+    boxSizing: 'border-box',
     padding: tokens.spacingVerticalXL,
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     borderRadius: tokens.borderRadiusMedium,

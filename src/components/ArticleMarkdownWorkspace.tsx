@@ -11,8 +11,15 @@ const useStyles = makeStyles({
     gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
     gap: tokens.spacingHorizontalL,
     alignItems: 'start',
+    width: '100%',
     '@media (max-width: 960px)': {
       gridTemplateColumns: '1fr',
+    },
+  },
+  previewColumn: {
+    paddingTop: '36px',
+    '@media (max-width: 960px)': {
+      paddingTop: 0,
     },
   },
 })
@@ -23,6 +30,8 @@ type ArticleMarkdownWorkspaceProps = {
   resolveResourceUrl?: (src: string) => string
   assets?: DraftAsset[]
   onAssetObjectUrlsChange?: (urls: Record<string, string>) => void
+  insertRequest?: { id: number; text: string }
+  onInsertConsumed?: (id: number) => void
 }
 
 export function ArticleMarkdownWorkspace({
@@ -31,13 +40,14 @@ export function ArticleMarkdownWorkspace({
   resolveResourceUrl,
   assets = [],
   onAssetObjectUrlsChange,
+  insertRequest,
+  onInsertConsumed,
 }: ArticleMarkdownWorkspaceProps) {
   const styles = useStyles()
   const [previewScrollRatio, setPreviewScrollRatio] = useState(0)
 
   useEffect(() => {
     if (!onAssetObjectUrlsChange || assets.length === 0) {
-      onAssetObjectUrlsChange?.({})
       return undefined
     }
 
@@ -63,12 +73,20 @@ export function ArticleMarkdownWorkspace({
         URL.revokeObjectURL(url)
       }
     }
-  }, [assets, onAssetObjectUrlsChange])
+  }, [assets])
 
   return (
     <div className={styles.root}>
-      <MarkdownEditor value={markdown} onChange={onChange} onScrollRatioChange={setPreviewScrollRatio} />
-      <MarkdownPreview markdown={markdown} resolveResourceUrl={resolveResourceUrl} scrollRatio={previewScrollRatio} />
+      <MarkdownEditor
+        value={markdown}
+        onChange={onChange}
+        onScrollRatioChange={setPreviewScrollRatio}
+        insertRequest={insertRequest}
+        onInsertConsumed={onInsertConsumed}
+      />
+      <div className={styles.previewColumn}>
+        <MarkdownPreview markdown={markdown} resolveResourceUrl={resolveResourceUrl} scrollRatio={previewScrollRatio} />
+      </div>
     </div>
   )
 }

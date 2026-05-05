@@ -4,7 +4,8 @@ export const usePageStyles = makeStyles({
   page: {
     display: 'grid',
     gap: tokens.spacingVerticalXL,
-    maxWidth: '1040px',
+    width: '100%',
+    maxWidth: 'none',
   },
   header: {
     display: 'grid',

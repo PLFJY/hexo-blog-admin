@@ -1,13 +1,21 @@
 import type { HealthResponse } from '../shared/apiTypes'
 import type { WorkerEnv } from './env'
-import { handleAssetBlob, handleAssets } from './routes/assetRoutes'
+import { handleAssetBlob, handleAssetCache, handleAssetRename, handleAssets } from './routes/assetRoutes'
 import { handleAuthStatus, handleCreateUser, handleDeleteUser, handleListUsers, handleLogin, handleLogout } from './routes/authRoutes'
 import { handlePublicConfig, handleSetupStatus } from './routes/configRoutes'
 import { handleDeployStatus, handleDispatchDeploy, handleLatestDeploy } from './routes/deployRoutes'
 import { handleCreateDraft, handleDraftById, handleDrafts, handlePublishDraft } from './routes/draftRoutes'
 import { handleGitHubRepo } from './routes/githubRoutes'
 import { handleAdminIndex, handleSyncOnlineAdminIndex } from './routes/indexRoutes'
-import { handlePostContent, handlePostsTree } from './routes/postRoutes'
+import {
+  handleDeletePostAsset,
+  handleDeletePost,
+  handlePostAssetBlob,
+  handlePostContent,
+  handlePostsTree,
+  handleRenamePost,
+  handleRenamePostAsset,
+} from './routes/postRoutes'
 import { json } from './utils/response'
 import { getSetupStatus } from './utils/setup'
 import { isAuthenticated } from './utils/auth'
@@ -56,6 +64,11 @@ async function handleApiRequest(request: Request, env: WorkerEnv, pathname: stri
   if (pathname === '/api/index') return handleAdminIndex(env)
   if (pathname === '/api/posts/tree') return handlePostsTree(env)
   if (pathname === '/api/posts/content') return handlePostContent(env, request)
+  if (pathname === '/api/posts/asset/blob') return handlePostAssetBlob(env, request)
+  if (pathname === '/api/posts/asset/rename') return handleRenamePostAsset(env, request)
+  if (pathname === '/api/posts/asset/delete') return handleDeletePostAsset(env, request)
+  if (pathname === '/api/posts/rename') return handleRenamePost(env, request)
+  if (pathname === '/api/posts/delete') return handleDeletePost(env, request)
   if (pathname === '/api/drafts' && request.method === 'GET') return handleDrafts(env)
   if (pathname === '/api/drafts' && request.method === 'POST') return handleCreateDraft(env, request)
   if (pathname === '/api/drafts/publish' && request.method === 'POST') return handlePublishDraft(env, request)
@@ -65,6 +78,8 @@ async function handleApiRequest(request: Request, env: WorkerEnv, pathname: stri
   }
   if (pathname === '/api/assets') return handleAssets(env, request)
   if (pathname === '/api/assets/blob') return handleAssetBlob(env, request)
+  if (pathname === '/api/assets/rename') return handleAssetRename(env, request)
+  if (pathname === '/api/assets/cache') return handleAssetCache(env, request)
   if (pathname === '/api/deploy/latest') return handleLatestDeploy(env)
   if (pathname === '/api/deploy/status') return handleDeployStatus(env, request)
   if (pathname === '/api/deploy/dispatch' && request.method === 'POST') return handleDispatchDeploy(env, request)

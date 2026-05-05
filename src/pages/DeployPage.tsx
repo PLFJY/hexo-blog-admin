@@ -1,4 +1,4 @@
-import { Body1, Button, Field, Input, Link, Text, Title1, Title3 } from '@fluentui/react-components'
+import { Body1, Button, Link, Text, Title1, Title3 } from '@fluentui/react-components'
 import { RocketRegular } from '@fluentui/react-icons'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -6,12 +6,12 @@ import { ErrorState } from '../components/ErrorState'
 import { LoadingState } from '../components/LoadingState'
 import { StatusBadge } from '../components/StatusBadge'
 import { getJson, sendJson } from '../lib/apiClient'
-import type { DeployLatestResponse, DeployStatusResponse, DispatchDeployResponse } from '../shared/deployTypes'
+import type { DeployLatestResponse, DispatchDeployResponse } from '../shared/deployTypes'
 import { usePageStyles } from './pageStyles'
 
 type DeployState =
   | { status: 'loading' }
-  | { status: 'ready'; data: DeployLatestResponse; queried?: DeployStatusResponse; commitSha: string; message?: string }
+  | { status: 'ready'; data: DeployLatestResponse; message?: string }
   | { status: 'error'; message: string }
 
 export function DeployPage() {
@@ -22,7 +22,7 @@ export function DeployPage() {
 
   const load = (message?: string) =>
     getJson<DeployLatestResponse>('/deploy/latest')
-      .then((data) => setState({ status: 'ready', data, commitSha: '', message }))
+      .then((data) => setState({ status: 'ready', data, message }))
       .catch((error: unknown) =>
         setState({ status: 'error', message: error instanceof Error ? error.message : 'Unknown error' }),
       )
@@ -36,8 +36,6 @@ export function DeployPage() {
         setState((current) => ({
           status: 'ready',
           data,
-          commitSha: current.status === 'ready' ? current.commitSha : '',
-          queried: current.status === 'ready' ? current.queried : undefined,
           message: shouldContinue ? t('deploy.polling') : undefined,
         }))
         if (shouldContinue) startPolling(attempt + 1)
@@ -55,16 +53,6 @@ export function DeployPage() {
     )
   }
 
-  const queryCommit = () => {
-    if (state.status !== 'ready' || !state.commitSha.trim()) return
-    const commitSha = state.commitSha.trim()
-    void getJson<DeployStatusResponse>(`/deploy/status?commitSha=${encodeURIComponent(commitSha)}`)
-      .then((queried) => setState({ ...state, queried, message: undefined }))
-      .catch((error: unknown) =>
-        setState({ ...state, message: error instanceof Error ? error.message : 'Unknown error' }),
-      )
-  }
-
   useEffect(() => {
     void load()
     return () => window.clearTimeout(pollTimer.current)
@@ -74,7 +62,6 @@ export function DeployPage() {
   if (state.status === 'error') return <ErrorState message={state.message} onRetry={() => void load()} />
 
   const deploy = state.data.deploy
-  const queriedDeploy = state.queried?.deploy
 
   return (
     <section className={styles.page}>
@@ -99,30 +86,6 @@ export function DeployPage() {
         <Button appearance="primary" icon={<RocketRegular />} onClick={dispatch}>
           {t('deploy.dispatch')}
         </Button>
-      </section>
-      <section className={styles.card}>
-        <Title3>{t('deploy.queryByCommit')}</Title3>
-        <Field label={t('deploy.commitShaLabel')}>
-          <Input
-            value={state.commitSha}
-            onChange={(_, data) => setState({ ...state, commitSha: data.value })}
-            placeholder="abcdef123456"
-          />
-        </Field>
-        <Button onClick={queryCommit}>{t('deploy.queryByCommit')}</Button>
-        {queriedDeploy ? (
-          <>
-            <StatusBadge status={queriedDeploy.status === 'success' ? 'success' : queriedDeploy.status === 'failed' ? 'danger' : 'informative'}>
-              {queriedDeploy.status}
-            </StatusBadge>
-            <Text>{t('deploy.commit')}: {queriedDeploy.commitSha}</Text>
-            {queriedDeploy.workflowRunUrl ? (
-              <Link href={queriedDeploy.workflowRunUrl} target="_blank" rel="noreferrer">
-                {t('deploy.run')}
-              </Link>
-            ) : null}
-          </>
-        ) : null}
       </section>
     </section>
   )

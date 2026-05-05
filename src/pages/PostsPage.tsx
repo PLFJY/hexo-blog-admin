@@ -1,117 +1,132 @@
-import { Body1, Button, Field, Text, Title1, Title3 } from '@fluentui/react-components'
-import { DocumentEditRegular, SaveRegular } from '@fluentui/react-icons'
+import { Body1, Button, Popover, PopoverSurface, PopoverTrigger, Spinner, Text, Title1, Title3, makeStyles, tokens } from '@fluentui/react-components'
+import { DeleteRegular, DocumentEditRegular, FolderRegular } from '@fluentui/react-icons'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useNavigate } from 'react-router'
 import { EmptyState } from '../components/EmptyState'
 import { ErrorState } from '../components/ErrorState'
 import { LoadingState } from '../components/LoadingState'
-import { ArticleMarkdownWorkspace } from '../components/ArticleMarkdownWorkspace'
-import { MarkdownAssetPanel } from '../components/MarkdownAssetPanel'
 import { getJson, sendJson } from '../lib/apiClient'
-import { resolveMarkdownResourceUrl } from '../lib/markdownResource'
-import type { PublicConfigResponse } from '../shared/apiTypes'
-import type { DraftRecord } from '../shared/draftTypes'
-import { extractFrontMatterTitle } from '../shared/frontMatter'
-import type { DraftAsset } from '../shared/assetTypes'
-import type { PostContentResponse, PostFile, PostTreeNode, PostTreeResponse } from '../shared/postTypes'
+import type { PostFile, PostTreeNode, PostTreeResponse } from '../shared/postTypes'
 import { usePageStyles } from './pageStyles'
+
+const usePostStyles = makeStyles({
+  treeGrid: { display: 'grid', gap: tokens.spacingVerticalM },
+  folder: {
+    display: 'grid',
+    gap: tokens.spacingVerticalS,
+    padding: tokens.spacingVerticalM,
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    borderRadius: tokens.borderRadiusMedium,
+    backgroundColor: tokens.colorNeutralBackground1,
+  },
+  folderHeader: { display: 'flex', gap: tokens.spacingHorizontalS, alignItems: 'center' },
+  childGrid: { display: 'grid', gap: tokens.spacingVerticalS, paddingLeft: tokens.spacingHorizontalL },
+  postCard: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) auto',
+    gap: tokens.spacingHorizontalM,
+    alignItems: 'center',
+    padding: tokens.spacingVerticalM,
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    borderRadius: tokens.borderRadiusMedium,
+    backgroundColor: tokens.colorNeutralBackground1,
+  },
+  postMeta: { display: 'grid', gap: '2px', minWidth: 0 },
+  postActions: { display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: tokens.spacingHorizontalS },
+  dangerPrimaryButton: {
+    color: tokens.colorNeutralForegroundOnBrand,
+    backgroundColor: tokens.colorPaletteRedBackground3,
+    ':hover': { color: tokens.colorNeutralForegroundOnBrand, backgroundColor: tokens.colorPaletteRedForeground1 },
+  },
+  popoverSurface: { display: 'grid', gap: tokens.spacingVerticalM, width: '320px' },
+  confirmActions: { display: 'flex', justifyContent: 'flex-end', gap: tokens.spacingHorizontalS },
+})
 
 type PostsState =
   | { status: 'loading' }
-  | { status: 'ready'; index: PostTreeResponse; selected?: PostContentResponse; editingMarkdown?: string; assets: DraftAsset[]; publicConfig?: PublicConfigResponse; message?: string }
+  | { status: 'ready'; index: PostTreeResponse; openingRelativeId?: string; deletingRelativeId?: string; message?: string }
   | { status: 'error'; message: string }
 
 type TreeProps = {
   nodes: PostTreeNode[]
   onOpen: (post: PostFile) => void
+  onDelete: (post: PostFile) => void
+  openingRelativeId?: string
+  deletingRelativeId?: string
 }
 
-function PostTree({ nodes, onOpen }: TreeProps) {
+function PostTree({ nodes, onOpen, onDelete, openingRelativeId, deletingRelativeId }: TreeProps) {
+  const localStyles = usePostStyles()
   if (nodes.length === 0) return null
-
   return (
-    <ul>
-      {nodes.map((node) => (
-        <li key={node.id}>
-          {node.type === 'folder' ? (
-            <>
+    <div className={localStyles.treeGrid}>
+      {nodes.map((node) =>
+        node.type === 'folder' ? (
+          <section className={localStyles.folder} key={node.id}>
+            <div className={localStyles.folderHeader}>
+              <FolderRegular />
               <Text weight="semibold">{node.name}</Text>
-              <PostTree nodes={node.children ?? []} onOpen={onOpen} />
-            </>
-          ) : (
-            <Button appearance="subtle" icon={<DocumentEditRegular />} onClick={() => node.post && onOpen(node.post)}>
-              {node.post?.title ?? node.name}
-            </Button>
-          )}
-        </li>
-      ))}
-    </ul>
+              {node.sortPublishedAt ? <Text size={200}>{node.sortPublishedAt}</Text> : null}
+            </div>
+            <div className={localStyles.childGrid}>
+              <PostTree nodes={node.children ?? []} onOpen={onOpen} onDelete={onDelete} openingRelativeId={openingRelativeId} deletingRelativeId={deletingRelativeId} />
+            </div>
+          </section>
+        ) : node.post ? (
+          <PostCard key={node.id} post={node.post} onOpen={onOpen} onDelete={onDelete} opening={openingRelativeId === node.post.relativeId} deleting={deletingRelativeId === node.post.relativeId} />
+        ) : null,
+      )}
+    </div>
+  )
+}
+
+function PostCard({ post, opening, deleting, onOpen, onDelete }: { post: PostFile; opening?: boolean; deleting?: boolean; onOpen: (post: PostFile) => void; onDelete: (post: PostFile) => void }) {
+  const styles = usePostStyles()
+  return (
+    <article className={styles.postCard}>
+      <span className={styles.postMeta}>
+        <Text weight="semibold" truncate>{post.title}</Text>
+        <Text size={200} truncate>{post.relativeId}</Text>
+        <Text size={200}>{post.metadata?.publishedAt ?? post.publishedAt ?? post.date ?? '-'}</Text>
+      </span>
+      <span className={styles.postActions}>
+        <Button appearance="primary" icon={opening ? <Spinner size="tiny" /> : <DocumentEditRegular />} disabled={opening || deleting} onClick={() => onOpen(post)}>编辑</Button>
+        <DeletePostPopover disabled={opening || deleting} busy={deleting} onConfirm={() => onDelete(post)} />
+      </span>
+    </article>
   )
 }
 
 export function PostsPage() {
   const styles = usePageStyles()
+  const localStyles = usePostStyles()
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const [state, setState] = useState<PostsState>({ status: 'loading' })
-  const [assetObjectUrls, setAssetObjectUrls] = useState<Record<string, string>>({})
 
   const load = () => {
     setState({ status: 'loading' })
     void getJson<PostTreeResponse>('/posts/tree')
-      .then((index) => {
-        setState({ status: 'ready', index, assets: [] })
-        void getJson<PublicConfigResponse>('/config/public').then((publicConfig) =>
-          setState((current) => (current.status === 'ready' ? { ...current, publicConfig } : current)),
-        )
-      })
-      .catch((error: unknown) =>
-        setState({ status: 'error', message: error instanceof Error ? error.message : 'Unknown error' }),
-      )
+      .then((index) => setState({ status: 'ready', index }))
+      .catch((error: unknown) => setState({ status: 'error', message: error instanceof Error ? error.message : 'Unknown error' }))
   }
 
   const openPost = (post: PostFile) => {
     if (state.status !== 'ready') return
-    void getJson<PostContentResponse>(`/posts/content?relativeId=${encodeURIComponent(post.relativeId)}`)
-      .then((selected) => setState({ ...state, selected, editingMarkdown: selected.markdown, assets: [], message: undefined }))
-      .catch((error: unknown) =>
-        setState({ ...state, message: error instanceof Error ? error.message : 'Unknown error' }),
-      )
+    setState({ ...state, openingRelativeId: post.relativeId, message: undefined })
+    navigate(`/posts/edit?relativeId=${encodeURIComponent(post.relativeId)}`)
   }
 
-  const saveDraft = () => {
-    if (state.status !== 'ready' || !state.selected) return
-    const selected = state.selected
-    void sendJson<DraftRecord>('/drafts', 'POST', {
-      relativeId: selected.post.relativeId,
-      title: extractFrontMatterTitle(state.editingMarkdown ?? selected.markdown),
-      markdown: state.editingMarkdown ?? selected.markdown,
-    }).then((draft) => setState({ ...state, message: t('drafts.saved'), assets: state.assets.map((asset) => ({ ...asset, draftId: draft.id })) }))
-  }
-
-  const updateMarkdown = (value: string) => {
+  const deletePost = (post: PostFile) => {
     if (state.status !== 'ready') return
-    setState({ ...state, editingMarkdown: value })
-  }
-
-  const insertMarkdown = (markdown: string) => {
-    if (state.status !== 'ready') return
-    const current = state.editingMarkdown ?? state.selected?.markdown ?? ''
-    setState({ ...state, editingMarkdown: `${current}${current.endsWith('\n') ? '' : '\n'}${markdown}\n` })
-  }
-
-  const resolveResourceUrl = (src: string) => {
-    if (state.status !== 'ready' || !state.selected) return src
-    return resolveMarkdownResourceUrl({
-      src,
-      relativeId: state.selected.post.relativeId,
-      publicConfig: state.publicConfig,
-      assets: state.assets,
-      assetObjectUrls,
-    })
+    setState({ ...state, deletingRelativeId: post.relativeId })
+    void sendJson<{ commitSha: string }>('/posts/delete', 'POST', { relativeId: post.relativeId })
+      .then((response) => setState({ ...state, deletingRelativeId: undefined, message: `文章已删除，commit: ${response.commitSha}。请等待 Actions 构建并刷新 admin-index。` }))
+      .catch((error: unknown) => setState({ ...state, deletingRelativeId: undefined, message: error instanceof Error ? error.message : 'Unknown error' }))
   }
 
   useEffect(load, [])
-
   if (state.status === 'loading') return <LoadingState />
   if (state.status === 'error') return <ErrorState message={state.message} onRetry={load} />
 
@@ -127,37 +142,30 @@ export function PostsPage() {
         <section className={styles.card}>
           <Title3>{t('posts.loaded')}: {state.index.posts.length}</Title3>
           {state.index.generatedAt ? <Text>{t('posts.generatedAt')}: {state.index.generatedAt}</Text> : null}
-          <PostTree nodes={state.index.tree} onOpen={openPost} />
+          {state.message ? <section className={localStyles.folder}><Text>{state.message}</Text></section> : null}
+          <PostTree nodes={state.index.tree} onOpen={openPost} onDelete={deletePost} openingRelativeId={state.openingRelativeId} deletingRelativeId={state.deletingRelativeId} />
         </section>
       )}
-      {state.message ? <Text>{state.message}</Text> : null}
-      {state.selected ? (
-        <section className={styles.card}>
-          <div className={styles.row}>
-            <Title3>{state.selected.post.title}</Title3>
-            <Button appearance="primary" icon={<SaveRegular />} onClick={saveDraft}>
-              {t('posts.createDraft')}
-            </Button>
-          </div>
-          <Text>{state.selected.post.relativeId}</Text>
-          <MarkdownAssetPanel
-            relativeId={state.selected.post.relativeId}
-            draftId={state.assets[0]?.draftId}
-            assets={state.assets}
-            onAssetsChange={(assets) => setState({ ...state, assets })}
-            onInsertMarkdown={insertMarkdown}
-          />
-          <Field label={t('posts.editor')}>
-            <ArticleMarkdownWorkspace
-              markdown={state.editingMarkdown ?? state.selected.markdown}
-              onChange={updateMarkdown}
-              resolveResourceUrl={resolveResourceUrl}
-              assets={state.assets}
-              onAssetObjectUrlsChange={setAssetObjectUrls}
-            />
-          </Field>
-        </section>
-      ) : null}
     </section>
+  )
+}
+
+function DeletePostPopover({ disabled, busy, onConfirm }: { disabled?: boolean; busy?: boolean; onConfirm: () => void }) {
+  const styles = usePostStyles()
+  const [open, setOpen] = useState(false)
+  return (
+    <Popover open={open} onOpenChange={(_, data) => setOpen(data.open)}>
+      <PopoverTrigger disableButtonEnhancement>
+        <Button appearance="primary" className={styles.dangerPrimaryButton} icon={busy ? <Spinner size="tiny" /> : <DeleteRegular />} disabled={disabled}>删除</Button>
+      </PopoverTrigger>
+      <PopoverSurface className={styles.popoverSurface}>
+        <Text weight="semibold">确认删除源站文章？</Text>
+        <Text>会删除 Markdown 和已索引资源，并立即提交到 GitHub。此操作不能撤销。</Text>
+        <div className={styles.confirmActions}>
+          <Button onClick={() => setOpen(false)}>取消</Button>
+          <Button appearance="primary" className={styles.dangerPrimaryButton} icon={<DeleteRegular />} onClick={() => { setOpen(false); onConfirm() }}>确认删除</Button>
+        </div>
+      </PopoverSurface>
+    </Popover>
   )
 }

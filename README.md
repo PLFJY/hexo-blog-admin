@@ -313,3 +313,18 @@ ADMIN_INDEX_PATH=/admin-index.json
 - 发布草稿时，将 Markdown 和 R2 中的草稿图片一起提交到博客仓库。
 - 将草稿通过 GitHub batch commit 发布到博客仓库。
 - 查询和触发 GitHub Actions 部署 workflow。
+## admin-index 图片资源建议
+
+建议博客侧在 `admin-index.json` 的每篇文章中提供 `assets` 数组，方便后台图片仓展示源站图片：
+
+```ts
+type PostAsset = {
+  filename: string
+  repoPath: string
+  markdownPath: string
+  size?: number
+  publicUrl?: string
+}
+```
+
+如果没有 `publicUrl`，后台会通过 GitHub contents API 读取 `repoPath` 生成受保护预览。

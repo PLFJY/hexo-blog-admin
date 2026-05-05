@@ -15,3 +15,12 @@ export function safeSetLocalStorage(key: string, value: string) {
     // Some browser privacy modes or extension sandboxes block localStorage.
   }
 }
+
+export function safeRemoveLocalStorage(key: string) {
+  try {
+    if (typeof window === 'undefined') return
+    window.localStorage.removeItem(key)
+  } catch {
+    // Some browser privacy modes or extension sandboxes block localStorage.
+  }
+}
