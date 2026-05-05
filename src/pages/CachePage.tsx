@@ -13,6 +13,7 @@ import {
 } from '@fluentui/react-components'
 import { DeleteRegular, OpenRegular } from '@fluentui/react-icons'
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { ErrorState } from '../components/ErrorState'
 import { LoadingState } from '../components/LoadingState'
 import { buildApiUrl, getJson, sendJson } from '../lib/apiClient'
@@ -62,6 +63,7 @@ type State =
 export function CachePage() {
   const pageStyles = usePageStyles()
   const styles = useStyles()
+  const { t } = useTranslation()
   const [state, setState] = useState<State>({ status: 'loading' })
 
   const load = () => {

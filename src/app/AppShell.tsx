@@ -1,6 +1,6 @@
 import { makeStyles, tokens } from '@fluentui/react-components'
 import { useState } from 'react'
-import { Outlet } from 'react-router'
+import { Outlet, useLocation } from 'react-router'
 import { AppHeader } from './AppHeader'
 import { AppNav } from './AppNav'
 
@@ -12,6 +12,7 @@ const useStyles = makeStyles({
   body: {
     display: 'grid',
     height: 'calc(100vh - 64px)',
+    transition: 'grid-template-columns 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
     '@media (max-width: 720px)': {
       display: 'block',
       height: 'auto',
@@ -30,10 +31,20 @@ const useStyles = makeStyles({
       padding: tokens.spacingHorizontalM,
     },
   },
+  pageContainer: {
+    animationName: {
+      from: { opacity: 0, transform: 'translateY(4px)' },
+      to: { opacity: 1, transform: 'translateY(0)' },
+    },
+    animationDuration: '0.4s',
+    animationTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
+    animationFillMode: 'both',
+  },
 })
 
 export function AppShell() {
   const styles = useStyles()
+  const location = useLocation()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [navCollapsed, setNavCollapsed] = useState(false)
 
@@ -46,7 +57,9 @@ export function AppShell() {
           <AppNav type="inline" collapsed={navCollapsed} onCollapsedChange={setNavCollapsed} />
         </aside>
         <main className={styles.main}>
-          <Outlet />
+          <div key={location.key} className={styles.pageContainer}>
+            <Outlet />
+          </div>
         </main>
       </div>
     </div>

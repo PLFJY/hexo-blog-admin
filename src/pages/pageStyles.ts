@@ -30,6 +30,11 @@ export const usePageStyles = makeStyles({
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     borderRadius: tokens.borderRadiusMedium,
     backgroundColor: tokens.colorNeutralBackground2,
+    transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+    ':hover': {
+      borderColor: tokens.colorNeutralStroke1Hover,
+      boxShadow: tokens.shadow4,
+    },
   },
   codeBlock: {
     margin: 0,

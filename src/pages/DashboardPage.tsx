@@ -1,4 +1,4 @@
-import { Body1, Button, Link, Text, Title1, Title3, makeStyles, tokens } from '@fluentui/react-components'
+import { Body1, Button, Link, Spinner, Text, Title1, Title3, makeStyles, tokens } from '@fluentui/react-components'
 import { ArrowRightRegular, DocumentEditRegular, OpenRegular, RocketRegular, SettingsRegular } from '@fluentui/react-icons'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -7,6 +7,7 @@ import { ErrorState } from '../components/ErrorState'
 import { LoadingState } from '../components/LoadingState'
 import { StatusBadge } from '../components/StatusBadge'
 import { getJson } from '../lib/apiClient'
+import { getCachedAdminIndex, setCachedAdminIndex } from '../lib/indexCache'
 import type { GitHubRepoStatus, SetupStatus } from '../shared/apiTypes'
 import type { DeployLatestResponse } from '../shared/deployTypes'
 import type { DraftListResponse } from '../shared/draftTypes'
@@ -15,6 +16,16 @@ import type { PostTreeResponse } from '../shared/postTypes'
 import { usePageStyles } from './pageStyles'
 
 const useStyles = makeStyles({
+  syncingIndicator: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: tokens.spacingHorizontalS,
+    color: tokens.colorBrandForeground1,
+    padding: `${tokens.spacingVerticalXS} ${tokens.spacingHorizontalM}`,
+    borderRadius: tokens.borderRadiusMedium,
+    backgroundColor: tokens.colorBrandBackground2,
+    fontSize: tokens.fontSizeBase200,
+  },
   metrics: {
     display: 'grid',
     gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
@@ -33,6 +44,12 @@ const useStyles = makeStyles({
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     borderRadius: tokens.borderRadiusMedium,
     backgroundColor: tokens.colorNeutralBackground2,
+    transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+    ':hover': {
+      borderColor: tokens.colorNeutralStroke1Hover,
+      boxShadow: tokens.shadow4,
+      transform: 'translateY(-2px)',
+    },
   },
   metricValue: {
     fontSize: '28px',
@@ -61,6 +78,11 @@ const useStyles = makeStyles({
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     borderRadius: tokens.borderRadiusMedium,
     backgroundColor: tokens.colorNeutralBackground1,
+    transition: 'all 0.1s cubic-bezier(0.4, 0, 0.2, 1)',
+    ':hover': {
+      borderColor: tokens.colorNeutralStroke1Hover,
+      backgroundColor: tokens.colorNeutralBackground1Hover,
+    },
   },
   actions: {
     display: 'grid',
@@ -83,6 +105,7 @@ type DashboardState =
       posts: PostTreeResponse
       drafts: DraftListResponse
       deploy: DeployLatestResponse
+      syncing?: boolean
     }
   | { status: 'error'; message: string }
 
@@ -103,20 +126,40 @@ export function DashboardPage() {
   const [state, setState] = useState<DashboardState>({ status: 'loading' })
 
   const load = () => {
-    setState({ status: 'loading' })
-    void Promise.all([
-      getJson<SetupStatus>('/setup/status'),
-      getJson<GitHubRepoStatus>('/github/repo'),
-      getJson<PostTreeResponse>('/posts/tree'),
-      getJson<DraftListResponse>('/drafts'),
-      getJson<DeployLatestResponse>('/deploy/latest'),
-    ])
-      .then(([setup, github, posts, drafts, deploy]) => {
-        setState({ status: 'ready', setup, github, posts, drafts, deploy })
-      })
-      .catch((error: unknown) =>
-        setState({ status: 'error', message: error instanceof Error ? error.message : 'Unknown error' }),
-      )
+    const cachedPosts = getCachedAdminIndex()
+    if (cachedPosts) {
+      // 如果有缓存，先显示缓存内容，标记为正在同步
+      void Promise.all([
+        getJson<SetupStatus>('/setup/status'),
+        getJson<GitHubRepoStatus>('/github/repo'),
+        getJson<DraftListResponse>('/drafts'),
+        getJson<DeployLatestResponse>('/deploy/latest'),
+      ]).then(([setup, github, drafts, deploy]) => {
+        setState({ status: 'ready', setup, github, posts: cachedPosts, drafts, deploy, syncing: true })
+        // 然后去同步最新的 posts
+        void getJson<PostTreeResponse>('/posts/tree').then((index) => {
+          setCachedAdminIndex(index)
+          setState(current => current.status === 'ready' ? { ...current, posts: index, syncing: false } : current)
+        })
+      }).catch(error => setState({ status: 'error', message: error instanceof Error ? error.message : 'Unknown error' }))
+    } else {
+      // 没缓存，走原逻辑
+      setState({ status: 'loading' })
+      void Promise.all([
+        getJson<SetupStatus>('/setup/status'),
+        getJson<GitHubRepoStatus>('/github/repo'),
+        getJson<PostTreeResponse>('/posts/tree'),
+        getJson<DraftListResponse>('/drafts'),
+        getJson<DeployLatestResponse>('/deploy/latest'),
+      ])
+        .then(([setup, github, posts, drafts, deploy]) => {
+          setCachedAdminIndex(posts)
+          setState({ status: 'ready', setup, github, posts, drafts, deploy })
+        })
+        .catch((error: unknown) =>
+          setState({ status: 'error', message: error instanceof Error ? error.message : 'Unknown error' }),
+        )
+    }
   }
 
   useEffect(load, [])
@@ -132,7 +175,15 @@ export function DashboardPage() {
   return (
     <section className={styles.page}>
       <header className={styles.header}>
-        <Title1>{t('dashboard.title')}</Title1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: tokens.spacingHorizontalM }}>
+          <Title1>{t('dashboard.title')}</Title1>
+          {state.status === 'ready' && state.syncing && (
+            <div className={localStyles.syncingIndicator}>
+              <Spinner size="tiny" />
+              <Text size={200}>正在拉取最新数据...</Text>
+            </div>
+          )}
+        </div>
         <Body1>{t('dashboard.description')}</Body1>
       </header>
       <section className={localStyles.metrics}>

@@ -1,5 +1,5 @@
 import { Body1, Button, Popover, PopoverSurface, PopoverTrigger, Spinner, Text, Title1, Title3, makeStyles, tokens } from '@fluentui/react-components'
-import { DeleteRegular, DocumentEditRegular, FolderRegular } from '@fluentui/react-icons'
+import { ArrowSyncRegular, DeleteRegular, DocumentEditRegular, FolderRegular } from '@fluentui/react-icons'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router'
@@ -7,11 +7,22 @@ import { EmptyState } from '../components/EmptyState'
 import { ErrorState } from '../components/ErrorState'
 import { LoadingState } from '../components/LoadingState'
 import { getJson, sendJson } from '../lib/apiClient'
+import { getCachedAdminIndex, setCachedAdminIndex } from '../lib/indexCache'
 import type { PostFile, PostTreeNode, PostTreeResponse } from '../shared/postTypes'
 import { usePageStyles } from './pageStyles'
 
 const usePostStyles = makeStyles({
   treeGrid: { display: 'grid', gap: tokens.spacingVerticalM },
+  syncingIndicator: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: tokens.spacingHorizontalS,
+    color: tokens.colorBrandForeground1,
+    padding: `${tokens.spacingVerticalXS} ${tokens.spacingHorizontalM}`,
+    borderRadius: tokens.borderRadiusMedium,
+    backgroundColor: tokens.colorBrandBackground2,
+    fontSize: tokens.fontSizeBase200,
+  },
   folder: {
     display: 'grid',
     gap: tokens.spacingVerticalS,
@@ -19,6 +30,10 @@ const usePostStyles = makeStyles({
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     borderRadius: tokens.borderRadiusMedium,
     backgroundColor: tokens.colorNeutralBackground1,
+    transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+    ':hover': {
+      borderColor: tokens.colorNeutralStroke1Hover,
+    },
   },
   folderHeader: { display: 'flex', gap: tokens.spacingHorizontalS, alignItems: 'center' },
   childGrid: { display: 'grid', gap: tokens.spacingVerticalS, paddingLeft: tokens.spacingHorizontalL },
@@ -31,6 +46,11 @@ const usePostStyles = makeStyles({
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     borderRadius: tokens.borderRadiusMedium,
     backgroundColor: tokens.colorNeutralBackground1,
+    transition: 'all 0.15s cubic-bezier(0.4, 0, 0.2, 1)',
+    ':hover': {
+      borderColor: tokens.colorNeutralStroke1Hover,
+      backgroundColor: tokens.colorNeutralBackground1Hover,
+    },
   },
   postMeta: { display: 'grid', gap: '2px', minWidth: 0 },
   postActions: { display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: tokens.spacingHorizontalS },
@@ -50,7 +70,7 @@ const usePostStyles = makeStyles({
 
 type PostsState =
   | { status: 'loading' }
-  | { status: 'ready'; index: PostTreeResponse; openingRelativeId?: string; deletingRelativeId?: string; message?: string }
+  | { status: 'ready'; index: PostTreeResponse; openingRelativeId?: string; deletingRelativeId?: string; message?: string; syncing?: boolean }
   | { status: 'error'; message: string }
 
 type TreeProps = {
@@ -88,6 +108,7 @@ function PostTree({ nodes, onOpen, onDelete, openingRelativeId, deletingRelative
 
 function PostCard({ post, opening, deleting, onOpen, onDelete }: { post: PostFile; opening?: boolean; deleting?: boolean; onOpen: (post: PostFile) => void; onDelete: (post: PostFile) => void }) {
   const styles = usePostStyles()
+  const { t } = useTranslation()
   return (
     <article className={styles.postCard}>
       <span className={styles.postMeta}>
@@ -111,10 +132,29 @@ export function PostsPage() {
   const [state, setState] = useState<PostsState>({ status: 'loading' })
 
   const load = () => {
-    setState({ status: 'loading' })
+    const cached = getCachedAdminIndex()
+    if (cached) {
+      setState({ status: 'ready', index: cached, syncing: true })
+    } else {
+      setState({ status: 'loading' })
+    }
+
     void getJson<PostTreeResponse>('/posts/tree')
-      .then((index) => setState({ status: 'ready', index }))
-      .catch((error: unknown) => setState({ status: 'error', message: error instanceof Error ? error.message : 'Unknown error' }))
+      .then((index) => {
+        setCachedAdminIndex(index)
+        setState((current) => ({
+          status: 'ready',
+          index,
+          openingRelativeId: current.status === 'ready' ? current.openingRelativeId : undefined,
+          deletingRelativeId: current.status === 'ready' ? current.deletingRelativeId : undefined,
+          message: current.status === 'ready' ? current.message : undefined,
+          syncing: false,
+        }))
+      })
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        setState((current) => (current.status === 'ready' ? { ...current, syncing: false, message } : { status: 'error', message }))
+      })
   }
 
   const openPost = (post: PostFile) => {
@@ -138,7 +178,15 @@ export function PostsPage() {
   return (
     <section className={styles.page}>
       <header className={styles.header}>
-        <Title1>{t('posts.title')}</Title1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: tokens.spacingHorizontalM }}>
+          <Title1>{t('posts.title')}</Title1>
+          {state.status === 'ready' && state.syncing && (
+            <div className={localStyles.syncingIndicator}>
+              <Spinner size="tiny" />
+              <Text size={200}>正在拉取最新数据...</Text>
+            </div>
+          )}
+        </div>
         <Body1>{t('posts.description')}</Body1>
       </header>
       {state.index.posts.length === 0 ? (

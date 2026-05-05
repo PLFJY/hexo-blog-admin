@@ -1,4 +1,4 @@
-import { Body1, Button, Link, Text, Title1, Title3 } from '@fluentui/react-components'
+import { Body1, Button, Link, Spinner, Text, Title1, Title3, makeStyles, tokens } from '@fluentui/react-components'
 import { RocketRegular } from '@fluentui/react-icons'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -6,26 +6,53 @@ import { ErrorState } from '../components/ErrorState'
 import { LoadingState } from '../components/LoadingState'
 import { StatusBadge } from '../components/StatusBadge'
 import { getJson, sendJson } from '../lib/apiClient'
+import { getCachedDeployStatus, setCachedDeployStatus } from '../lib/indexCache'
 import type { DeployLatestResponse, DispatchDeployResponse } from '../shared/deployTypes'
 import { usePageStyles } from './pageStyles'
 
+const useStyles = makeStyles({
+  syncingIndicator: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: tokens.spacingHorizontalS,
+    color: tokens.colorBrandForeground1,
+    padding: `${tokens.spacingVerticalXS} ${tokens.spacingHorizontalM}`,
+    borderRadius: tokens.borderRadiusMedium,
+    backgroundColor: tokens.colorBrandBackground2,
+    fontSize: tokens.fontSizeBase200,
+  },
+})
+
 type DeployState =
   | { status: 'loading' }
-  | { status: 'ready'; data: DeployLatestResponse; message?: string }
+  | { status: 'ready'; data: DeployLatestResponse; message?: string; syncing?: boolean }
   | { status: 'error'; message: string }
 
 export function DeployPage() {
   const styles = usePageStyles()
+  const localStyles = useStyles()
   const { t } = useTranslation()
   const [state, setState] = useState<DeployState>({ status: 'loading' })
   const pollTimer = useRef<number | undefined>(undefined)
 
-  const load = (message?: string) =>
-    getJson<DeployLatestResponse>('/deploy/latest')
-      .then((data) => setState({ status: 'ready', data, message }))
-      .catch((error: unknown) =>
-        setState({ status: 'error', message: error instanceof Error ? error.message : 'Unknown error' }),
-      )
+  const load = (message?: string) => {
+    const cached = getCachedDeployStatus()
+    if (cached) {
+      setState({ status: 'ready', data: cached, syncing: true, message })
+    } else {
+      setState({ status: 'loading' })
+    }
+
+    void getJson<DeployLatestResponse>('/deploy/latest')
+      .then((data) => {
+        setCachedDeployStatus(data)
+        setState({ status: 'ready', data, syncing: false, message })
+      })
+      .catch((error: unknown) => {
+        const errMessage = error instanceof Error ? error.message : 'Unknown error'
+        setState((current) => current.status === 'ready' ? { ...current, syncing: false, message: errMessage } : { status: 'error', message: errMessage })
+      })
+  }
 
   const startPolling = (attempt = 0) => {
     window.clearTimeout(pollTimer.current)
@@ -66,7 +93,15 @@ export function DeployPage() {
   return (
     <section className={styles.page}>
       <header className={styles.header}>
-        <Title1>{t('deploy.title')}</Title1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: tokens.spacingHorizontalM }}>
+          <Title1>{t('deploy.title')}</Title1>
+          {state.status === 'ready' && state.syncing && (
+            <div className={localStyles.syncingIndicator}>
+              <Spinner size="tiny" />
+              <Text size={200}>正在同步部署状态...</Text>
+            </div>
+          )}
+        </div>
         <Body1>{t('deploy.description')}</Body1>
       </header>
       <section className={styles.card}>

@@ -24,9 +24,15 @@ const useStyles = makeStyles({
     borderRight: `1px solid ${tokens.colorNeutralStroke2}`,
     height: 'calc(100vh - 64px)',
     minWidth: 0,
+    transition: 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+    overflowX: 'hidden',
   },
   collapseButton: {
     margin: tokens.spacingHorizontalS,
+    transition: 'transform 0.2s ease',
+    ':active': {
+      transform: 'scale(0.95)',
+    },
   },
 })
 

@@ -326,8 +326,8 @@ function ChangeIdNote() {
 }
 
 function DeleteDraftPopover({ disabled, onConfirm }: { disabled?: boolean; onConfirm: () => void }) {
-  const { t } = useTranslation()
   const localStyles = useStyles()
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
 
   return (

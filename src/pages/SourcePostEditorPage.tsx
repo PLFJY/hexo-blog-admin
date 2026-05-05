@@ -285,6 +285,7 @@ function DraftSavedOverlay({
   onContinueDraft: () => void
 }) {
   const styles = useSourceEditorStyles()
+  const { t } = useTranslation()
   return (
     <div className={styles.overlay} role="dialog" aria-modal="true" aria-labelledby="draft-saved-title">
       <section className={styles.decisionPanel}>
@@ -304,6 +305,7 @@ function DraftSavedOverlay({
 
 function DeletePostPopover({ onConfirm }: { onConfirm: () => void }) {
   const styles = useSourceEditorStyles()
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   return (
     <Popover open={open} onOpenChange={(_, data) => setOpen(data.open)}>
@@ -335,6 +337,7 @@ function ChangeIdDialog({
   onDone: (relativeId: string, markdown: string, commitSha: string) => void
   onError: (message: string) => void
 }) {
+  const { t } = useTranslation()
   const [value, setValue] = useState(currentRelativeId)
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)

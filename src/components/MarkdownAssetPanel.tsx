@@ -41,6 +41,11 @@ const useStyles = makeStyles({
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     borderRadius: tokens.borderRadiusMedium,
     backgroundColor: tokens.colorNeutralBackground1,
+    transition: 'all 0.15s cubic-bezier(0.4, 0, 0.2, 1)',
+    ':hover': {
+      borderColor: tokens.colorNeutralStroke1Hover,
+      backgroundColor: tokens.colorNeutralBackground1Hover,
+    },
   },
   preview: {
     width: '72px',
@@ -315,6 +320,7 @@ function SourceAssetRenameDialog({
   onConfirm: (filename: string) => void
 }) {
   const styles = useStyles()
+  const { t } = useTranslation()
   const [filename, setFilename] = useState(asset.filename)
   return (
     <Dialog open onOpenChange={(_, data) => !data.open && onClose()}>
@@ -356,6 +362,7 @@ function RenameAssetPopover({
   onConfirm: (filename: string) => void
 }) {
   const styles = useStyles()
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [filename, setFilename] = useState(initialFilename)
   return (
