@@ -54,7 +54,9 @@ pnpm preview
 
 ## Troubleshooting
 
-If direct navigation to `/posts` or refreshing `/posts/edit` shows Not Found, the SPA fallback is not active. This project uses Worker fallback, wrangler assets `single-page-application`, and Vite dev fallback together so direct route visits keep returning `index.html`.
+In production, if direct navigation to `/posts` or refreshing `/posts/edit` shows Not Found, the SPA fallback is not active. This project uses Worker fallback and wrangler assets `single-page-application` so production direct route visits keep returning `index.html`.
+
+The Cloudflare Vite plugin local dev server may not behave exactly like the production Worker for deep SPA routes. If opening `/posts` directly under `pnpm dev --host` shows Not Found, open `/` first and navigate inside the app; production deployment should still support deep links and refreshes.
 
 Deploy through Wrangler:
 

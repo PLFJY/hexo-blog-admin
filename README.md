@@ -54,7 +54,9 @@ pnpm preview
 
 ## Troubleshooting
 
-如果直接访问 `/posts` 或刷新 `/posts/edit` 出现 Not Found，说明 SPA fallback 没生效。本项目通过 Worker fallback、wrangler assets `single-page-application`、Vite dev fallback 三层保证直达路由可用。
+生产环境如果直接访问 `/posts` 或刷新 `/posts/edit` 出现 Not Found，说明 SPA fallback 没生效。本项目通过 Worker fallback 和 wrangler assets `single-page-application` 保证生产直达路由可用。
+
+Cloudflare Vite plugin 的本地 dev server 对深层 SPA 直达路由可能和生产 Worker 不完全一致。如果 `pnpm dev --host` 下直接打开 `/posts` 出现 Not Found，可以先打开 `/`，再通过应用内导航进入对应页面；生产部署仍应正常支持深层直达和刷新。
 
 通过 Wrangler 部署：
 
