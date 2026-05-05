@@ -27,6 +27,12 @@ const useStyles = makeStyles({
     display: 'flex',
     flexDirection: 'column',
   },
+  previewColumn: {
+    paddingTop: `calc(32px + ${tokens.spacingVerticalXS})`,
+    '@media (max-width: 960px)': {
+      paddingTop: 0,
+    },
+  },
 })
 
 type ArticleMarkdownWorkspaceProps = {
@@ -91,7 +97,7 @@ export function ArticleMarkdownWorkspace({
           onInsertConsumed={onInsertConsumed}
         />
       </div>
-      <div className={styles.column}>
+      <div className={`${styles.column} ${styles.previewColumn}`}>
         <MarkdownPreview
           markdown={markdown}
           resolveResourceUrl={resolveResourceUrl}
