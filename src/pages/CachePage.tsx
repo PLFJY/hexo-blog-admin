@@ -30,6 +30,11 @@ const useStyles = makeStyles({
       color: tokens.colorNeutralForegroundOnBrand,
       backgroundColor: tokens.colorPaletteRedForeground1,
     },
+    ':disabled': {
+      backgroundColor: tokens.colorNeutralBackgroundDisabled,
+      color: tokens.colorNeutralForegroundDisabled,
+      borderColor: tokens.colorNeutralStrokeDisabled,
+    },
   },
   confirmSurface: {
     display: 'grid',
@@ -83,7 +88,7 @@ export function CachePage() {
     setState({ ...state, deleting: true })
     void sendJson<{ deleted: number }>('/assets/cache', 'DELETE', { keys: state.selectedKeys })
       .then((response) => {
-        setState({ ...state, deleting: false, message: `已删除 ${response.deleted} 个缓存对象`, selectedKeys: [] })
+        setState({ ...state, deleting: false, message: t('cache.deleteSuccess', { count: response.deleted }), selectedKeys: [] })
         load()
       })
       .catch((error: unknown) => setState({ ...state, deleting: false, message: error instanceof Error ? error.message : 'Unknown error' }))
@@ -96,12 +101,12 @@ export function CachePage() {
   return (
     <section className={pageStyles.page}>
       <header className={pageStyles.header}>
-        <Title1>暂存图片管理</Title1>
-        <Body1>按 relativeId / draftId 分组查看 R2 暂存图片，并同步清理 KV manifest。</Body1>
+        <Title1>{t('cache.title')}</Title1>
+        <Body1>{t('cache.description')}</Body1>
       </header>
       <section className={pageStyles.card}>
         <div className={pageStyles.row}>
-          <Button onClick={load}>刷新列表</Button>
+          <Button onClick={load}>{t('cache.refresh')}</Button>
           <DeleteCachePopover
             count={state.selectedKeys.length}
             deleting={state.deleting}
@@ -115,7 +120,7 @@ export function CachePage() {
           <section className={pageStyles.card} key={group.draftId}>
             <Title3>{group.relativeId}</Title3>
             <Text>draftId: {group.draftId}</Text>
-            <Text>{group.count} 张，合计 {formatSize(group.totalSize)}</Text>
+            <Text>{t('cache.groupInfo', { count: group.count, size: formatSize(group.totalSize) })}</Text>
             <ul className={styles.assetList}>
               {group.assets.map((asset) => (
                 <li className={styles.assetItem} key={asset.key}>
@@ -123,7 +128,7 @@ export function CachePage() {
                   <Text truncate>{asset.markdownPath}</Text>
                   <Text>{formatSize(asset.size)}</Text>
                   <Button appearance="subtle" icon={<OpenRegular />} onClick={() => openPreview(asset.key)}>
-                    预览
+                    {t('assets.preview')}
                   </Button>
                 </li>
               ))}
@@ -137,11 +142,12 @@ export function CachePage() {
 
 function DeleteCachePopover({ count, deleting, onConfirm }: { count: number; deleting?: boolean; onConfirm: () => void }) {
   const styles = useStyles()
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   if (count === 0 || deleting) {
     return (
       <Button appearance="primary" icon={<DeleteRegular />} disabled>
-        {deleting ? '删除中...' : '删除所选 (0)'}
+        {deleting ? t('actions.deleting') : t('cache.deleteSelected', { count: 0 })}
       </Button>
     )
   }
@@ -150,14 +156,14 @@ function DeleteCachePopover({ count, deleting, onConfirm }: { count: number; del
     <Popover open={open} onOpenChange={(_, data) => setOpen(data.open)}>
       <PopoverTrigger disableButtonEnhancement>
         <Button appearance="primary" className={styles.dangerPrimaryButton} icon={<DeleteRegular />}>
-          删除所选 ({count})
+          {t('cache.deleteSelected', { count })}
         </Button>
       </PopoverTrigger>
       <PopoverSurface className={styles.confirmSurface}>
-        <Text weight="semibold">确认清理暂存图片</Text>
-        <Text>将删除 {count} 个 R2 暂存图片，并同步清理 KV manifest。此操作不能撤销。</Text>
+        <Text weight="semibold">{t('cache.confirmDeleteTitle')}</Text>
+        <Text>{t('cache.confirmDeleteDescription', { count })}</Text>
         <div className={styles.confirmActions}>
-          <Button onClick={() => setOpen(false)}>取消</Button>
+          <Button onClick={() => setOpen(false)}>{t('actions.cancel')}</Button>
           <Button
             appearance="primary"
             className={styles.dangerPrimaryButton}
@@ -167,7 +173,7 @@ function DeleteCachePopover({ count, deleting, onConfirm }: { count: number; del
               onConfirm()
             }}
           >
-            确认删除
+            {t('actions.delete')}
           </Button>
         </div>
       </PopoverSurface>

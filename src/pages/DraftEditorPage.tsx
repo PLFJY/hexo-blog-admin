@@ -1,4 +1,4 @@
-import { Body1, Button, Field, Input, Text, Title1, makeStyles, tokens } from '@fluentui/react-components'
+import { Body1, Button, Field, Input, Popover, PopoverSurface, PopoverTrigger, Text, Title1, makeStyles, tokens } from '@fluentui/react-components'
 import { DeleteRegular, RocketRegular, SaveRegular } from '@fluentui/react-icons'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -57,6 +57,21 @@ const useStyles = makeStyles({
       color: tokens.colorNeutralForegroundOnBrand,
       backgroundColor: tokens.colorPaletteRedForeground1,
     },
+    ':disabled': {
+      backgroundColor: tokens.colorNeutralBackgroundDisabled,
+      color: tokens.colorNeutralForegroundDisabled,
+      borderColor: tokens.colorNeutralStrokeDisabled,
+    },
+  },
+  confirmSurface: {
+    display: 'grid',
+    gap: tokens.spacingVerticalM,
+    maxWidth: '280px',
+  },
+  confirmActions: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    gap: tokens.spacingHorizontalS,
   },
 })
 
@@ -131,7 +146,7 @@ export function DraftEditorPage() {
           publicConfig,
           postRelativeIds: postIndex.posts.map((post) => post.relativeId),
           assetObjectUrls: {},
-          message: snapshot && snapshot.updatedAt > draft.updatedAt ? '已恢复较新的本地编辑快照' : undefined,
+          message: snapshot && snapshot.updatedAt > draft.updatedAt ? t('drafts.snapshotRestored') : undefined,
         })
       })
       .catch((error: unknown) => setState({ status: 'error', message: error instanceof Error ? error.message : 'Unknown error' }))
@@ -245,20 +260,18 @@ export function DraftEditorPage() {
       <section className={styles.card}>
         <div className={styles.row}>
           <Button appearance="primary" icon={<SaveRegular />} onClick={save} disabled={!canSaveDraft || state.saving}>
-            {state.saving ? '保存中...' : t('drafts.saveDraft')}
+            {state.saving ? t('actions.saving') : t('drafts.saveDraft')}
           </Button>
           <Button icon={<RocketRegular />} onClick={publish} disabled={!state.draft.id || !canSaveDraft || state.publishing}>
-            {state.publishing ? '发布中...' : t('drafts.publishDraft')}
+            {state.publishing ? t('actions.publishing') : t('drafts.publishDraft')}
           </Button>
-          <Button appearance="primary" className={localStyles.dangerPrimaryButton} icon={<DeleteRegular />} onClick={remove} disabled={!state.draft.id}>
-            {t('drafts.deleteDraft')}
-          </Button>
+          <DeleteDraftPopover disabled={!state.draft.id} onConfirm={remove} />
           <ChangeIdNote />
         </div>
         {showStatusPanel ? (
           <section className={`${localStyles.statusPanel} ${panelTone}`}>
             <div className={localStyles.statusPanelHeader}>
-              <Text weight="semibold">发布与部署状态</Text>
+              <Text weight="semibold">{t('drafts.statusPanelTitle')}</Text>
               {state.deploy ? (
                 <StatusBadge status={state.deploy.status === 'success' ? 'success' : state.deploy.status === 'failed' ? 'danger' : 'informative'}>
                   {state.deploy.status}
@@ -308,5 +321,40 @@ export function DraftEditorPage() {
 }
 
 function ChangeIdNote() {
-  return <Text>草稿文章 ID 可直接修改；保存时会同步更新 Markdown 图片路径，并迁移该草稿的 R2 暂存图片目录。</Text>
+  const { t } = useTranslation()
+  return <Text>{t('drafts.changeIdNote')}</Text>
+}
+
+function DeleteDraftPopover({ disabled, onConfirm }: { disabled?: boolean; onConfirm: () => void }) {
+  const { t } = useTranslation()
+  const localStyles = useStyles()
+  const [open, setOpen] = useState(false)
+
+  return (
+    <Popover open={open} onOpenChange={(_, data) => setOpen(data.open)}>
+      <PopoverTrigger disableButtonEnhancement>
+        <Button appearance="primary" className={localStyles.dangerPrimaryButton} icon={<DeleteRegular />} disabled={disabled}>
+          {t('drafts.deleteDraft')}
+        </Button>
+      </PopoverTrigger>
+      <PopoverSurface className={localStyles.confirmSurface}>
+        <Text weight="semibold">{t('drafts.confirmDeleteTitle')}</Text>
+        <Text>{t('drafts.confirmDeleteDescription')}</Text>
+        <div className={localStyles.confirmActions}>
+          <Button appearance="secondary" onClick={() => setOpen(false)}>{t('actions.close')}</Button>
+          <Button
+            appearance="primary"
+            className={localStyles.dangerPrimaryButton}
+            icon={<DeleteRegular />}
+            onClick={() => {
+              setOpen(false)
+              onConfirm()
+            }}
+          >
+            {t('drafts.deleteDraft')}
+          </Button>
+        </div>
+      </PopoverSurface>
+    </Popover>
+  )
 }

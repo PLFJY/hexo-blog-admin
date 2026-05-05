@@ -12,6 +12,7 @@ import {
   TextUnderlineRegular,
 } from '@fluentui/react-icons'
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useAppTheme } from '../app/ThemeProvider'
 
 const useStyles = makeStyles({
@@ -67,6 +68,7 @@ export function MarkdownEditor({
   onInsertConsumed,
 }: MarkdownEditorProps) {
   const styles = useStyles()
+  const { t } = useTranslation()
   const { resolvedMode } = useAppTheme()
   const [editorView, setEditorView] = useState<EditorView | null>(null)
 
@@ -140,13 +142,13 @@ export function MarkdownEditor({
   return (
     <div className={styles.shell}>
       <div className={styles.toolbar}>
-        <ToolbarButton label="撤销" icon={<ArrowUndoRegular />} onClick={() => runNativeHistory('undo')} />
-        <ToolbarButton label="重做" icon={<ArrowRedoRegular />} onClick={() => runNativeHistory('redo')} />
-        <ToolbarButton label="加粗" icon={<TextBoldRegular />} onClick={() => replaceSelection('bold')} />
-        <ToolbarButton label="斜体" icon={<TextItalicRegular />} onClick={() => replaceSelection('italic')} />
-        <ToolbarButton label="链接" icon={<LinkRegular />} onClick={() => replaceSelection('link')} />
-        <ToolbarButton label="下划线" icon={<TextUnderlineRegular />} onClick={() => replaceSelection('underline')} />
-        <ToolbarButton label="高亮" icon={<HighlightRegular />} onClick={() => replaceSelection('highlight')} />
+        <ToolbarButton label={t('editor.undo')} icon={<ArrowUndoRegular />} onClick={() => runNativeHistory('undo')} />
+        <ToolbarButton label={t('editor.redo')} icon={<ArrowRedoRegular />} onClick={() => runNativeHistory('redo')} />
+        <ToolbarButton label={t('editor.bold')} icon={<TextBoldRegular />} onClick={() => replaceSelection('bold')} />
+        <ToolbarButton label={t('editor.italic')} icon={<TextItalicRegular />} onClick={() => replaceSelection('italic')} />
+        <ToolbarButton label={t('editor.link')} icon={<LinkRegular />} onClick={() => replaceSelection('link')} />
+        <ToolbarButton label={t('editor.underline')} icon={<TextUnderlineRegular />} onClick={() => replaceSelection('underline')} />
+        <ToolbarButton label={t('editor.highlight')} icon={<HighlightRegular />} onClick={() => replaceSelection('highlight')} />
       </div>
       <CodeMirror
         className={styles.root}

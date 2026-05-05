@@ -38,6 +38,11 @@ const usePostStyles = makeStyles({
     color: tokens.colorNeutralForegroundOnBrand,
     backgroundColor: tokens.colorPaletteRedBackground3,
     ':hover': { color: tokens.colorNeutralForegroundOnBrand, backgroundColor: tokens.colorPaletteRedForeground1 },
+    ':disabled': {
+      backgroundColor: tokens.colorNeutralBackgroundDisabled,
+      color: tokens.colorNeutralForegroundDisabled,
+      borderColor: tokens.colorNeutralStrokeDisabled,
+    },
   },
   popoverSurface: { display: 'grid', gap: tokens.spacingVerticalM, width: '320px' },
   confirmActions: { display: 'flex', justifyContent: 'flex-end', gap: tokens.spacingHorizontalS },
@@ -91,7 +96,7 @@ function PostCard({ post, opening, deleting, onOpen, onDelete }: { post: PostFil
         <Text size={200}>{post.metadata?.publishedAt ?? post.publishedAt ?? post.date ?? '-'}</Text>
       </span>
       <span className={styles.postActions}>
-        <Button appearance="primary" icon={opening ? <Spinner size="tiny" /> : <DocumentEditRegular />} disabled={opening || deleting} onClick={() => onOpen(post)}>编辑</Button>
+        <Button appearance="primary" icon={opening ? <Spinner size="tiny" /> : <DocumentEditRegular />} disabled={opening || deleting} onClick={() => onOpen(post)}>{t('actions.edit')}</Button>
         <DeletePostPopover disabled={opening || deleting} busy={deleting} onConfirm={() => onDelete(post)} />
       </span>
     </article>
@@ -122,7 +127,7 @@ export function PostsPage() {
     if (state.status !== 'ready') return
     setState({ ...state, deletingRelativeId: post.relativeId })
     void sendJson<{ commitSha: string }>('/posts/delete', 'POST', { relativeId: post.relativeId })
-      .then((response) => setState({ ...state, deletingRelativeId: undefined, message: `文章已删除，commit: ${response.commitSha}。请等待 Actions 构建并刷新 admin-index。` }))
+      .then((response) => setState({ ...state, deletingRelativeId: undefined, message: t('posts.deleteSuccess', { commitSha: response.commitSha }) }))
       .catch((error: unknown) => setState({ ...state, deletingRelativeId: undefined, message: error instanceof Error ? error.message : 'Unknown error' }))
   }
 
@@ -152,18 +157,19 @@ export function PostsPage() {
 
 function DeletePostPopover({ disabled, busy, onConfirm }: { disabled?: boolean; busy?: boolean; onConfirm: () => void }) {
   const styles = usePostStyles()
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   return (
     <Popover open={open} onOpenChange={(_, data) => setOpen(data.open)}>
       <PopoverTrigger disableButtonEnhancement>
-        <Button appearance="primary" className={styles.dangerPrimaryButton} icon={busy ? <Spinner size="tiny" /> : <DeleteRegular />} disabled={disabled}>删除</Button>
+        <Button appearance="primary" className={styles.dangerPrimaryButton} icon={busy ? <Spinner size="tiny" /> : <DeleteRegular />} disabled={disabled}>{t('actions.delete')}</Button>
       </PopoverTrigger>
       <PopoverSurface className={styles.popoverSurface}>
-        <Text weight="semibold">确认删除源站文章？</Text>
-        <Text>会删除 Markdown 和已索引资源，并立即提交到 GitHub。此操作不能撤销。</Text>
+        <Text weight="semibold">{t('posts.confirmDeleteTitle')}</Text>
+        <Text>{t('posts.confirmDeleteDescription')}</Text>
         <div className={styles.confirmActions}>
-          <Button onClick={() => setOpen(false)}>取消</Button>
-          <Button appearance="primary" className={styles.dangerPrimaryButton} icon={<DeleteRegular />} onClick={() => { setOpen(false); onConfirm() }}>确认删除</Button>
+          <Button onClick={() => setOpen(false)}>{t('actions.cancel')}</Button>
+          <Button appearance="primary" className={styles.dangerPrimaryButton} icon={<DeleteRegular />} onClick={() => { setOpen(false); onConfirm() }}>{t('actions.delete')}</Button>
         </div>
       </PopoverSurface>
     </Popover>

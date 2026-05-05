@@ -15,6 +15,11 @@ const useSettingsStyles = makeStyles({
     color: tokens.colorNeutralForegroundOnBrand,
     backgroundColor: tokens.colorPaletteRedBackground3,
     ':hover': { color: tokens.colorNeutralForegroundOnBrand, backgroundColor: tokens.colorPaletteRedForeground1 },
+    ':disabled': {
+      backgroundColor: tokens.colorNeutralBackgroundDisabled,
+      color: tokens.colorNeutralForegroundDisabled,
+      borderColor: tokens.colorNeutralStrokeDisabled,
+    },
   },
   confirmSurface: { display: 'grid', gap: tokens.spacingVerticalM, width: '300px' },
   confirmActions: { display: 'flex', justifyContent: 'flex-end', gap: tokens.spacingHorizontalS },
@@ -172,11 +177,11 @@ function DeleteUserPopover({ username, disabled, onConfirm }: { username: string
         </Button>
       </PopoverTrigger>
       <PopoverSurface className={styles.confirmSurface}>
-        <Text weight="semibold">确认删除账号？</Text>
-        <Text>将删除账号 {username}。此操作不能撤销。</Text>
+        <Text weight="semibold">{t('auth.confirmDeleteUserTitle')}</Text>
+        <Text>{t('auth.confirmDeleteUserDescription', { username })}</Text>
         <div className={styles.confirmActions}>
-          <Button onClick={() => setOpen(false)}>取消</Button>
-          <Button appearance="primary" className={styles.dangerPrimaryButton} icon={<DeleteRegular />} onClick={() => { setOpen(false); onConfirm() }}>确认删除</Button>
+          <Button onClick={() => setOpen(false)}>{t('actions.cancel')}</Button>
+          <Button appearance="primary" className={styles.dangerPrimaryButton} icon={<DeleteRegular />} onClick={() => { setOpen(false); onConfirm() }}>{t('actions.delete')}</Button>
         </div>
       </PopoverSurface>
     </Popover>

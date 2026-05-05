@@ -78,7 +78,7 @@ export function AppNav({ type, open, onOpenChange, collapsed, onCollapsedChange 
             appearance="subtle"
             icon={collapsed ? <PanelLeftExpandRegular /> : <PanelLeftContractRegular />}
             onClick={() => onCollapsedChange?.(!collapsed)}
-            aria-label={collapsed ? '展开导航' : '收起导航'}
+            aria-label={collapsed ? t('nav.expand') : t('nav.collapse')}
           />
         ) : null}
         {navItems.map((item) => (

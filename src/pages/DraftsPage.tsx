@@ -61,6 +61,11 @@ const useDraftStyles = makeStyles({
       color: tokens.colorNeutralForegroundOnBrand,
       backgroundColor: tokens.colorPaletteRedForeground1,
     },
+    ':disabled': {
+      backgroundColor: tokens.colorNeutralBackgroundDisabled,
+      color: tokens.colorNeutralForegroundDisabled,
+      borderColor: tokens.colorNeutralStrokeDisabled,
+    },
   },
   confirmSurface: {
     display: 'grid',

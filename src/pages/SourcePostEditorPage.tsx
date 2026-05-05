@@ -32,6 +32,11 @@ const useSourceEditorStyles = makeStyles({
     color: tokens.colorNeutralForegroundOnBrand,
     backgroundColor: tokens.colorPaletteRedBackground3,
     ':hover': { color: tokens.colorNeutralForegroundOnBrand, backgroundColor: tokens.colorPaletteRedForeground1 },
+    ':disabled': {
+      backgroundColor: tokens.colorNeutralBackgroundDisabled,
+      color: tokens.colorNeutralForegroundDisabled,
+      borderColor: tokens.colorNeutralStrokeDisabled,
+    },
   },
   overlay: {
     position: 'fixed',
@@ -137,8 +142,7 @@ export function SourcePostEditorPage() {
   const insertMarkdown = (text: string) => setState({ ...state, insertRequest: { id: Date.now(), text } })
   const replaceMarkdownPath = (oldPath: string, newPath: string) => setMarkdown(state.markdown.split(oldPath).join(newPath))
   const renameSourceAsset = (asset: PostAsset, filename: string) => {
-    if (!window.confirm('确认改名源站图片？这会立即提交到 GitHub，并需要等待 Actions 构建后刷新索引。')) return
-    setState({ ...state, committing: true, message: '正在提交源站图片改名...' })
+    setState({ ...state, committing: true, message: t('assets.submittingRename') })
     void sendJson<{ commitSha: string; markdown: string }>('/posts/asset/rename', 'POST', {
       relativeId: state.post.post.relativeId,
       repoPath: asset.repoPath,
@@ -150,14 +154,13 @@ export function SourcePostEditorPage() {
           ...state,
           markdown: response.markdown,
           committing: false,
-          message: `源站图片已改名，commit: ${response.commitSha}。请等待 Actions 构建并刷新 admin-index。`,
+          message: t('assets.renameCommitSuccess', { commitSha: response.commitSha }),
         }),
       )
       .catch((error: unknown) => setState({ ...state, committing: false, message: error instanceof Error ? error.message : 'Unknown error' }))
   }
   const deleteSourceAsset = (asset: PostAsset) => {
-    if (!window.confirm('确认删除源站图片？这会立即提交到 GitHub，并需要等待 Actions 构建后刷新索引。')) return
-    setState({ ...state, committing: true, message: '正在提交源站图片删除...' })
+    setState({ ...state, committing: true, message: t('assets.submittingDelete') })
     void sendJson<{ commitSha: string; markdown: string }>('/posts/asset/delete', 'POST', {
       relativeId: state.post.post.relativeId,
       repoPath: asset.repoPath,
@@ -169,7 +172,7 @@ export function SourcePostEditorPage() {
           ...state,
           markdown: response.markdown,
           committing: false,
-          message: `源站图片已删除，commit: ${response.commitSha}。请等待 Actions 构建并刷新 admin-index。`,
+          message: t('assets.deleteCommitSuccess', { commitSha: response.commitSha }),
         }),
       )
       .catch((error: unknown) => setState({ ...state, committing: false, message: error instanceof Error ? error.message : 'Unknown error' }))
@@ -189,7 +192,7 @@ export function SourcePostEditorPage() {
     void sendJson<{ commitSha: string }>('/posts/delete', 'POST', { relativeId: state.post.post.relativeId })
       .then((response) => {
         deleteEditorSnapshot(`source:${relativeId}`)
-        setState({ ...state, message: `文章已删除，commit: ${response.commitSha}。请等待 Actions 构建并刷新 admin-index。` })
+        setState({ ...state, message: t('posts.deleteSuccess', { commitSha: response.commitSha }) })
         navigate('/posts')
       })
       .catch((error: unknown) => setState({ ...state, message: error instanceof Error ? error.message : 'Unknown error' }))
@@ -203,14 +206,14 @@ export function SourcePostEditorPage() {
       </header>
       {state.localSnapshot ? (
         <section className={styles.card}>
-          <Title3>检测到未保存的本地编辑</Title3>
-          <Text>本地快照保存于 {state.localSnapshot.updatedAt}。源站编辑刷新后默认加载 GitHub 版本，只有点击恢复才会应用本地内容。</Text>
+          <Title3>{t('posts.localSnapshotTitle')}</Title3>
+          <Text>{t('posts.localSnapshotDescription', { updatedAt: state.localSnapshot.updatedAt })}</Text>
           <div className={styles.row}>
             <Button appearance="primary" onClick={() => setState({ ...state, markdown: state.localSnapshot?.markdown ?? state.markdown, localSnapshot: undefined })}>
-              恢复本地编辑
+              {t('posts.restoreLocal')}
             </Button>
             <Button onClick={() => { deleteEditorSnapshot(`source:${relativeId}`); setState({ ...state, localSnapshot: undefined }) }}>
-              丢弃本地编辑
+              {t('posts.discardLocal')}
             </Button>
           </div>
         </section>
@@ -224,7 +227,7 @@ export function SourcePostEditorPage() {
       ) : null}
       {!state.savedDraft && state.message ? (
         <section className={localStyles.statusPanel}>
-          <Text weight="semibold">源站操作状态</Text>
+          <Text weight="semibold">{t('posts.statusPanelTitle')}</Text>
           <Text>{state.message}</Text>
         </section>
       ) : null}
@@ -237,7 +240,7 @@ export function SourcePostEditorPage() {
             markdown={state.markdown}
             disabled={state.committing}
             onDone={(relativeId, markdown, commitSha) => {
-              setState({ ...state, markdown, message: `文章 ID 已修改为 ${relativeId}，commit: ${commitSha}。请等待 Actions 构建并刷新 admin-index。` })
+              setState({ ...state, markdown, message: t('posts.renameSuccess', { relativeId, commitSha }) })
               navigate(`/posts/edit?relativeId=${encodeURIComponent(relativeId)}`, { replace: true })
             }}
             onError={(message) => setState({ ...state, message })}
@@ -286,13 +289,13 @@ function DraftSavedOverlay({
     <div className={styles.overlay} role="dialog" aria-modal="true" aria-labelledby="draft-saved-title">
       <section className={styles.decisionPanel}>
         <div>
-          <Title2 id="draft-saved-title">草稿已保存</Title2>
-          <Body1>已将当前修改转为草稿并存入 KV，请选择接下来的操作。</Body1>
+          <Title2 id="draft-saved-title">{t('posts.draftSavedTitle')}</Title2>
+          <Body1>{t('posts.draftSavedDescription')}</Body1>
         </div>
-        <Text>文章 ID：{draft.relativeId}</Text>
+        <Text>{t('posts.draftSavedId', { id: draft.relativeId })}</Text>
         <div className={styles.decisionActions}>
-          <Button onClick={onOpenDrafts}>前往草稿管理</Button>
-          <Button appearance="primary" onClick={onContinueDraft}>继续编辑草稿</Button>
+          <Button onClick={onOpenDrafts}>{t('posts.goToDrafts')}</Button>
+          <Button appearance="primary" onClick={onContinueDraft}>{t('posts.continueDraft')}</Button>
         </div>
       </section>
     </div>
@@ -305,14 +308,14 @@ function DeletePostPopover({ onConfirm }: { onConfirm: () => void }) {
   return (
     <Popover open={open} onOpenChange={(_, data) => setOpen(data.open)}>
       <PopoverTrigger disableButtonEnhancement>
-        <Button appearance="primary" className={styles.dangerPrimaryButton} icon={<DeleteRegular />}>删除文章</Button>
+        <Button appearance="primary" className={styles.dangerPrimaryButton} icon={<DeleteRegular />}>{t('posts.deletePost')}</Button>
       </PopoverTrigger>
       <PopoverSurface className={styles.confirmSurface}>
-        <Text weight="semibold">确认删除源站文章？</Text>
-        <Text>会删除 Markdown 和已索引资源，并立即提交到 GitHub。此操作不能撤销。</Text>
+        <Text weight="semibold">{t('posts.confirmDeleteTitle')}</Text>
+        <Text>{t('posts.confirmDeleteDescription')}</Text>
         <div className={styles.decisionActions}>
-          <Button onClick={() => setOpen(false)}>取消</Button>
-          <Button appearance="primary" className={styles.dangerPrimaryButton} icon={<DeleteRegular />} onClick={() => { setOpen(false); onConfirm() }}>确认删除</Button>
+          <Button onClick={() => setOpen(false)}>{t('actions.cancel')}</Button>
+          <Button appearance="primary" className={styles.dangerPrimaryButton} icon={<DeleteRegular />} onClick={() => { setOpen(false); onConfirm() }}>{t('actions.delete')}</Button>
         </div>
       </PopoverSurface>
     </Popover>
@@ -336,7 +339,7 @@ function ChangeIdDialog({
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const submit = () => {
-    if (!window.confirm('确认修改源站文章 ID？这会改变文章路径/URL，并立即提交到 GitHub。')) return
+    if (!window.confirm(t('posts.confirmChangeId'))) return
     setBusy(true)
     void sendJson<{ commitSha: string; relativeId: string; markdown: string }>('/posts/rename', 'POST', {
       relativeId: currentRelativeId,
@@ -352,14 +355,14 @@ function ChangeIdDialog({
   }
   return (
     <>
-      <Button onClick={() => setOpen((current) => !current)} disabled={disabled || busy}>修改文章 ID</Button>
+      <Button onClick={() => setOpen((current) => !current)} disabled={disabled || busy}>{t('posts.changeId')}</Button>
       {open ? (
         <section>
-          <Field label="新的 relativeId">
+          <Field label={t('posts.newRelativeId')}>
             <Input value={value} onChange={(_, data) => setValue(data.value)} />
           </Field>
-          <Text>这会移动 Markdown 和资源目录，更新图片路径，并立即提交到 GitHub。</Text>
-          <Button appearance="primary" onClick={submit} disabled={busy || !value.trim()}>{busy ? '提交中...' : '确认修改'}</Button>
+          <Text>{t('posts.changeIdDescription')}</Text>
+          <Button appearance="primary" onClick={submit} disabled={busy || !value.trim()}>{busy ? t('actions.submitting') : t('actions.confirm')}</Button>
         </section>
       ) : null}
     </>

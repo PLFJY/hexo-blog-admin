@@ -81,6 +81,11 @@ const useStyles = makeStyles({
       color: tokens.colorNeutralForegroundOnBrand,
       backgroundColor: tokens.colorPaletteRedForeground1,
     },
+    ':disabled': {
+      backgroundColor: tokens.colorNeutralBackgroundDisabled,
+      color: tokens.colorNeutralForegroundDisabled,
+      borderColor: tokens.colorNeutralStrokeDisabled,
+    },
   },
   popoverSurface: {
     display: 'grid',
@@ -176,7 +181,7 @@ export function MarkdownAssetPanel({
       })
       onAssetsChange(response.manifest.assets)
       await refresh(response.asset.draftId)
-      setMessage({ kind: 'success', text: '图片已上传到图片仓' })
+      setMessage({ kind: 'success', text: t('assets.uploadSuccess') })
     } catch (error) {
       setMessage({ kind: 'error', text: error instanceof Error ? error.message : 'Unknown error' })
     }
@@ -199,7 +204,7 @@ export function MarkdownAssetPanel({
       .then((response) => {
         onAssetsChange(response.manifest.assets)
         onMarkdownPathReplace?.(asset.markdownPath, response.asset.markdownPath)
-        setMessage({ kind: 'success', text: '图片已改名' })
+        setMessage({ kind: 'success', text: t('assets.renameSuccess') })
       })
       .catch((error: unknown) => setMessage({ kind: 'error', text: error instanceof Error ? error.message : 'Unknown error' }))
       .finally(() => setBusyKey(null))
@@ -214,7 +219,7 @@ export function MarkdownAssetPanel({
 
   const copyPath = (path: string) => {
     void navigator.clipboard?.writeText(path)
-    setMessage({ kind: 'success', text: 'Markdown 路径已复制' })
+    setMessage({ kind: 'success', text: t('assets.pathCopied') })
   }
 
   const openPreview = (asset: ImageWarehouseSourceAsset | (DraftAsset & { kind: 'temp' })) => {
@@ -224,7 +229,7 @@ export function MarkdownAssetPanel({
   return (
     <section className={pageStyles.card}>
       <div className={pageStyles.row}>
-        <Title3>图片仓</Title3>
+        <Title3>{t('assets.warehouse')}</Title3>
         <Button appearance="secondary" icon={<ImageAddRegular />} onClick={() => inputRef.current?.click()} disabled={!relativeId || uploadDisabled}>
           {t('assets.upload')}
         </Button>
@@ -257,18 +262,18 @@ export function MarkdownAssetPanel({
             <img className={styles.preview} src={previewUrl(asset)} alt={asset.filename} loading="lazy" />
             <span className={styles.meta}>
               <span>
-                <Badge appearance="tint" color={asset.kind === 'source' ? 'brand' : 'success'}>{asset.kind === 'source' ? '源站' : '暂存'}</Badge>
+                <Badge appearance="tint" color={asset.kind === 'source' ? 'brand' : 'success'}>{asset.kind === 'source' ? t('assets.source') : t('assets.temp')}</Badge>
               </span>
               <Text weight="semibold" truncate>{asset.filename}</Text>
               <Text size={200} truncate>{asset.markdownPath}</Text>
               <Text size={200}>{formatSize(asset.size)}</Text>
             </span>
             <span className={styles.actions}>
-              <Button appearance="subtle" icon={<CopyRegular />} onClick={() => copyPath(asset.markdownPath)}>复制</Button>
-              <Button appearance="subtle" icon={<ImageAddRegular />} onClick={() => onInsertMarkdown(`![${asset.filename}](${asset.markdownPath})`)}>插入</Button>
+              <Button appearance="subtle" icon={<CopyRegular />} onClick={() => copyPath(asset.markdownPath)}>{t('actions.copy')}</Button>
+              <Button appearance="subtle" icon={<ImageAddRegular />} onClick={() => onInsertMarkdown(`![${asset.filename}](${asset.markdownPath})`)}>{t('actions.insert')}</Button>
               <Button appearance="subtle" icon={<OpenRegular />} onClick={() => openPreview(asset)}>{t('assets.preview')}</Button>
               {asset.kind === 'source' ? (
-                <Button appearance="subtle" icon={<RenameRegular />} onClick={() => setSourceRenameAsset(asset)}>改名</Button>
+                <Button appearance="subtle" icon={<RenameRegular />} onClick={() => setSourceRenameAsset(asset)}>{t('actions.rename')}</Button>
               ) : (
                 <RenameAssetPopover
                   initialFilename={asset.filename}
@@ -315,20 +320,20 @@ function SourceAssetRenameDialog({
     <Dialog open onOpenChange={(_, data) => !data.open && onClose()}>
       <DialogSurface>
         <DialogBody>
-          <DialogTitle>源站图片改名</DialogTitle>
+          <DialogTitle>{t('assets.renameSourceAsset')}</DialogTitle>
           <DialogContent>
-            <Text>此操作会读取旧图片、写入新路径、删除旧路径，并立即提交到 GitHub。</Text>
+            <Text>{t('assets.renameSourceDescription')}</Text>
             <Input value={filename} onChange={(_, data) => setFilename(data.value)} style={{margin: '10px 0px 0px 0px'}} />
             <Popover>
               <PopoverTrigger disableButtonEnhancement>
-                <Button appearance="primary" disabled={!filename.trim() || filename === asset.filename} style={{margin: '10px 0px 0px 10px'}}>提交改名</Button>
+                <Button appearance="primary" disabled={!filename.trim() || filename === asset.filename} style={{margin: '10px 0px 0px 10px'}}>{t('assets.renameSourceAsset')}</Button>
               </PopoverTrigger>
               <PopoverSurface className={styles.popoverSurface}>
-                <Text weight="semibold">确认提交源站图片改名？</Text>
-                <Text>提交后需要等待 Actions 构建并刷新 admin-index。</Text>
+                <Text weight="semibold">{t('assets.confirmRenameTitle')}</Text>
+                <Text>{t('assets.confirmRenameDescription')}</Text>
                 <div className={styles.confirmActions}>
-                  <Button onClick={onClose}>取消</Button>
-                  <Button appearance="primary" onClick={() => onConfirm(filename)}>确认提交</Button>
+                  <Button onClick={onClose}>{t('actions.cancel')}</Button>
+                  <Button appearance="primary" onClick={() => onConfirm(filename)}>{t('actions.confirm')}</Button>
                 </div>
               </PopoverSurface>
             </Popover>
@@ -356,16 +361,16 @@ function RenameAssetPopover({
   return (
     <Popover open={open} onOpenChange={(_, data) => setOpen(data.open)}>
       <PopoverTrigger disableButtonEnhancement>
-        <Button appearance="subtle" icon={<RenameRegular />} disabled={busy}>改名</Button>
+        <Button appearance="subtle" icon={<RenameRegular />} disabled={busy}>{t('actions.rename')}</Button>
       </PopoverTrigger>
       <PopoverSurface className={styles.popoverSurface}>
-        <Text weight="semibold">{source === 'source' ? '源站图片改名' : '暂存图片改名'}</Text>
-        {source === 'source' ? <Text>此操作会改动 GitHub，当前版本仅提供明确入口，尚未执行提交。</Text> : null}
+        <Text weight="semibold">{source === 'source' ? t('assets.renameSourceAsset') : t('assets.renameTempAsset')}</Text>
+        {source === 'source' ? <Text>{t('assets.renameSourceWarning')}</Text> : null}
         <Input value={filename} onChange={(_, data) => setFilename(data.value)} />
         <div className={styles.confirmActions}>
-          <Button onClick={() => setOpen(false)}>取消</Button>
+          <Button onClick={() => setOpen(false)}>{t('actions.cancel')}</Button>
           <Button appearance="primary" onClick={() => { setOpen(false); onConfirm(filename) }} disabled={!filename.trim() || busy}>
-            确认
+            {t('actions.confirm')}
           </Button>
         </div>
       </PopoverSurface>
