@@ -124,7 +124,7 @@ BLOG_ASSET_CACHE
 
 KV/R2 binding 同样是必需项：没有绑定 `BLOG_ADMIN_KV` 或 `BLOG_ASSET_CACHE` 时，后台不会进入主界面。
 
-## 已实现的 MVP 功能
+## 已实现的功能
 
 - React 19 + Vite + TypeScript 应用外壳。
 - Fluent UI v9 深色主题布局和响应式 `NavDrawer`。

@@ -1,7 +1,7 @@
 export const resources = {
   zh: {
     translation: {
-      app: { name: 'Hexo 博客后台', subtitle: '基于 Cloudflare Workers 的 Hexo 管理 MVP' },
+      app: { name: 'Hexo 博客后台', subtitle: '基于 Cloudflare Workers 的 Hexo 管理' },
       nav: { dashboard: '概览', posts: '文章', drafts: '草稿', deploy: '部署', settings: '设置' },
       dashboard: { title: '概览', description: '管理 Hexo 文章、草稿资源和 GitHub Actions 部署状态。' },
       posts: {
@@ -82,7 +82,7 @@ export const resources = {
   },
   en: {
     translation: {
-      app: { name: 'Hexo Blog Admin', subtitle: 'A Cloudflare Workers powered Hexo admin MVP' },
+      app: { name: 'Hexo Blog Admin', subtitle: 'A Cloudflare Workers powered Hexo admin' },
       nav: { dashboard: 'Dashboard', posts: 'Posts', drafts: 'Drafts', deploy: 'Deploy', settings: 'Settings' },
       dashboard: { title: 'Dashboard', description: 'Manage Hexo posts, draft assets, and GitHub Actions deployment status.' },
       posts: {

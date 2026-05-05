@@ -124,7 +124,7 @@ BLOG_ASSET_CACHE
 
 KV/R2 bindings are required too: without `BLOG_ADMIN_KV` or `BLOG_ASSET_CACHE`, the admin UI will remain blocked.
 
-## Implemented MVP Features
+## Implemented Features
 
 - React 19 + Vite + TypeScript app shell.
 - Fluent UI v9 dark themed layout with responsive `NavDrawer`.
