@@ -52,6 +52,10 @@ Preview a production build:
 pnpm preview
 ```
 
+## Troubleshooting
+
+If direct navigation to `/posts` or refreshing `/posts/edit` shows Not Found, the SPA fallback is not active. This project uses Worker fallback, wrangler assets `single-page-application`, and Vite dev fallback together so direct route visits keep returning `index.html`.
+
 Deploy through Wrangler:
 
 ```bash

@@ -52,6 +52,10 @@ pnpm build
 pnpm preview
 ```
 
+## Troubleshooting
+
+如果直接访问 `/posts` 或刷新 `/posts/edit` 出现 Not Found，说明 SPA fallback 没生效。本项目通过 Worker fallback、wrangler assets `single-page-application`、Vite dev fallback 三层保证直达路由可用。
+
 通过 Wrangler 部署：
 
 ```bash
