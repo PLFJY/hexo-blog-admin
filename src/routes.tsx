@@ -12,6 +12,7 @@ import { SourcePostEditorPage } from './pages/SourcePostEditorPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { LoginPage } from './pages/LoginPage'
 import { AppErrorPage } from './pages/AppErrorPage'
+import { NotFoundPage } from './pages/NotFoundPage'
 
 function getRouterBasename() {
   const pathname = window.location.pathname
@@ -43,10 +44,12 @@ export const router = createBrowserRouter([
               { path: 'cache', element: <CachePage /> },
               { path: 'deploy', element: <DeployPage /> },
               { path: 'settings', element: <SettingsPage /> },
+              { path: '*', element: <NotFoundPage /> },
             ],
           },
         ],
       },
+      { path: '*', element: <NotFoundPage /> },
     ],
   },
 ], {

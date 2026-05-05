@@ -1,5 +1,5 @@
 import { Body1, Button, Field, Input, Popover, PopoverSurface, PopoverTrigger, Text, Title1, Title2, Title3, makeStyles, tokens } from '@fluentui/react-components'
-import { DeleteRegular, SaveRegular } from '@fluentui/react-icons'
+import { ArrowLeftRegular, DeleteRegular, SaveRegular } from '@fluentui/react-icons'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearchParams } from 'react-router'
@@ -7,7 +7,7 @@ import { ArticleMarkdownWorkspace } from '../components/ArticleMarkdownWorkspace
 import { ErrorState } from '../components/ErrorState'
 import { LoadingState } from '../components/LoadingState'
 import { MarkdownAssetPanel } from '../components/MarkdownAssetPanel'
-import { getJson, sendJson } from '../lib/apiClient'
+import { ApiError, getJson, sendJson } from '../lib/apiClient'
 import { deleteEditorSnapshot, readEditorSnapshot, writeEditorSnapshot } from '../lib/editorSnapshot'
 import { resolveMarkdownResourceUrl } from '../lib/markdownResource'
 import type { PublicConfigResponse } from '../shared/apiTypes'
@@ -81,6 +81,7 @@ type State =
       changingId?: boolean
       committing?: boolean
     }
+  | { status: 'missing'; relativeId: string }
   | { status: 'error'; message: string }
 
 export function SourcePostEditorPage() {
@@ -114,7 +115,13 @@ export function SourcePostEditorPage() {
           assetObjectUrls: {},
         })
       })
-      .catch((error: unknown) => setState({ status: 'error', message: error instanceof Error ? error.message : 'Unknown error' }))
+      .catch((error: unknown) => {
+        if (error instanceof ApiError && error.status === 404) {
+          setState({ status: 'missing', relativeId })
+        } else {
+          setState({ status: 'error', message: error instanceof Error ? error.message : 'Unknown error' })
+        }
+      })
   }, [relativeId])
 
   useEffect(() => {
@@ -136,6 +143,24 @@ export function SourcePostEditorPage() {
   }, [state])
 
   if (state.status === 'loading') return <LoadingState />
+  if (state.status === 'missing') {
+    return (
+      <section className={styles.page}>
+        <header className={styles.header}>
+          <Title1>{t('posts.postNotFoundTitle')}</Title1>
+          <Body1>{state.relativeId}</Body1>
+        </header>
+        <section className={styles.card}>
+          <div style={{ display: 'grid', gap: tokens.spacingVerticalM, justifyItems: 'start' }}>
+            <Text>{t('posts.postNotFoundDescription')}</Text>
+            <Button icon={<ArrowLeftRegular />} onClick={() => navigate('/posts')} appearance='primary'>
+              {t('posts.backToPosts')}
+            </Button>
+          </div>
+        </section>
+      </section>
+    )
+  }
   if (state.status === 'error') return <ErrorState message={state.message} onRetry={() => window.location.reload()} />
 
   const setMarkdown = (markdown: string) => setState({ ...state, markdown })
@@ -291,6 +316,7 @@ function DraftSavedOverlay({
       <section className={styles.decisionPanel}>
         <div>
           <Title2 id="draft-saved-title">{t('posts.draftSavedTitle')}</Title2>
+          <br/>
           <Body1>{t('posts.draftSavedDescription')}</Body1>
         </div>
         <Text>{t('posts.draftSavedId', { id: draft.relativeId })}</Text>
