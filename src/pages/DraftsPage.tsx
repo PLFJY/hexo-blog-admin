@@ -1,19 +1,31 @@
 import { Body1, Button, Field, Input, Text, Textarea, Title1, Title3 } from '@fluentui/react-components'
 import { DeleteRegular, RocketRegular, SaveRegular } from '@fluentui/react-icons'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ErrorState } from '../components/ErrorState'
 import { LoadingState } from '../components/LoadingState'
 import { MarkdownAssetPanel } from '../components/MarkdownAssetPanel'
 import { MarkdownPreview } from '../components/MarkdownPreview'
+import { StatusBadge } from '../components/StatusBadge'
 import { buildApiUrl, getJson, sendJson } from '../lib/apiClient'
 import type { DraftListResponse, DraftRecord, PublishDraftResponse } from '../shared/draftTypes'
 import type { DraftAsset, DraftAssetListResponse } from '../shared/assetTypes'
+import type { DeployRecord, DeployStatusResponse } from '../shared/deployTypes'
+import type { PostTreeResponse } from '../shared/postTypes'
 import { usePageStyles } from './pageStyles'
 
 type DraftsState =
   | { status: 'loading' }
-  | { status: 'ready'; drafts: DraftRecord[]; editing: DraftRecord; assets: DraftAsset[]; message?: string }
+  | {
+      status: 'ready'
+      drafts: DraftRecord[]
+      editing: DraftRecord
+      assets: DraftAsset[]
+      message?: string
+      publishCommitSha?: string
+      deploy?: DeployRecord
+      indexSynced?: boolean
+    }
   | { status: 'error'; message: string }
 
 const emptyDraft = (): DraftRecord => ({
@@ -28,6 +40,7 @@ export function DraftsPage() {
   const styles = usePageStyles()
   const { t } = useTranslation()
   const [state, setState] = useState<DraftsState>({ status: 'loading' })
+  const pollTimer = useRef<number | undefined>(undefined)
 
   const load = () => {
     setState({ status: 'loading' })
@@ -87,8 +100,74 @@ export function DraftsPage() {
         editing: drafts[0] ?? emptyDraft(),
         assets: [],
         message: `${t('drafts.published')}: ${response.commitSha}`,
+        publishCommitSha: response.commitSha,
+        deploy: {
+          id: response.commitSha,
+          status: 'queued',
+          commitSha: response.commitSha,
+        },
+        indexSynced: false,
       })
+      startDeployPolling(response.commitSha)
     })
+  }
+
+  const syncIndex = (commitSha: string, deploy: DeployRecord) => {
+    void sendJson<PostTreeResponse>('/index/sync-online', 'POST')
+      .then(() => {
+        setState((current) => {
+          if (current.status !== 'ready' || current.publishCommitSha !== commitSha) return current
+          return {
+            ...current,
+            deploy,
+            indexSynced: true,
+            message: `${t('drafts.indexSynced')}: ${commitSha}`,
+          }
+        })
+      })
+      .catch((error: unknown) => {
+        setState((current) => {
+          if (current.status !== 'ready' || current.publishCommitSha !== commitSha) return current
+          return {
+            ...current,
+            deploy,
+            message: error instanceof Error ? error.message : 'Unknown error',
+          }
+        })
+      })
+  }
+
+  const startDeployPolling = (commitSha: string, attempt = 0) => {
+    window.clearTimeout(pollTimer.current)
+    pollTimer.current = window.setTimeout(() => {
+      void getJson<DeployStatusResponse>(`/deploy/status?commitSha=${encodeURIComponent(commitSha)}`)
+        .then((data) => {
+          const deploy = data.deploy
+          const shouldContinue = attempt < 20 && (deploy.status === 'queued' || deploy.status === 'in_progress')
+          setState((current) => {
+            if (current.status !== 'ready' || current.publishCommitSha !== commitSha) return current
+            return {
+              ...current,
+              deploy,
+              message: shouldContinue ? t('drafts.deployTracking') : current.message,
+            }
+          })
+
+          if (deploy.status === 'success') {
+            syncIndex(commitSha, deploy)
+            return
+          }
+
+          if (shouldContinue) startDeployPolling(commitSha, attempt + 1)
+        })
+        .catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : 'Unknown error'
+          setState((current) => {
+            if (current.status !== 'ready' || current.publishCommitSha !== commitSha) return current
+            return { ...current, message }
+          })
+        })
+    }, attempt === 0 ? 3000 : 8000)
   }
 
   const insertMarkdown = (markdown: string) => {
@@ -102,7 +181,10 @@ export function DraftsPage() {
     return asset ? buildApiUrl(`/assets/blob?key=${encodeURIComponent(asset.key)}`) : src
   }
 
-  useEffect(load, [])
+  useEffect(() => {
+    load()
+    return () => window.clearTimeout(pollTimer.current)
+  }, [])
 
   if (state.status === 'loading') return <LoadingState />
   if (state.status === 'error') return <ErrorState message={state.message} onRetry={load} />
@@ -141,6 +223,13 @@ export function DraftsPage() {
           </Button>
         </div>
         {state.message ? <Text>{state.message}</Text> : null}
+        {state.publishCommitSha ? <Text>{t('deploy.commit')}: {state.publishCommitSha}</Text> : null}
+        {state.deploy ? (
+          <StatusBadge status={state.deploy.status === 'success' ? 'success' : state.deploy.status === 'failed' ? 'danger' : 'informative'}>
+            {state.deploy.status}
+          </StatusBadge>
+        ) : null}
+        {state.indexSynced ? <Text>{t('drafts.indexSynced')}</Text> : null}
         <MarkdownAssetPanel
           relativeId={state.editing.relativeId}
           draftId={state.editing.id}

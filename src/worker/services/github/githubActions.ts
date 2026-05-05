@@ -58,7 +58,7 @@ export async function getWorkflowRunStatusByCommit(env: WorkerEnv, commitSha: st
 
   return {
     id: run ? String(run.id) : commitSha,
-    status: mapStatus(run),
+    status: run ? mapStatus(run) : 'queued',
     commitSha,
     workflowRunUrl: run?.html_url,
     updatedAt: run?.updated_at,

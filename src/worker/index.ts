@@ -3,10 +3,10 @@ import type { WorkerEnv } from './env'
 import { handleAssetBlob, handleAssets } from './routes/assetRoutes'
 import { handleAuthStatus, handleCreateUser, handleDeleteUser, handleListUsers, handleLogin, handleLogout } from './routes/authRoutes'
 import { handleSetupStatus } from './routes/configRoutes'
-import { handleDispatchDeploy, handleLatestDeploy } from './routes/deployRoutes'
+import { handleDeployStatus, handleDispatchDeploy, handleLatestDeploy } from './routes/deployRoutes'
 import { handleCreateDraft, handleDraftById, handleDrafts, handlePublishDraft } from './routes/draftRoutes'
 import { handleGitHubRepo } from './routes/githubRoutes'
-import { handleAdminIndex } from './routes/indexRoutes'
+import { handleAdminIndex, handleSyncOnlineAdminIndex } from './routes/indexRoutes'
 import { handlePostContent, handlePostsTree } from './routes/postRoutes'
 import { json } from './utils/response'
 import { getSetupStatus } from './utils/setup'
@@ -65,7 +65,9 @@ async function handleApiRequest(request: Request, env: WorkerEnv, pathname: stri
   if (pathname === '/api/assets') return handleAssets(env, request)
   if (pathname === '/api/assets/blob') return handleAssetBlob(env, request)
   if (pathname === '/api/deploy/latest') return handleLatestDeploy(env)
+  if (pathname === '/api/deploy/status') return handleDeployStatus(env, request)
   if (pathname === '/api/deploy/dispatch' && request.method === 'POST') return handleDispatchDeploy(env, request)
+  if (pathname === '/api/index/sync-online' && request.method === 'POST') return handleSyncOnlineAdminIndex(env)
 
   return json({ error: 'NOT_FOUND' }, { status: 404 })
 }

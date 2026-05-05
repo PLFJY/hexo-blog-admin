@@ -45,6 +45,8 @@ export const resources = {
         draftList: '草稿列表',
         saved: '草稿已保存',
         published: '草稿已发布',
+        deployTracking: '正在跟踪部署状态',
+        indexSynced: '文章索引已刷新',
       },
       assets: {
         title: '图片缓存',
@@ -62,6 +64,8 @@ export const resources = {
         run: '运行记录',
         queued: '部署已触发',
         polling: '正在刷新部署状态',
+        queryByCommit: '按提交查询',
+        commitShaLabel: 'Commit SHA',
       },
       settings: {
         title: '设置',
@@ -143,6 +147,8 @@ export const resources = {
         draftList: 'Draft list',
         saved: 'Draft saved',
         published: 'Draft published',
+        deployTracking: 'Tracking deployment status',
+        indexSynced: 'Post index refreshed',
       },
       assets: {
         title: 'Image cache',
@@ -160,6 +166,8 @@ export const resources = {
         run: 'Workflow run',
         queued: 'Deploy queued',
         polling: 'Refreshing deploy status',
+        queryByCommit: 'Query by commit',
+        commitShaLabel: 'Commit SHA',
       },
       settings: {
         title: 'Settings',

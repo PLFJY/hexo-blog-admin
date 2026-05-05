@@ -33,6 +33,7 @@ export type PostTreeResponse = {
   generatedAt?: string
   postsDir?: string
   assetMode?: string
+  stale?: boolean
   posts: PostFile[]
   tree: PostTreeNode[]
 }
