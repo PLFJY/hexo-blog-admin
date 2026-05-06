@@ -1,5 +1,5 @@
 import { makeStyles, mergeClasses, tokens } from '@fluentui/react-components'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { MarkdownEditor } from './MarkdownEditor'
 import { MarkdownPreview } from './MarkdownPreview'
 import { buildApiUrl } from '../lib/apiClient'
@@ -43,6 +43,7 @@ type ArticleMarkdownWorkspaceProps = {
   onAssetObjectUrlsChange?: (urls: Record<string, string>) => void
   insertRequest?: { id: number; text: string }
   onInsertConsumed?: (id: number) => void
+  onPasteImages?: (files: File[]) => void
 }
 
 export function ArticleMarkdownWorkspace({
@@ -53,12 +54,22 @@ export function ArticleMarkdownWorkspace({
   onAssetObjectUrlsChange,
   insertRequest,
   onInsertConsumed,
+  onPasteImages,
 }: ArticleMarkdownWorkspaceProps) {
   const styles = useStyles()
   const [previewScrollRatio, setPreviewScrollRatio] = useState(0)
+  const onAssetObjectUrlsChangeRef = useRef(onAssetObjectUrlsChange)
 
   useEffect(() => {
-    if (!onAssetObjectUrlsChange || assets.length === 0) {
+    onAssetObjectUrlsChangeRef.current = onAssetObjectUrlsChange
+  }, [onAssetObjectUrlsChange])
+
+  useEffect(() => {
+    if (!onAssetObjectUrlsChangeRef.current) {
+      return undefined
+    }
+    if (assets.length === 0) {
+      onAssetObjectUrlsChangeRef.current({})
       return undefined
     }
 
@@ -75,7 +86,7 @@ export function ArticleMarkdownWorkspace({
         objectUrls[asset.key] = URL.createObjectURL(blob)
       }),
     ).then(() => {
-      if (!disposed) onAssetObjectUrlsChange(objectUrls)
+      if (!disposed) onAssetObjectUrlsChangeRef.current?.(objectUrls)
     })
 
     return () => {
@@ -95,6 +106,7 @@ export function ArticleMarkdownWorkspace({
           onScrollRatioChange={setPreviewScrollRatio}
           insertRequest={insertRequest}
           onInsertConsumed={onInsertConsumed}
+          onPasteImages={onPasteImages}
         />
       </div>
       <div className={mergeClasses(styles.column, styles.previewColumn)}>

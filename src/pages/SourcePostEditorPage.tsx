@@ -1,12 +1,13 @@
 import { Body1, Button, Field, Input, Popover, PopoverSurface, PopoverTrigger, Text, Title1, Title2, Title3, makeStyles, mergeClasses, tokens } from '@fluentui/react-components'
 import { ArrowLeftRegular, DeleteRegular, SaveRegular } from '@fluentui/react-icons'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearchParams } from 'react-router'
 import { ArticleMarkdownWorkspace } from '../components/ArticleMarkdownWorkspace'
 import { ErrorState } from '../components/ErrorState'
 import { LoadingState } from '../components/LoadingState'
 import { MarkdownAssetPanel } from '../components/MarkdownAssetPanel'
+import type { MarkdownAssetPanelHandle } from '../components/MarkdownAssetPanel'
 import { ApiError, getJson, sendJson } from '../lib/apiClient'
 import { deleteEditorSnapshot, readEditorSnapshot, writeEditorSnapshot } from '../lib/editorSnapshot'
 import { resolveMarkdownResourceUrl } from '../lib/markdownResource'
@@ -115,6 +116,7 @@ export function SourcePostEditorPage() {
   const [params] = useSearchParams()
   const relativeId = params.get('relativeId') ?? ''
   const [state, setState] = useState<State>({ status: 'loading' })
+  const assetPanelRef = useRef<MarkdownAssetPanelHandle>(null)
 
   useEffect(() => {
     if (!relativeId) {
@@ -163,7 +165,12 @@ export function SourcePostEditorPage() {
         assets: state.assets,
         assetObjectUrls: state.assetObjectUrls,
       })
-  }, [state])
+  }, [
+    state.status === 'ready' ? state.post.post.relativeId : '',
+    state.status === 'ready' ? state.publicConfig : undefined,
+    state.status === 'ready' ? state.assets : undefined,
+    state.status === 'ready' ? state.assetObjectUrls : undefined,
+  ])
 
   if (state.status === 'loading') return <LoadingState />
   if (state.status === 'missing') {
@@ -186,9 +193,10 @@ export function SourcePostEditorPage() {
   }
   if (state.status === 'error') return <ErrorState message={state.message} onRetry={() => window.location.reload()} />
 
-  const setMarkdown = (markdown: string) => setState({ ...state, markdown })
-  const insertMarkdown = (text: string) => setState({ ...state, insertRequest: { id: Date.now(), text } })
-  const replaceMarkdownPath = (oldPath: string, newPath: string) => setMarkdown(state.markdown.split(oldPath).join(newPath))
+  const setMarkdown = (markdown: string) => setState((current) => (current.status === 'ready' ? { ...current, markdown } : current))
+  const insertMarkdown = (text: string) => setState((current) => (current.status === 'ready' ? { ...current, insertRequest: { id: Date.now(), text } } : current))
+  const replaceMarkdownPath = (oldPath: string, newPath: string) =>
+    setState((current) => (current.status === 'ready' ? { ...current, markdown: current.markdown.split(oldPath).join(newPath) } : current))
   const renameSourceAsset = (asset: PostAsset, filename: string) => {
     setState({ ...state, committing: true, message: t('assets.submittingRename') })
     void sendJson<{ commitSha: string; markdown: string }>('/posts/asset/rename', 'POST', {
@@ -295,11 +303,12 @@ export function SourcePostEditorPage() {
           />
         </div>
         <MarkdownAssetPanel
+          ref={assetPanelRef}
           relativeId={state.post.post.relativeId}
           draftId={state.post.post.relativeId}
           assets={state.assets}
           sourceAssets={state.post.post.assets ?? []}
-          onAssetsChange={(assets) => setState({ ...state, assets })}
+          onAssetsChange={(assets) => setState((current) => (current.status === 'ready' ? { ...current, assets } : current))}
           onInsertMarkdown={insertMarkdown}
           onMarkdownPathReplace={replaceMarkdownPath}
           onSourceAssetRename={renameSourceAsset}
@@ -315,7 +324,10 @@ export function SourcePostEditorPage() {
               setState((current) => (current.status === 'ready' ? { ...current, assetObjectUrls } : current))
             }
             insertRequest={state.insertRequest}
-            onInsertConsumed={(id) => state.insertRequest?.id === id && setState({ ...state, insertRequest: undefined })}
+            onInsertConsumed={(id) =>
+              setState((current) => (current.status === 'ready' && current.insertRequest?.id === id ? { ...current, insertRequest: undefined } : current))
+            }
+            onPasteImages={(files) => void assetPanelRef.current?.handleIncomingImageFiles(files, 'paste')}
           />
         </Field>
       </section>

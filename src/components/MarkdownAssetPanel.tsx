@@ -17,12 +17,16 @@ import {
   tokens,
 } from '@fluentui/react-components'
 import { CopyRegular, DeleteRegular, ImageAddRegular, OpenRegular, RenameRegular } from '@fluentui/react-icons'
-import { useRef, useState } from 'react'
+import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { buildApiUrl, getJson, sendJson } from '../lib/apiClient'
+import { readImagesFromClipboard } from '../lib/clipboardImages'
+import { formatBytes } from '../lib/formatBytes'
+import { IMAGE_COMPRESSION_THRESHOLD_BYTES, compressImageToWebp, isCompressibleImage } from '../lib/imageCompression'
 import type { DraftAsset, DraftAssetListResponse, DraftAssetUploadResponse, ImageWarehouseSourceAsset, RenameDraftAssetResponse } from '../shared/assetTypes'
 import type { PostAsset } from '../shared/postTypes'
 import { usePageStyles } from '../pages/pageStyles'
+import { ImageCompressionDialog } from './ImageCompressionDialog'
 
 const useStyles = makeStyles({
   hiddenInput: { display: 'none' },
@@ -154,14 +158,15 @@ type MarkdownAssetPanelProps = {
   uploadDisabled?: boolean
 }
 
-const formatSize = (size?: number) => {
-  if (!size) return '-'
-  if (size < 1024) return `${size} B`
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
-  return `${(size / 1024 / 1024).toFixed(1)} MB`
+export type IncomingImageSource = 'file-picker' | 'clipboard-button' | 'paste'
+
+export type MarkdownAssetPanelHandle = {
+  handleIncomingImageFiles: (files: File[], source: IncomingImageSource) => Promise<void>
 }
 
-export function MarkdownAssetPanel({
+type CompressionDecision = 'compress' | 'original' | 'cancel'
+
+export const MarkdownAssetPanel = forwardRef<MarkdownAssetPanelHandle, MarkdownAssetPanelProps>(function MarkdownAssetPanel({
   relativeId,
   draftId,
   assets,
@@ -172,14 +177,16 @@ export function MarkdownAssetPanel({
   onSourceAssetRename,
   onSourceAssetDelete,
   uploadDisabled,
-}: MarkdownAssetPanelProps) {
+}, ref) {
   const styles = useStyles()
   const pageStyles = usePageStyles()
   const inputRef = useRef<HTMLInputElement>(null)
+  const compressionDecisionRef = useRef<((decision: CompressionDecision) => void) | null>(null)
   const { t } = useTranslation()
   const [message, setMessage] = useState<{ kind: 'success' | 'error' | 'info'; text: string } | null>(null)
   const [busyKey, setBusyKey] = useState<string | null>(null)
   const [sourceRenameAsset, setSourceRenameAsset] = useState<ImageWarehouseSourceAsset | null>(null)
+  const [compressionDialog, setCompressionDialog] = useState<{ file: File; busy?: boolean; busyLabel?: string } | null>(null)
 
   const warehouseAssets: Array<ImageWarehouseSourceAsset | (DraftAsset & { kind: 'temp' })> = [
     ...sourceAssets.map((asset) => ({ ...asset, kind: 'source' as const })),
@@ -207,25 +214,112 @@ export function MarkdownAssetPanel({
     return btoa(binary)
   }
 
-  const upload = async (file: File) => {
+  const upload = useCallback(async (file: File) => {
+    setMessage({ kind: 'info', text: t('assets.uploading') })
+    const buffer = await readFileAsArrayBuffer(file)
+    const response = await getJson<DraftAssetUploadResponse>('/assets', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        relativeId,
+        filename: file.name,
+        contentType: file.type || 'application/octet-stream',
+        contentBase64: arrayBufferToBase64(buffer),
+      }),
+    })
+    onAssetsChange(response.manifest.assets)
+    await refresh(response.asset.draftId)
+    onInsertMarkdown(`![${response.asset.filename}](${response.asset.markdownPath})`)
+    return response.asset
+  }, [onAssetsChange, onInsertMarkdown, relativeId, t])
+
+  const askCompressionDecision = useCallback((file: File) =>
+    new Promise<CompressionDecision>((resolve) => {
+      compressionDecisionRef.current = resolve
+      setCompressionDialog({ file })
+    }), [])
+
+  const resolveCompressionDecision = (decision: CompressionDecision) => {
+    compressionDecisionRef.current?.(decision)
+    compressionDecisionRef.current = null
+    if (decision !== 'compress') setCompressionDialog(null)
+  }
+
+  const handleIncomingImageFiles = useCallback(async (files: File[], _source: IncomingImageSource) => {
+    for (const file of files) {
+      if (!file.type.startsWith('image/')) {
+        setMessage({ kind: 'error', text: t('assets.notImage') })
+        continue
+      }
+
+      let uploadFile = file
+      let compressed = false
+      let uploadNote = ''
+      const originalSize = file.size
+
+      if (file.size > IMAGE_COMPRESSION_THRESHOLD_BYTES) {
+        if (!isCompressibleImage(file)) {
+          uploadNote = t('assets.compressionNotSupported')
+          setMessage({ kind: 'info', text: uploadNote })
+        } else {
+          const decision = await askCompressionDecision(file)
+          if (decision === 'cancel') continue
+          if (decision === 'compress') {
+            try {
+              setCompressionDialog({ file, busy: true, busyLabel: t('assets.compressing') })
+              setMessage({ kind: 'info', text: t('assets.compressing') })
+              const result = await compressImageToWebp(file)
+              if (result.compressedSize >= result.originalSize) {
+                uploadNote = t('assets.compressionNotUseful')
+                setMessage({ kind: 'info', text: uploadNote })
+              } else {
+                uploadFile = result.file
+                compressed = true
+              }
+            } catch (error) {
+              setMessage({ kind: 'error', text: `${t('assets.compressionFailed')}: ${error instanceof Error ? error.message : 'Unknown error'}` })
+              setCompressionDialog(null)
+              continue
+            } finally {
+              setCompressionDialog(null)
+            }
+          }
+        }
+      }
+
+      try {
+        setMessage({ kind: 'info', text: t('assets.uploading') })
+        const asset = await upload(uploadFile)
+        setMessage({
+          kind: 'success',
+          text: `${uploadNote ? `${uploadNote} ` : ''}${t('assets.uploadSuccessDetail', {
+            filename: asset.filename,
+            originalSize: formatBytes(originalSize),
+            finalSize: formatBytes(uploadFile.size),
+            compressed: compressed ? t('assets.compressed') : t('assets.notCompressed'),
+          })}`,
+        })
+      } catch (error) {
+        setMessage({ kind: 'error', text: error instanceof Error ? error.message : 'Unknown error' })
+      }
+    }
+  }, [askCompressionDecision, t, upload])
+
+  useImperativeHandle(ref, () => ({ handleIncomingImageFiles }), [handleIncomingImageFiles])
+
+  const uploadFromClipboard = async () => {
     try {
-      setMessage({ kind: 'info', text: t('assets.uploading') })
-      const buffer = await readFileAsArrayBuffer(file)
-      const response = await getJson<DraftAssetUploadResponse>('/assets', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          relativeId,
-          filename: file.name,
-          contentType: file.type || 'application/octet-stream',
-          contentBase64: arrayBufferToBase64(buffer),
-        }),
-      })
-      onAssetsChange(response.manifest.assets)
-      await refresh(response.asset.draftId)
-      setMessage({ kind: 'success', text: t('assets.uploadSuccess') })
+      const files = await readImagesFromClipboard()
+      if (files.length === 0) {
+        setMessage({ kind: 'error', text: t('assets.clipboardNoImage') })
+        return
+      }
+      await handleIncomingImageFiles(files, 'clipboard-button')
     } catch (error) {
-      setMessage({ kind: 'error', text: error instanceof Error ? error.message : 'Unknown error' })
+      const text = error instanceof Error && error.message === 'CLIPBOARD_READ_UNSUPPORTED'
+        ? t('assets.clipboardUnsupported')
+        : t('assets.clipboardReadFailed')
+      setMessage({ kind: 'error', text })
     }
   }
 
@@ -275,6 +369,9 @@ export function MarkdownAssetPanel({
         <Button appearance="secondary" icon={<ImageAddRegular />} onClick={() => inputRef.current?.click()} disabled={!relativeId || uploadDisabled}>
           {t('assets.upload')}
         </Button>
+        <Button appearance="secondary" onClick={() => void uploadFromClipboard()} disabled={!relativeId || uploadDisabled}>
+          {t('assets.uploadFromClipboard')}
+        </Button>
         <Button appearance="secondary" onClick={() => void refresh()} disabled={!draftId}>
           {t('actions.refresh')}
         </Button>
@@ -284,11 +381,12 @@ export function MarkdownAssetPanel({
         className={styles.hiddenInput}
         type="file"
         accept="image/*"
+        multiple
         onChange={(event) => {
           const input = event.currentTarget
-          const file = input.files?.[0]
-          if (!file) return
-          void upload(file).finally(() => {
+          const files = Array.from(input.files ?? [])
+          if (files.length === 0) return
+          void handleIncomingImageFiles(files, 'file-picker').finally(() => {
             if (inputRef.current) inputRef.current.value = ''
           })
         }}
@@ -308,7 +406,7 @@ export function MarkdownAssetPanel({
               </span>
               <Text weight="semibold" truncate>{asset.filename}</Text>
               <Text size={200} truncate>{asset.markdownPath}</Text>
-              <Text size={200}>{formatSize(asset.size)}</Text>
+              <Text size={200}>{formatBytes(asset.size)}</Text>
             </span>
             <span className={styles.actions}>
               <Button appearance="subtle" icon={<CopyRegular />} onClick={() => copyPath(asset.markdownPath)}>{t('actions.copy')}</Button>
@@ -343,9 +441,18 @@ export function MarkdownAssetPanel({
           }}
         />
       ) : null}
+      <ImageCompressionDialog
+        open={Boolean(compressionDialog)}
+        file={compressionDialog?.file ?? null}
+        busy={compressionDialog?.busy}
+        busyLabel={compressionDialog?.busyLabel}
+        onCompress={() => resolveCompressionDecision('compress')}
+        onUploadOriginal={() => resolveCompressionDecision('original')}
+        onCancel={() => resolveCompressionDecision('cancel')}
+      />
     </section>
   )
-}
+})
 
 function SourceAssetRenameDialog({
   asset,

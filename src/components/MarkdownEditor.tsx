@@ -14,6 +14,7 @@ import {
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAppTheme } from '../app/ThemeProvider'
+import { extractImageFilesFromPasteEvent } from '../lib/clipboardImages'
 
 const useStyles = makeStyles({
   shell: {
@@ -63,6 +64,7 @@ type MarkdownEditorProps = {
   onScrollRatioChange?: (ratio: number) => void
   insertRequest?: { id: number; text: string }
   onInsertConsumed?: (id: number) => void
+  onPasteImages?: (files: File[]) => void
 }
 
 type FormatAction = 'bold' | 'italic' | 'link' | 'underline' | 'highlight'
@@ -73,6 +75,7 @@ export function MarkdownEditor({
   onScrollRatioChange,
   insertRequest,
   onInsertConsumed,
+  onPasteImages,
 }: MarkdownEditorProps) {
   const styles = useStyles()
   const { t } = useTranslation()
@@ -138,6 +141,18 @@ export function MarkdownEditor({
     onChange(editorView.state.doc.toString())
     onInsertConsumed?.(insertRequest.id)
   }, [editorView, insertRequest, onChange, onInsertConsumed])
+
+  useEffect(() => {
+    if (!editorView || !onPasteImages) return undefined
+    const handlePaste = (event: ClipboardEvent) => {
+      const files = extractImageFilesFromPasteEvent(event)
+      if (files.length === 0) return
+      event.preventDefault()
+      onPasteImages(files)
+    }
+    editorView.dom.addEventListener('paste', handlePaste)
+    return () => editorView.dom.removeEventListener('paste', handlePaste)
+  }, [editorView, onPasteImages])
 
   const handleUpdate = (update: ViewUpdate) => {
     if (!onScrollRatioChange || !update.scrollChanged) return

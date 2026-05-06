@@ -1,12 +1,13 @@
 import { Body1, Button, Field, Input, Popover, PopoverSurface, PopoverTrigger, Text, Title1, makeStyles, mergeClasses, tokens } from '@fluentui/react-components'
 import { DeleteRegular, RocketRegular, SaveRegular } from '@fluentui/react-icons'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearchParams } from 'react-router'
 import { ArticleMarkdownWorkspace } from '../components/ArticleMarkdownWorkspace'
 import { ErrorState } from '../components/ErrorState'
 import { LoadingState } from '../components/LoadingState'
 import { MarkdownAssetPanel } from '../components/MarkdownAssetPanel'
+import type { MarkdownAssetPanelHandle } from '../components/MarkdownAssetPanel'
 import { StatusBadge } from '../components/StatusBadge'
 import { deleteEditorSnapshot, readEditorSnapshot, writeEditorSnapshot } from '../lib/editorSnapshot'
 import { getJson, sendJson } from '../lib/apiClient'
@@ -136,6 +137,7 @@ export function DraftEditorPage() {
   const draftId = params.get('draftId') ?? ''
   const [state, setState] = useState<State>({ status: 'loading' })
   const pollTimer = useRef<number | undefined>(undefined)
+  const assetPanelRef = useRef<MarkdownAssetPanelHandle>(null)
 
   useEffect(() => {
     setState({ status: 'loading' })
@@ -174,25 +176,39 @@ export function DraftEditorPage() {
     return () => window.clearTimeout(timer)
   }, [state])
 
+  const resolveResourceUrl = useMemo(() => {
+    if (state.status !== 'ready') return undefined
+    return (src: string) =>
+      resolveMarkdownResourceUrl({
+        src,
+        relativeId: state.draft.relativeId,
+        publicConfig: state.publicConfig,
+        assets: state.assets,
+        assetObjectUrls: state.assetObjectUrls,
+      })
+  }, [
+    state.status === 'ready' ? state.draft.relativeId : '',
+    state.status === 'ready' ? state.publicConfig : undefined,
+    state.status === 'ready' ? state.assets : undefined,
+    state.status === 'ready' ? state.assetObjectUrls : undefined,
+  ])
+
   if (state.status === 'loading') return <LoadingState />
   if (state.status === 'error') return <ErrorState message={state.message} onRetry={() => window.location.reload()} />
 
-  const updateDraft = (patch: Partial<DraftRecord>) => setState({ ...state, draft: { ...state.draft, ...patch } })
+  const updateDraft = (patch: Partial<DraftRecord>) =>
+    setState((current) => (current.status === 'ready' ? { ...current, draft: { ...current.draft, ...patch } } : current))
   const normalizedRelativeId = normalizeRelativeId(state.draft.relativeId)
   const duplicateDraft = state.drafts.some((draft) => draft.id !== state.draft.id && draft.relativeId === normalizedRelativeId)
   const duplicatePost = !state.draft.id && state.postRelativeIds.includes(normalizedRelativeId)
   const canSaveDraft = isValidRelativeId(state.draft.relativeId) && !duplicateDraft && !duplicatePost
-  const insertMarkdown = (text: string) => setState({ ...state, insertRequest: { id: Date.now(), text } })
-  const replaceMarkdownPath = (oldPath: string, newPath: string) => updateDraft({ markdown: state.draft.markdown.split(oldPath).join(newPath) })
-  const resolveResourceUrl = (src: string) =>
-    resolveMarkdownResourceUrl({
-      src,
-      relativeId: state.draft.relativeId,
-      publicConfig: state.publicConfig,
-      assets: state.assets,
-      assetObjectUrls: state.assetObjectUrls,
-    })
-
+  const insertMarkdown = (text: string) => setState((current) => (current.status === 'ready' ? { ...current, insertRequest: { id: Date.now(), text } } : current))
+  const replaceMarkdownPath = (oldPath: string, newPath: string) =>
+    setState((current) =>
+      current.status === 'ready'
+        ? { ...current, draft: { ...current.draft, markdown: current.draft.markdown.split(oldPath).join(newPath) } }
+        : current,
+    )
   const save = () => {
     if (!canSaveDraft) {
       setState({ ...state, message: t('drafts.relativeIdRequired') })
@@ -308,11 +324,12 @@ export function DraftEditorPage() {
           <Input value={state.draft.relativeId} onChange={(_, data) => updateDraft({ relativeId: data.value })} placeholder="ap-csa/00-about-ap-csa" />
         </Field>
         <MarkdownAssetPanel
+          ref={assetPanelRef}
           relativeId={state.draft.relativeId}
           draftId={state.draft.id}
           assets={state.assets}
           sourceAssets={state.sourceAssets}
-          onAssetsChange={(assets) => setState({ ...state, assets })}
+          onAssetsChange={(assets) => setState((current) => (current.status === 'ready' ? { ...current, assets } : current))}
           onInsertMarkdown={insertMarkdown}
           onMarkdownPathReplace={replaceMarkdownPath}
           uploadDisabled={!canSaveDraft}
@@ -327,7 +344,10 @@ export function DraftEditorPage() {
               setState((current) => (current.status === 'ready' ? { ...current, assetObjectUrls } : current))
             }
             insertRequest={state.insertRequest}
-            onInsertConsumed={(id) => state.insertRequest?.id === id && setState({ ...state, insertRequest: undefined })}
+            onInsertConsumed={(id) =>
+              setState((current) => (current.status === 'ready' && current.insertRequest?.id === id ? { ...current, insertRequest: undefined } : current))
+            }
+            onPasteImages={(files) => void assetPanelRef.current?.handleIncomingImageFiles(files, 'paste')}
           />
         </Field>
       </section>
