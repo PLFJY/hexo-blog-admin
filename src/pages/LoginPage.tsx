@@ -1,8 +1,10 @@
-import { Button, Field, Input, Title1, makeStyles, tokens } from '@fluentui/react-components'
+import { Button, Field, Input, Text, Title1, makeStyles, tokens } from '@fluentui/react-components'
 import { LockClosedRegular } from '@fluentui/react-icons'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router'
+import { LanguageSwitcher } from '../app/LanguageSwitcher'
+import { ThemeSwitcher } from '../app/ThemeSwitcher'
 import { sendJson } from '../lib/apiClient'
 
 const useStyles = makeStyles({
@@ -12,23 +14,47 @@ const useStyles = makeStyles({
     placeItems: 'center',
     padding: tokens.spacingHorizontalXXL,
     backgroundImage:
-      'linear-gradient(rgba(12, 18, 31, 0.62), rgba(12, 18, 31, 0.74)), url("https://t.alcy.cc/ycy")',
+      'linear-gradient(var(--login-background-overlay), var(--login-background-overlay)), url("https://t.alcy.cc/ycy")',
     backgroundSize: 'cover',
     backgroundPosition: 'center',
+    backgroundColor: tokens.colorNeutralBackground2,
+    color: tokens.colorNeutralForeground1,
+    '@media (max-width: 480px)': {
+      padding: tokens.spacingHorizontalM,
+    },
+  },
+  toolbar: {
+    position: 'fixed',
+    top: tokens.spacingVerticalM,
+    right: tokens.spacingHorizontalM,
+    display: 'flex',
+    gap: tokens.spacingHorizontalXS,
+    padding: tokens.spacingVerticalXS,
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    borderRadius: tokens.borderRadiusMedium,
+    backgroundColor: tokens.colorNeutralBackground1,
+    boxShadow: tokens.shadow8,
   },
   panel: {
     width: 'min(420px, 100%)',
     display: 'grid',
-    gap: tokens.spacingVerticalL,
+    gap: tokens.spacingVerticalXL,
     padding: tokens.spacingVerticalXXL,
-    border: `1px solid rgba(255, 255, 255, 0.22)`,
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
     borderRadius: tokens.borderRadiusXLarge,
-    backgroundColor: 'rgba(20, 24, 36, 0.68)',
+    backgroundColor: tokens.colorNeutralBackground1,
     boxShadow: tokens.shadow64,
-    backdropFilter: 'blur(20px)',
+    '@media (max-width: 480px)': {
+      padding: tokens.spacingVerticalXL,
+    },
   },
-  title: {
+  heading: {
+    display: 'grid',
+    gap: tokens.spacingVerticalXS,
     textAlign: 'center',
+  },
+  subtitle: {
+    color: tokens.colorNeutralForeground3,
   },
   form: {
     display: 'grid',
@@ -60,8 +86,15 @@ export function LoginPage({ onLoggedIn }: LoginPageProps) {
 
   return (
     <main className={styles.root}>
+      <div className={styles.toolbar}>
+        <ThemeSwitcher />
+        <LanguageSwitcher />
+      </div>
       <section className={styles.panel}>
-        <Title1 className={styles.title}>{t('app.name')}</Title1>
+        <header className={styles.heading}>
+          <Title1>{t('app.name')}</Title1>
+          <Text className={styles.subtitle}>{t('app.subtitle')}</Text>
+        </header>
         <form
           className={styles.form}
           onSubmit={(event) => {
@@ -77,7 +110,7 @@ export function LoginPage({ onLoggedIn }: LoginPageProps) {
               autoFocus
             />
           </Field>
-          <Field label={t('auth.password')} validationMessage={error}>
+          <Field label={t('auth.password')} validationState={error ? 'error' : undefined} validationMessage={error}>
             <Input
               type="password"
               value={password}
