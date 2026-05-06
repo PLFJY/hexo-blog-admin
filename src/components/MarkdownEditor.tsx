@@ -11,7 +11,7 @@ import {
   TextItalicRegular,
   TextUnderlineRegular,
 } from '@fluentui/react-icons'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAppTheme } from '../app/ThemeProvider'
 import { extractImageFilesFromPasteEvent } from '../lib/clipboardImages'
@@ -101,9 +101,34 @@ export function MarkdownEditor({
   const { t } = useTranslation()
   const { resolvedMode } = useAppTheme()
   const [editorView, setEditorView] = useState<EditorView | null>(null)
+  const [localValue, setLocalValue] = useState(value)
+  const localValueRef = useRef(value)
+  const onChangeRef = useRef(onChange)
+  const composingRef = useRef(false)
+  const compositionFrameRef = useRef<number | undefined>(undefined)
+
+  useEffect(() => {
+    onChangeRef.current = onChange
+  }, [onChange])
+
+  useEffect(() => {
+    if (composingRef.current || value === localValueRef.current) return
+    localValueRef.current = value
+    setLocalValue(value)
+  }, [value])
+
+  useEffect(() => {
+    return () => window.cancelAnimationFrame(compositionFrameRef.current ?? 0)
+  }, [])
+
+  const emitChange = (nextValue: string) => {
+    localValueRef.current = nextValue
+    setLocalValue(nextValue)
+    onChangeRef.current(nextValue)
+  }
 
   const dispatchCurrentValue = (view: EditorView) => {
-    onChange(view.state.doc.toString())
+    emitChange(view.state.doc.toString())
     view.focus()
   }
 
@@ -155,9 +180,29 @@ export function MarkdownEditor({
       scrollIntoView: true,
     })
     editorView.focus()
-    onChange(editorView.state.doc.toString())
+    emitChange(editorView.state.doc.toString())
     onInsertConsumed?.(insertRequest.id)
   }, [editorView, insertRequest, onChange, onInsertConsumed])
+
+  useEffect(() => {
+    if (!editorView) return undefined
+    const handleCompositionStart = () => {
+      composingRef.current = true
+      window.cancelAnimationFrame(compositionFrameRef.current ?? 0)
+    }
+    const handleCompositionEnd = () => {
+      composingRef.current = false
+      compositionFrameRef.current = window.requestAnimationFrame(() => {
+        emitChange(editorView.state.doc.toString())
+      })
+    }
+    editorView.dom.addEventListener('compositionstart', handleCompositionStart)
+    editorView.dom.addEventListener('compositionend', handleCompositionEnd)
+    return () => {
+      editorView.dom.removeEventListener('compositionstart', handleCompositionStart)
+      editorView.dom.removeEventListener('compositionend', handleCompositionEnd)
+    }
+  }, [editorView])
 
   useEffect(() => {
     if (!editorView || !onPasteImages) return undefined
@@ -176,6 +221,12 @@ export function MarkdownEditor({
     onScrollRatioChange(getPreviewPosition(update.view, update.docChanged || update.selectionSet ? 'cursor' : 'scroll'))
   }
 
+  const handleChange = (nextValue: string) => {
+    localValueRef.current = nextValue
+    setLocalValue(nextValue)
+    if (!composingRef.current) onChangeRef.current(nextValue)
+  }
+
   return (
     <div className={styles.shell}>
       <div className={styles.toolbar}>
@@ -189,14 +240,14 @@ export function MarkdownEditor({
       </div>
       <CodeMirror
         className={styles.root}
-        value={value}
+        value={localValue}
         height="560px"
         theme={resolvedMode}
         extensions={[
           markdown(),
           EditorView.lineWrapping
         ]}
-        onChange={onChange}
+        onChange={handleChange}
         onCreateEditor={(view) => setEditorView(view)}
         onUpdate={handleUpdate}
         basicSetup={{
