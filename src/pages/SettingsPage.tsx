@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { useAdminBackground } from '../app/AdminBackgroundContext'
 import { ErrorState } from '../components/ErrorState'
 import { LoadingState } from '../components/LoadingState'
+import { PressRevealPasswordInput } from '../components/PressRevealPasswordInput'
 import { StatusBadge } from '../components/StatusBadge'
 import { ApiError, getJson, sendJson } from '../lib/apiClient'
 import type { AdminUiSettingsResponse, GitHubRepoStatus, SetupIncompleteError, SetupStatus, UpdateAdminUiSettingsRequest } from '../shared/apiTypes'
@@ -28,6 +29,7 @@ const useSettingsStyles = makeStyles({
   confirmSurface: { display: 'grid', gap: tokens.spacingVerticalM, width: '300px' },
   confirmActions: { display: 'flex', justifyContent: 'flex-end', gap: tokens.spacingHorizontalS },
   formActions: { display: 'flex', flexWrap: 'wrap', gap: tokens.spacingHorizontalS, alignItems: 'center' },
+  userForm: { display: 'flex', flexWrap: 'wrap', gap: tokens.spacingHorizontalS, alignItems: 'flex-end' },
   statusText: { color: tokens.colorNeutralForeground3 },
 })
 
@@ -194,6 +196,7 @@ type UserManagerProps = {
 
 function UserManager({ users, onCreate, onDelete }: UserManagerProps) {
   const styles = usePageStyles()
+  const localStyles = useSettingsStyles()
   const { t } = useTranslation()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -201,12 +204,12 @@ function UserManager({ users, onCreate, onDelete }: UserManagerProps) {
   return (
     <section className={styles.card}>
       <Title3>{t('auth.users')}</Title3>
-      <div className={styles.row}>
+      <div className={localStyles.userForm}>
         <Field label={t('auth.username')}>
           <Input value={username} onChange={(_, data) => setUsername(data.value)} />
         </Field>
         <Field label={t('auth.password')}>
-          <Input type="password" value={password} onChange={(_, data) => setPassword(data.value)} />
+          <PressRevealPasswordInput value={password} onChange={(_, data) => setPassword(data.value)} autoComplete="new-password" />
         </Field>
         <Button
           appearance="primary"

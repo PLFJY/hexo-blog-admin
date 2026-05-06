@@ -7,6 +7,7 @@ import { LanguageSwitcher } from '../app/LanguageSwitcher'
 import { ThemeSwitcher } from '../app/ThemeSwitcher'
 import { ErrorState } from '../components/ErrorState'
 import { LoadingState } from '../components/LoadingState'
+import { PressRevealPasswordInput } from '../components/PressRevealPasswordInput'
 import { getJson, sendJson } from '../lib/apiClient'
 import { safeRemoveLocalStorage } from '../lib/storage'
 import type { SetupStatus } from '../shared/apiTypes'
@@ -156,8 +157,7 @@ export function LoginPage({ onLoggedIn }: LoginPageProps) {
                 />
               </Field>
               <Field label={t('auth.password')} validationState={error ? 'error' : undefined} validationMessage={error}>
-                <Input
-                  type="password"
+                <PressRevealPasswordInput
                   value={password}
                   onChange={(_, data) => setPassword(data.value)}
                   autoComplete="current-password"
