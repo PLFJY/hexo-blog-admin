@@ -1,6 +1,6 @@
 import { markdown } from '@codemirror/lang-markdown'
 import CodeMirror from '@uiw/react-codemirror'
-import type { EditorView, ViewUpdate } from '@uiw/react-codemirror'
+import { EditorView, type ViewUpdate } from '@uiw/react-codemirror'
 import { Button, Tooltip, makeStyles, tokens } from '@fluentui/react-components'
 import {
   ArrowRedoRegular,
@@ -162,7 +162,10 @@ export function MarkdownEditor({
         value={value}
         height="560px"
         theme={resolvedMode}
-        extensions={[markdown()]}
+        extensions={[
+          markdown(),
+          EditorView.lineWrapping
+        ]}
         onChange={onChange}
         onCreateEditor={(view) => setEditorView(view)}
         onUpdate={handleUpdate}
@@ -170,7 +173,7 @@ export function MarkdownEditor({
           foldGutter: true,
           highlightActiveLine: true,
           highlightActiveLineGutter: true,
-          lineNumbers: true,
+          lineNumbers: true
         }}
       />
     </div>
