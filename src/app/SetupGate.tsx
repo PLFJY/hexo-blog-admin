@@ -24,9 +24,9 @@ export function SetupGate() {
       })
   }
 
-  const refreshSetup = async () => {
+  const refreshSetup = async (options?: { commit?: boolean }) => {
     const setup = await getJson<SetupStatus>('/setup/status')
-    setState({ status: 'ready', setup })
+    if (options?.commit !== false) setState({ status: 'ready', setup })
     return setup
   }
 

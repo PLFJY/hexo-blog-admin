@@ -1,4 +1,4 @@
-import { Button, Field, Input, Text, Title1, makeStyles, tokens } from '@fluentui/react-components'
+import { Button, Field, Input, Text, Title1, makeStyles, mergeClasses, tokens } from '@fluentui/react-components'
 import { LockClosedRegular } from '@fluentui/react-icons'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router'
 import { LanguageSwitcher } from '../app/LanguageSwitcher'
 import { ThemeSwitcher } from '../app/ThemeSwitcher'
 import { sendJson } from '../lib/apiClient'
+import { safeGetLocalStorage, safeRemoveLocalStorage } from '../lib/storage'
 
 const useStyles = makeStyles({
   root: {
@@ -48,6 +49,15 @@ const useStyles = makeStyles({
       padding: tokens.spacingVerticalXL,
     },
   },
+  panelFromSetup: {
+    animationName: {
+      from: { opacity: 0, transform: 'scale(0.72) translateY(12px)' },
+      to: { opacity: 1, transform: 'scale(1) translateY(0)' },
+    },
+    animationDuration: '0.38s',
+    animationTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
+    animationFillMode: 'both',
+  },
   heading: {
     display: 'grid',
     gap: tokens.spacingVerticalXS,
@@ -73,6 +83,11 @@ export function LoginPage({ onLoggedIn }: LoginPageProps) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [fromSetup] = useState(() => {
+    const enabled = safeGetLocalStorage('setup-login-transition') === '1'
+    if (enabled) safeRemoveLocalStorage('setup-login-transition')
+    return enabled
+  })
 
   const login = () => {
     setError('')
@@ -90,7 +105,7 @@ export function LoginPage({ onLoggedIn }: LoginPageProps) {
         <ThemeSwitcher />
         <LanguageSwitcher />
       </div>
-      <section className={styles.panel}>
+      <section className={fromSetup ? mergeClasses(styles.panel, styles.panelFromSetup) : styles.panel}>
         <header className={styles.heading}>
           <Title1>{t('app.name')}</Title1>
           <Text className={styles.subtitle}>{t('app.subtitle')}</Text>

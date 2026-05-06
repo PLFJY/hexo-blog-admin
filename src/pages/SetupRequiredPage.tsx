@@ -1,10 +1,11 @@
 import { Button, Body1, FluentProvider, Text, Title1, Title3, makeStyles, mergeClasses, tokens, webDarkTheme, webLightTheme } from '@fluentui/react-components'
-import { ArrowClockwiseRegular, CheckmarkCircleRegular, CircleRegular } from '@fluentui/react-icons'
+import { ArrowClockwiseRegular, CheckmarkCircleRegular, CircleRegular, CopyRegular } from '@fluentui/react-icons'
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { useAppTheme } from '../app/ThemeProvider'
 import { StatusBadge } from '../components/StatusBadge'
+import { safeSetLocalStorage } from '../lib/storage'
 import type { SetupStatus } from '../shared/apiTypes'
 import { usePageStyles } from './pageStyles'
 
@@ -88,13 +89,28 @@ const useSetupStyles = makeStyles({
     padding: 0,
     listStyleType: 'none',
   },
-  missingItem: {
+  bindingGrid: {
     display: 'grid',
+    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+    gap: tokens.spacingHorizontalM,
+    '@media (max-width: 960px)': {
+      gridTemplateColumns: '1fr',
+    },
+  },
+  missingItem: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
     gap: tokens.spacingVerticalXS,
     padding: tokens.spacingVerticalM,
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     borderRadius: tokens.borderRadiusMedium,
     backgroundColor: tokens.colorNeutralBackground1,
+  },
+  missingItemText: {
+    display: 'grid',
+    gap: tokens.spacingVerticalXS,
+    minWidth: 0,
   },
   okPanel: {
     borderTopColor: tokens.colorPaletteGreenBorder2,
@@ -111,6 +127,36 @@ const useSetupStyles = makeStyles({
   disabledStep: {
     opacity: 0.58,
     cursor: 'not-allowed',
+  },
+  codeHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: tokens.spacingHorizontalM,
+  },
+  bindingCard: {
+    display: 'grid',
+    gap: tokens.spacingVerticalM,
+    alignContent: 'start',
+    padding: tokens.spacingVerticalL,
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    borderRadius: tokens.borderRadiusMedium,
+    backgroundColor: tokens.colorNeutralBackground1,
+    minWidth: 0,
+  },
+  bindingCardReady: {
+    borderTopColor: tokens.colorPaletteGreenBorder2,
+    borderRightColor: tokens.colorPaletteGreenBorder2,
+    borderBottomColor: tokens.colorPaletteGreenBorder2,
+    borderLeftColor: tokens.colorPaletteGreenBorder2,
+    backgroundColor: tokens.colorPaletteGreenBackground1,
+  },
+  bindingNameRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: tokens.spacingHorizontalS,
+    minWidth: 0,
   },
   portalProvider: {
     minHeight: '100vh',
@@ -150,11 +196,20 @@ const useSetupStyles = makeStyles({
       padding: tokens.spacingVerticalXL,
     },
   },
+  shellCompleting: {
+    animationName: {
+      from: { opacity: 1, transform: 'scale(1)' },
+      to: { opacity: 0, transform: 'scale(0.72) translateY(12px)' },
+    },
+    animationDuration: '0.36s',
+    animationTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
+    animationFillMode: 'both',
+  },
 })
 
 type SetupRequiredPageProps = {
   setup: SetupStatus
-  onRefresh: () => Promise<SetupStatus>
+  onRefresh: (options?: { commit?: boolean }) => Promise<SetupStatus>
 }
 
 type SetupGroup = {
@@ -191,6 +246,8 @@ const setupGroups: SetupGroup[] = [
   },
 ]
 
+const bindingItems = ['BLOG_ADMIN_KV', 'BLOG_ADMIN_DB', 'BLOG_ASSET_CACHE'] as const
+
 function setupInstructionKey(item: string) {
   if (item === 'BLOG_ADMIN_KV') return 'setup.instructions.kv'
   if (item === 'BLOG_ADMIN_DB') return 'setup.instructions.d1'
@@ -200,6 +257,24 @@ function setupInstructionKey(item: string) {
   return 'setup.instructions.variable'
 }
 
+function setupValuePlaceholder(item: string) {
+  if (item === 'GITHUB_OWNER') return 'PLFJY'
+  if (item === 'GITHUB_REPO') return 'blog'
+  if (item === 'GITHUB_BRANCH') return 'main'
+  if (item === 'POSTS_DIR') return 'source/_posts'
+  if (item === 'BLOG_PUBLIC_URL') return 'https://your-blog-domain'
+  if (item === 'ADMIN_INDEX_PATH') return '/admin-index.json'
+  if (item === 'WORKFLOW_FILE') return 'Build Pages.yml'
+  if (item === 'ADMIN_USERNAME') return 'admin'
+  if (item === 'ADMIN_PASSWORD') return 'your-admin-password'
+  if (item === 'GITHUB_TOKEN') return 'github_pat_...'
+  return ''
+}
+
+function setupSnippet(items: string[]) {
+  return items.map((item) => `${item}=${setupValuePlaceholder(item)}`).join('\n')
+}
+
 export function SetupRequiredPage({ setup, onRefresh }: SetupRequiredPageProps) {
   const styles = usePageStyles()
   const localStyles = useSetupStyles()
@@ -207,6 +282,7 @@ export function SetupRequiredPage({ setup, onRefresh }: SetupRequiredPageProps) 
   const { resolvedMode } = useAppTheme()
   const [selectedGroupId, setSelectedGroupId] = useState(setupGroups[0].id)
   const [checking, setChecking] = useState(false)
+  const [completing, setCompleting] = useState(false)
   const missingSet = useMemo(() => new Set(setup.missing), [setup.missing])
   const groups = setupGroups.map((group) => ({
     ...group,
@@ -218,6 +294,11 @@ export function SetupRequiredPage({ setup, onRefresh }: SetupRequiredPageProps) 
   const firstIncompleteIndex = groups.findIndex((group) => group.missingItems.length > 0)
   const currentAllowedIndex = firstIncompleteIndex === -1 ? groups.length - 1 : firstIncompleteIndex
   const isLastGroup = selectedIndex === groups.length - 1
+  const currentSnippet = setupSnippet(selectedGroup.items)
+  const showConfigSnippet = selectedGroup.id !== 'data'
+  const copyText = (text: string) => {
+    void navigator.clipboard?.writeText(text)
+  }
 
   const missingItemsFor = (setupStatus: SetupStatus, group: SetupGroup) => {
     const nextMissingSet = new Set(setupStatus.missing)
@@ -228,20 +309,30 @@ export function SetupRequiredPage({ setup, onRefresh }: SetupRequiredPageProps) 
     if (checking) return
     setChecking(true)
     try {
-      const nextSetup = await onRefresh()
+      const nextSetup = await onRefresh({ commit: !isLastGroup })
       const currentDefinition = setupGroups.find((group) => group.id === selectedGroup.id) ?? setupGroups[0]
       const sequentialNext = setupGroups[selectedIndex + 1]
       if (missingItemsFor(nextSetup, currentDefinition).length === 0 && sequentialNext) {
         setSelectedGroupId(sequentialNext.id)
+      } else if (isLastGroup) {
+        if (nextSetup.configured) {
+          safeSetLocalStorage('setup-login-transition', '1')
+          setCompleting(true)
+          window.setTimeout(() => {
+            void onRefresh()
+          }, 360)
+        } else {
+          await onRefresh()
+        }
       }
     } finally {
-      setChecking(false)
+      if (!completing) setChecking(false)
     }
   }
 
   const content = (
     <section className={localStyles.overlay}>
-      <div className={localStyles.shell}>
+      <div className={mergeClasses(localStyles.shell, completing && localStyles.shellCompleting)}>
       <header className={styles.header}>
         <Title1>{t('setup.title')}</Title1>
         <Body1>{t('setup.description')}</Body1>
@@ -281,24 +372,79 @@ export function SetupRequiredPage({ setup, onRefresh }: SetupRequiredPageProps) 
         </nav>
 
         <section key={selectedGroup.id} className={localStyles.detail}>
-          <section className={mergeClasses(styles.card, selectedGroup.missingItems.length === 0 && localStyles.okPanel)}>
+          <section className={mergeClasses(styles.card, selectedGroup.missingItems.length === 0 && selectedGroup.id !== 'data' && localStyles.okPanel)}>
             <Title3>{t(selectedGroup.titleKey)}</Title3>
             <Body1>{t(selectedGroup.descriptionKey)}</Body1>
-            {selectedGroup.missingItems.length === 0 ? (
+            {selectedGroup.id === 'data' ? (
+              <Text>{selectedGroup.missingItems.length === 0 ? t('setup.groupReady') : t('setup.groupMissing', { count: selectedGroup.missingItems.length })}</Text>
+            ) : selectedGroup.missingItems.length === 0 ? (
               <Text>{t('setup.groupReady')}</Text>
             ) : (
               <ul className={localStyles.missingList}>
                 {selectedGroup.missingItems.map((item) => (
                   <li key={item} className={localStyles.missingItem}>
-                    <Text weight="semibold">
-                      <code>{item}</code>
-                    </Text>
-                    <Text>{t(setupInstructionKey(item), { item })}</Text>
+                    <span className={localStyles.missingItemText}>
+                      <Text weight="semibold">
+                        <code>{item}</code>
+                      </Text>
+                      <Text>{t(setupInstructionKey(item), { item })}</Text>
+                    </span>
+                    <Button appearance="subtle" icon={<CopyRegular />} aria-label={t('setup.copyName', { item })} onClick={() => copyText(item)} />
                   </li>
                 ))}
               </ul>
             )}
           </section>
+
+          {selectedGroup.id === 'data' ? (
+            <section className={styles.card}>
+              <div className={localStyles.bindingGrid}>
+                {bindingItems.map((item) => {
+                  const ready = !missingSet.has(item)
+                  return (
+                    <section key={item} className={mergeClasses(localStyles.bindingCard, ready && localStyles.bindingCardReady)}>
+                      <div className={localStyles.bindingNameRow}>
+                        <Text weight="semibold">
+                          <code>{item}</code>
+                        </Text>
+                        <Button appearance="subtle" icon={<CopyRegular />} aria-label={t('setup.copyName', { item })} onClick={() => copyText(item)} />
+                      </div>
+                      <StatusBadge status={ready ? 'success' : 'danger'}>
+                        {ready ? t('setup.bindingReady') : t('setup.bindingMissing')}
+                      </StatusBadge>
+                      <Text>{t(setupInstructionKey(item), { item })}</Text>
+                    </section>
+                  )
+                })}
+                {missingSet.has('BLOG_ADMIN_DB_SCHEMA') ? (
+                  <section className={localStyles.bindingCard}>
+                    <div className={localStyles.bindingNameRow}>
+                      <Text weight="semibold">
+                        <code>BLOG_ADMIN_DB_SCHEMA</code>
+                      </Text>
+                      <Button appearance="subtle" icon={<CopyRegular />} aria-label={t('setup.copyName', { item: 'BLOG_ADMIN_DB_SCHEMA' })} onClick={() => copyText('BLOG_ADMIN_DB_SCHEMA')} />
+                    </div>
+                    <StatusBadge status="danger">{t('setup.bindingMissing')}</StatusBadge>
+                    <Text>{t(setupInstructionKey('BLOG_ADMIN_DB_SCHEMA'), { item: 'BLOG_ADMIN_DB_SCHEMA' })}</Text>
+                  </section>
+                ) : null}
+              </div>
+            </section>
+          ) : null}
+
+          {showConfigSnippet ? (
+            <section className={styles.card}>
+              <div className={localStyles.codeHeader}>
+                <Title3>{t('setup.copyBlockTitle')}</Title3>
+                <Button appearance="secondary" icon={<CopyRegular />} onClick={() => copyText(currentSnippet)}>
+                  {t('actions.copy')}
+                </Button>
+              </div>
+              <pre className={styles.codeBlock}>
+                <code>{currentSnippet}</code>
+              </pre>
+            </section>
+          ) : null}
 
           <section className={styles.card}>
             <Title3>{t(selectedGroup.id === 'data' ? 'setup.automaticTitle' : 'setup.nextStepTitle')}</Title3>
