@@ -69,6 +69,19 @@ type MarkdownEditorProps = {
 
 type FormatAction = 'bold' | 'italic' | 'link' | 'underline' | 'highlight'
 
+const clampRatio = (ratio: number) => Math.max(0, Math.min(1, ratio))
+
+const getPreviewRatio = (view: EditorView) => {
+  const scrollDom = view.scrollDOM
+  const maxScrollTop = scrollDom.scrollHeight - scrollDom.clientHeight
+  if (maxScrollTop > 0) return clampRatio(scrollDom.scrollTop / maxScrollTop)
+
+  const lineCount = view.state.doc.lines
+  if (lineCount <= 1) return 0
+  const line = view.state.doc.lineAt(view.state.selection.main.head)
+  return clampRatio((line.number - 1) / (lineCount - 1))
+}
+
 export function MarkdownEditor({
   value,
   onChange,
@@ -120,10 +133,7 @@ export function MarkdownEditor({
   useEffect(() => {
     if (!editorView || !onScrollRatioChange) return undefined
     const scrollDom = editorView.scrollDOM
-    const handleScroll = () => {
-      const maxScrollTop = scrollDom.scrollHeight - scrollDom.clientHeight
-      onScrollRatioChange(maxScrollTop > 0 ? scrollDom.scrollTop / maxScrollTop : 0)
-    }
+    const handleScroll = () => onScrollRatioChange(getPreviewRatio(editorView))
     scrollDom.addEventListener('scroll', handleScroll, { passive: true })
     handleScroll()
     return () => scrollDom.removeEventListener('scroll', handleScroll)
@@ -155,10 +165,8 @@ export function MarkdownEditor({
   }, [editorView, onPasteImages])
 
   const handleUpdate = (update: ViewUpdate) => {
-    if (!onScrollRatioChange || !update.scrollChanged) return
-    const scrollDom = update.view.scrollDOM
-    const maxScrollTop = scrollDom.scrollHeight - scrollDom.clientHeight
-    onScrollRatioChange(maxScrollTop > 0 ? scrollDom.scrollTop / maxScrollTop : 0)
+    if (!onScrollRatioChange || (!update.scrollChanged && !update.docChanged && !update.selectionSet)) return
+    onScrollRatioChange(getPreviewRatio(update.view))
   }
 
   return (
