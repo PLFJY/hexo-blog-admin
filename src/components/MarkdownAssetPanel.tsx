@@ -16,7 +16,7 @@ import {
   mergeClasses,
   tokens,
 } from '@fluentui/react-components'
-import { CopyRegular, DeleteRegular, ImageAddRegular, OpenRegular, RenameRegular } from '@fluentui/react-icons'
+import { CopyRegular, DeleteRegular, ImageAddRegular, OpenRegular, RenameRegular, ResizeImageRegular } from '@fluentui/react-icons'
 import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { buildApiUrl, getJson, sendJson } from '../lib/apiClient'
@@ -214,7 +214,7 @@ export const MarkdownAssetPanel = forwardRef<MarkdownAssetPanelHandle, MarkdownA
     return btoa(binary)
   }
 
-  const upload = useCallback(async (file: File) => {
+  const upload = useCallback(async (file: File, options?: { insertMarkdown?: boolean }) => {
     setMessage({ kind: 'info', text: t('assets.uploading') })
     const buffer = await readFileAsArrayBuffer(file)
     const response = await getJson<DraftAssetUploadResponse>('/assets', {
@@ -229,7 +229,7 @@ export const MarkdownAssetPanel = forwardRef<MarkdownAssetPanelHandle, MarkdownA
     })
     onAssetsChange(response.manifest.assets)
     await refresh(response.asset.draftId)
-    onInsertMarkdown(`![${response.asset.filename}](${response.asset.markdownPath})`)
+    if (options?.insertMarkdown !== false) onInsertMarkdown(`![${response.asset.filename}](${response.asset.markdownPath})`)
     return response.asset
   }, [onAssetsChange, onInsertMarkdown, relativeId, t])
 
@@ -334,6 +334,51 @@ export const MarkdownAssetPanel = forwardRef<MarkdownAssetPanelHandle, MarkdownA
       .finally(() => setBusyKey(null))
   }
 
+  const compressTemp = async (asset: DraftAsset) => {
+    setBusyKey(asset.key)
+    try {
+      if (!asset.contentType.startsWith('image/')) {
+        setMessage({ kind: 'error', text: t('assets.notImage') })
+        return
+      }
+      const response = await fetch(buildApiUrl(`/assets/blob?key=${encodeURIComponent(asset.key)}`), { credentials: 'include' })
+      if (!response.ok) throw new Error(`Failed to read cached image: ${response.status}`)
+      const blob = await response.blob()
+      const file = new File([blob], asset.filename, { type: asset.contentType || blob.type || 'application/octet-stream' })
+      if (!isCompressibleImage(file)) {
+        setMessage({ kind: 'info', text: t('assets.compressionNotSupported') })
+        return
+      }
+
+      setMessage({ kind: 'info', text: t('assets.compressing') })
+      const result = await compressImageToWebp(file)
+      if (result.compressedSize >= result.originalSize) {
+        setMessage({ kind: 'info', text: t('assets.compressionNotUseful') })
+        return
+      }
+
+      setMessage({ kind: 'info', text: t('assets.uploading') })
+      const nextAsset = await upload(result.file, { insertMarkdown: false })
+      if (nextAsset.markdownPath !== asset.markdownPath) onMarkdownPathReplace?.(asset.markdownPath, nextAsset.markdownPath)
+      if (nextAsset.key !== asset.key) {
+        await sendJson<{ deleted: boolean }>(`/assets?key=${encodeURIComponent(asset.key)}`, 'DELETE')
+        await refresh(nextAsset.draftId)
+      }
+      setMessage({
+        kind: 'success',
+        text: t('assets.compressCacheSuccess', {
+          filename: nextAsset.filename,
+          originalSize: formatBytes(result.originalSize),
+          finalSize: formatBytes(result.compressedSize),
+        }),
+      })
+    } catch (error) {
+      setMessage({ kind: 'error', text: `${t('assets.compressionFailed')}: ${error instanceof Error ? error.message : 'Unknown error'}` })
+    } finally {
+      setBusyKey(null)
+    }
+  }
+
   const renameTemp = (asset: DraftAsset, filename: string) => {
     setBusyKey(asset.key)
     void sendJson<RenameDraftAssetResponse>('/assets/rename', 'POST', { key: asset.key, filename })
@@ -415,12 +460,15 @@ export const MarkdownAssetPanel = forwardRef<MarkdownAssetPanelHandle, MarkdownA
               {asset.kind === 'source' ? (
                 <Button appearance="subtle" icon={<RenameRegular />} onClick={() => setSourceRenameAsset(asset)}>{t('actions.rename')}</Button>
               ) : (
-                <RenameAssetPopover
-                  initialFilename={asset.filename}
-                  busy={busyKey === asset.key}
-                  source={asset.kind}
-                  onConfirm={(filename) => renameTemp(asset, filename)}
-                />
+                <>
+                  <Button appearance="subtle" icon={<ResizeImageRegular />} disabled={busyKey === asset.key} onClick={() => void compressTemp(asset)}>{t('assets.compressCache')}</Button>
+                  <RenameAssetPopover
+                    initialFilename={asset.filename}
+                    busy={busyKey === asset.key}
+                    source={asset.kind}
+                    onConfirm={(filename) => renameTemp(asset, filename)}
+                  />
+                </>
               )}
               {asset.kind === 'temp' ? (
                 <DeleteAssetPopover busy={busyKey === asset.key} onConfirm={() => removeTemp(asset)} />
