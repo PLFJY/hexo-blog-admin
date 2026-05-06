@@ -18,6 +18,7 @@ import {
 } from './routes/postRoutes'
 import { json } from './utils/response'
 import { getSetupStatus } from './utils/setup'
+import { ensureD1Schema } from './services/d1/d1Schema'
 import { clearSessionCookie, isAuthenticated } from './utils/auth'
 
 const health: HealthResponse = {
@@ -28,6 +29,27 @@ const health: HealthResponse = {
 
 const setupBypassPaths = new Set(['/api/health', '/api/setup/status'])
 const authBypassPaths = new Set(['/api/health', '/api/setup/status', '/api/auth/status', '/api/auth/login'])
+
+function apiErrorResponse(error: unknown): Response {
+  const message = error instanceof Error ? error.message : 'Unknown error'
+  const lowerMessage = message.toLowerCase()
+  const isMissingD1Schema =
+    lowerMessage.includes('no such table: drafts') ||
+    lowerMessage.includes('no such table: draft_assets')
+
+  if (isMissingD1Schema) {
+    return json(
+      {
+        error: 'D1_MIGRATIONS_REQUIRED',
+        message: 'D1 tables are missing. Open `/api/setup/status` or refresh the setup page so the Worker can initialize BLOG_ADMIN_DB automatically.',
+      },
+      { status: 503 },
+    )
+  }
+
+  console.error(error)
+  return json({ error: 'INTERNAL_ERROR', message }, { status: 500 })
+}
 
 function isStaticAssetPath(pathname: string) {
   return (
@@ -56,10 +78,12 @@ async function handleApiRequest(request: Request, env: WorkerEnv, pathname: stri
   if (pathname === '/api/config/public') return handlePublicConfig(env)
   if (pathname === '/api/auth/status') return handleAuthStatus(request, env)
 
-  const setup = getSetupStatus(env)
+  const setup = await getSetupStatus(env)
   if (!setup.configured && !setupBypassPaths.has(pathname)) {
     return json({ error: 'SETUP_INCOMPLETE', missing: setup.missing }, { status: 503 })
   }
+
+  if (env.BLOG_ADMIN_DB) await ensureD1Schema(env)
 
   if (pathname === '/api/auth/login' && request.method === 'POST') return handleLogin(request, env)
   if (pathname === '/api/auth/logout' && request.method === 'POST') return handleLogout(request)
@@ -109,7 +133,11 @@ export default {
     const pathname = url.pathname
 
     if (pathname.startsWith('/api/')) {
-      return handleApiRequest(request, env, pathname)
+      try {
+        return await handleApiRequest(request, env, pathname)
+      } catch (error) {
+        return apiErrorResponse(error)
+      }
     }
 
     if (env.ASSETS) {

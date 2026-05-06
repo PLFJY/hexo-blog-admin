@@ -1,8 +1,9 @@
 import type { SetupStatus } from '../../shared/apiTypes'
+import { ensureD1Schema } from '../services/d1/d1Schema'
 import type { WorkerEnv } from '../env'
 import { hasValue, publicConfig } from './config'
 
-export function getSetupStatus(env: WorkerEnv): SetupStatus {
+export async function getSetupStatus(env: WorkerEnv): Promise<SetupStatus> {
   const missing: string[] = []
 
   if (!hasValue(env.GITHUB_OWNER)) missing.push('GITHUB_OWNER')
@@ -18,6 +19,15 @@ export function getSetupStatus(env: WorkerEnv): SetupStatus {
   if (!env.BLOG_ADMIN_KV) missing.push('BLOG_ADMIN_KV')
   if (!env.BLOG_ADMIN_DB) missing.push('BLOG_ADMIN_DB')
   if (!env.BLOG_ASSET_CACHE) missing.push('BLOG_ASSET_CACHE')
+
+  if (env.BLOG_ADMIN_DB) {
+    try {
+      await ensureD1Schema(env)
+    } catch (error) {
+      console.error(error)
+      missing.push('BLOG_ADMIN_DB_SCHEMA')
+    }
+  }
 
   return {
     configured: missing.length === 0,

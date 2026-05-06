@@ -3,6 +3,7 @@ import type { WorkerEnv } from '../../env'
 import { assertSafeImageFilename, assertSafeRelativeId } from '../../utils/pathSafety'
 import { buildPostAssetPaths } from '../assets/assetPath'
 import { createDraftId } from './draftIds'
+import { ensureD1Schema } from './d1Schema'
 
 type DraftAssetRow = {
   id: string
@@ -129,6 +130,7 @@ export async function listDraftAssetManifests(env: WorkerEnv): Promise<DraftAsse
 }
 
 export async function putDraftAsset(env: WorkerEnv, options: PutDraftAssetOptions): Promise<{ asset: DraftAsset; manifest: DraftAssetManifest }> {
+  await ensureD1Schema(env)
   const relativeId = assertSafeRelativeId(options.relativeId)
   const draftId = createDraftId(relativeId)
   const filename = assertSafeImageFilename(options.filename)
@@ -139,6 +141,14 @@ export async function putDraftAsset(env: WorkerEnv, options: PutDraftAssetOption
     filename,
   })
   const now = nowIso()
+  await db(env)
+    .prepare(
+      `INSERT INTO drafts (id, relative_id, title, markdown, created_at, updated_at)
+       VALUES (?1, ?2, '', '', ?3, ?3)
+       ON CONFLICT(id) DO NOTHING`,
+    )
+    .bind(draftId, relativeId, now)
+    .run()
   const asset: DraftAsset = {
     key,
     draftId,

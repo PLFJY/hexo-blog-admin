@@ -141,11 +141,15 @@ The D1 binding name must be:
 BLOG_ADMIN_DB
 ```
 
-Apply D1 migrations:
+Initialize the D1 schema. A D1 binding only lets the Worker connect to the database; after `BLOG_ADMIN_DB` is bound, this project automatically creates the `drafts` / `draft_assets` tables from the Worker. Opening the admin app or requesting `/api/setup/status` triggers initialization.
+
+If you prefer explicit initialization before deployment, you can still run:
 
 ```bash
 pnpm wrangler d1 migrations apply hexo-blog-admin
 ```
+
+If automatic initialization fails, the setup page shows `BLOG_ADMIN_DB_SCHEMA`. Check Worker logs and D1 binding permissions, then refresh the page.
 
 Create an R2 bucket for temporary draft assets. The bucket name can be anything, but the Worker binding name must be `BLOG_ASSET_CACHE`:
 
@@ -168,6 +172,15 @@ If your deployment flow requires an explicit id in `wrangler.jsonc`, use the rea
 Bind your own KV/R2 resources to the names above in the Cloudflare Dashboard. KV only keeps admin-index cache, session/auth state, and small configuration cache entries; draft Markdown and draft image metadata are stored in D1, while R2 continues to store temporary draft image objects.
 
 KV/D1/R2 bindings are required too: without `BLOG_ADMIN_KV`, `BLOG_ADMIN_DB`, or `BLOG_ASSET_CACHE`, the admin UI will remain blocked.
+
+Recommended deployment order:
+
+```bash
+pnpm wrangler d1 create hexo-blog-admin
+pnpm deploy
+```
+
+After deployment, confirm that `BLOG_ADMIN_DB` is bound in the Cloudflare Dashboard. The Worker will initialize the D1 schema automatically when the admin app starts.
 
 ## Deployment Entrypoint
 

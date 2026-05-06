@@ -141,11 +141,15 @@ D1 binding 名必须是：
 BLOG_ADMIN_DB
 ```
 
-应用 D1 migrations：
+初始化 D1 表结构。D1 binding 只表示 Worker 能连接到这个 database；本项目会在 `BLOG_ADMIN_DB` 已绑定后由 Worker 自动创建 `drafts` / `draft_assets` 表，首次打开后台或请求 `/api/setup/status` 即会触发。
+
+如果你希望在部署前显式初始化，也可以手动执行：
 
 ```bash
 pnpm wrangler d1 migrations apply hexo-blog-admin
 ```
+
+如果自动初始化失败，setup 页面会显示 `BLOG_ADMIN_DB_SCHEMA`，请查看 Worker 日志和 D1 绑定权限后刷新重试。
 
 创建用于草稿图片临时缓存的 R2 bucket。bucket 名字可以自定，但 Worker binding 名必须是 `BLOG_ASSET_CACHE`：
 
@@ -168,6 +172,15 @@ BLOG_ASSET_CACHE
 请在 Cloudflare Dashboard 的 Worker Bindings 里把你自己的 KV/R2 资源绑定到上面的名称。KV 只保留 admin-index cache、session/auth 状态和少量配置缓存；草稿正文和草稿图片 metadata 存在 D1，R2 继续保存草稿图片临时对象。
 
 KV/D1/R2 binding 同样是必需项：没有绑定 `BLOG_ADMIN_KV`、`BLOG_ADMIN_DB` 或 `BLOG_ASSET_CACHE` 时，后台不会进入主界面。
+
+推荐部署顺序：
+
+```bash
+pnpm wrangler d1 create hexo-blog-admin
+pnpm deploy
+```
+
+部署完成后，在 Cloudflare Dashboard 中确认 `BLOG_ADMIN_DB` 已绑定；打开后台时 Worker 会自动完成 D1 表结构初始化。
 
 ## 部署入口
 

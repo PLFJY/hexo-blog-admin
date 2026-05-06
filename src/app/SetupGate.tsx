@@ -24,11 +24,17 @@ export function SetupGate() {
       })
   }
 
+  const refreshSetup = async () => {
+    const setup = await getJson<SetupStatus>('/setup/status')
+    setState({ status: 'ready', setup })
+    return setup
+  }
+
   useEffect(load, [])
 
   if (state.status === 'loading') return <LoadingState />
   if (state.status === 'error') return <ErrorState message={state.message} onRetry={load} />
-  if (!state.setup.configured) return <SetupRequiredPage setup={state.setup} onRefresh={load} />
+  if (!state.setup.configured) return <SetupRequiredPage setup={state.setup} onRefresh={refreshSetup} />
 
   return <Outlet />
 }

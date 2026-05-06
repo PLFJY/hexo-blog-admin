@@ -60,7 +60,7 @@ export async function saveDraft(env: WorkerEnv, request: SaveDraftRequest, id?: 
   }
 
   const now = new Date().toISOString()
-  const draftId = id && id !== emptyDraftId ? id : createDraftId(request.relativeId)
+  const draftId = id && resolveDraftId(id) ? resolveDraftId(id) : createDraftId(request.relativeId)
   const existing = await getDraft(env, draftId)
   const relativeId = normalizeRelativeId(request.relativeId)
   const title = extractFrontMatterTitle(request.markdown)
