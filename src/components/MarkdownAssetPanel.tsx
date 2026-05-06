@@ -380,6 +380,10 @@ export const MarkdownAssetPanel = forwardRef<MarkdownAssetPanelHandle, MarkdownA
   }
 
   const renameTemp = (asset: DraftAsset, filename: string) => {
+    if (assets.some((item) => item.key !== asset.key && item.filename === filename.trim())) {
+      setMessage({ kind: 'error', text: t('assets.filenameDuplicate') })
+      return
+    }
     setBusyKey(asset.key)
     void sendJson<RenameDraftAssetResponse>('/assets/rename', 'POST', { key: asset.key, filename })
       .then((response) => {
@@ -482,6 +486,7 @@ export const MarkdownAssetPanel = forwardRef<MarkdownAssetPanelHandle, MarkdownA
       {sourceRenameAsset ? (
         <SourceAssetRenameDialog
           asset={sourceRenameAsset}
+          existingFilenames={sourceAssets.filter((asset) => asset.repoPath !== sourceRenameAsset.repoPath).map((asset) => asset.filename)}
           onClose={() => setSourceRenameAsset(null)}
           onConfirm={(filename) => {
             onSourceAssetRename?.(sourceRenameAsset, filename)
@@ -504,16 +509,19 @@ export const MarkdownAssetPanel = forwardRef<MarkdownAssetPanelHandle, MarkdownA
 
 function SourceAssetRenameDialog({
   asset,
+  existingFilenames,
   onClose,
   onConfirm,
 }: {
   asset: ImageWarehouseSourceAsset
+  existingFilenames: string[]
   onClose: () => void
   onConfirm: (filename: string) => void
 }) {
   const styles = useStyles()
   const { t } = useTranslation()
   const [filename, setFilename] = useState(asset.filename)
+  const duplicate = existingFilenames.includes(filename.trim())
   return (
     <Dialog open onOpenChange={(_, data) => !data.open && onClose()}>
       <DialogSurface>
@@ -522,9 +530,10 @@ function SourceAssetRenameDialog({
           <DialogContent>
             <Text>{t('assets.renameSourceDescription')}</Text>
             <Input value={filename} onChange={(_, data) => setFilename(data.value)} style={{margin: '10px 0px 0px 0px'}} />
+            {duplicate ? <Text>{t('assets.filenameDuplicate')}</Text> : null}
             <Popover>
               <PopoverTrigger disableButtonEnhancement>
-                <Button appearance="primary" disabled={!filename.trim() || filename === asset.filename} style={{margin: '10px 0px 0px 10px'}}>{t('assets.renameSourceAsset')}</Button>
+                <Button appearance="primary" disabled={!filename.trim() || filename === asset.filename || duplicate} style={{margin: '10px 0px 0px 10px'}}>{t('assets.renameSourceAsset')}</Button>
               </PopoverTrigger>
               <PopoverSurface className={styles.popoverSurface}>
                 <Text weight="semibold">{t('assets.confirmRenameTitle')}</Text>
@@ -557,6 +566,7 @@ function RenameAssetPopover({
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [filename, setFilename] = useState(initialFilename)
+  const unchanged = filename.trim() === initialFilename
   return (
     <Popover open={open} onOpenChange={(_, data) => setOpen(data.open)}>
       <PopoverTrigger disableButtonEnhancement>
@@ -568,7 +578,7 @@ function RenameAssetPopover({
         <Input value={filename} onChange={(_, data) => setFilename(data.value)} />
         <div className={styles.confirmActions}>
           <Button onClick={() => setOpen(false)}>{t('actions.cancel')}</Button>
-          <Button appearance="primary" onClick={() => { setOpen(false); onConfirm(filename) }} disabled={!filename.trim() || busy}>
+          <Button appearance="primary" onClick={() => { setOpen(false); onConfirm(filename.trim()) }} disabled={!filename.trim() || unchanged || busy}>
             {t('actions.confirm')}
           </Button>
         </div>

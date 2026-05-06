@@ -232,6 +232,17 @@ export async function renameDraftAsset(
   const randomPrefix = key.split('/').at(-1)?.split('-').at(0) || crypto.randomUUID()
   const nextKey = `draft-assets/${safeRelativePathSegment(relativeId)}/${oldRow.draft_id}/${randomPrefix}-${nextFilename}`
   const paths = buildPostAssetPaths({ postsDir, relativeId, filename: nextFilename })
+  const duplicate = await db(env)
+    .prepare(
+      `SELECT id
+       FROM draft_assets
+       WHERE draft_id = ?1 AND markdown_path = ?2 AND id <> ?3
+       LIMIT 1`,
+    )
+    .bind(oldRow.draft_id, paths.markdownPath, oldRow.id)
+    .first<{ id: string }>()
+  if (duplicate) throw new Error('Asset filename already exists')
+
   const now = nowIso()
   const nextAsset: DraftAsset = {
     ...draftAssetRowToAsset(oldRow),

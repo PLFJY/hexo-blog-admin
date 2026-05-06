@@ -91,6 +91,9 @@ export async function handleRenamePostAsset(env: WorkerEnv, request: Request): P
   if (!asset) return json({ error: 'NOT_FOUND', message: 'Asset not found in admin-index' }, { status: 404 })
 
   const paths = buildPostAssetPaths({ postsDir: config.POSTS_DIR, relativeId, filename })
+  const duplicate = post.assets?.some((item) => item.repoPath !== oldRepoPath && (item.repoPath === paths.finalRepoPath || item.markdownPath === paths.markdownPath))
+  if (duplicate) return json({ error: 'CONFLICT', message: 'Asset filename already exists' }, { status: 409 })
+
   const image = await getGitHubFileBase64(env, oldRepoPath)
   const markdown = replaceAll(body.markdown ?? (await getGitHubFile(env, post.path).then((file) => file.content)), asset.markdownPath, paths.markdownPath)
   const commit = await createBatchCommit(env, {
