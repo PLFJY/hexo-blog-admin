@@ -61,25 +61,32 @@ const useStyles = makeStyles({
 type MarkdownEditorProps = {
   value: string
   onChange: (value: string) => void
-  onScrollRatioChange?: (ratio: number) => void
+  onScrollRatioChange?: (position: PreviewSyncPosition) => void
   insertRequest?: { id: number; text: string }
   onInsertConsumed?: (id: number) => void
   onPasteImages?: (files: File[]) => void
 }
 
 type FormatAction = 'bold' | 'italic' | 'link' | 'underline' | 'highlight'
+export type PreviewSyncPosition = {
+  ratio: number
+  line: number
+  source: 'scroll' | 'cursor'
+}
 
 const clampRatio = (ratio: number) => Math.max(0, Math.min(1, ratio))
 
-const getPreviewRatio = (view: EditorView) => {
+const getPreviewPosition = (view: EditorView, source: PreviewSyncPosition['source']): PreviewSyncPosition => {
   const scrollDom = view.scrollDOM
   const maxScrollTop = scrollDom.scrollHeight - scrollDom.clientHeight
-  if (maxScrollTop > 0) return clampRatio(scrollDom.scrollTop / maxScrollTop)
-
   const lineCount = view.state.doc.lines
-  if (lineCount <= 1) return 0
   const line = view.state.doc.lineAt(view.state.selection.main.head)
-  return clampRatio((line.number - 1) / (lineCount - 1))
+  const fallbackRatio = lineCount <= 1 ? 0 : (line.number - 1) / (lineCount - 1)
+  return {
+    ratio: maxScrollTop > 0 ? clampRatio(scrollDom.scrollTop / maxScrollTop) : clampRatio(fallbackRatio),
+    line: line.number,
+    source,
+  }
 }
 
 export function MarkdownEditor({
@@ -133,7 +140,7 @@ export function MarkdownEditor({
   useEffect(() => {
     if (!editorView || !onScrollRatioChange) return undefined
     const scrollDom = editorView.scrollDOM
-    const handleScroll = () => onScrollRatioChange(getPreviewRatio(editorView))
+    const handleScroll = () => onScrollRatioChange(getPreviewPosition(editorView, 'scroll'))
     scrollDom.addEventListener('scroll', handleScroll, { passive: true })
     handleScroll()
     return () => scrollDom.removeEventListener('scroll', handleScroll)
@@ -166,7 +173,7 @@ export function MarkdownEditor({
 
   const handleUpdate = (update: ViewUpdate) => {
     if (!onScrollRatioChange || (!update.scrollChanged && !update.docChanged && !update.selectionSet)) return
-    onScrollRatioChange(getPreviewRatio(update.view))
+    onScrollRatioChange(getPreviewPosition(update.view, update.docChanged || update.selectionSet ? 'cursor' : 'scroll'))
   }
 
   return (

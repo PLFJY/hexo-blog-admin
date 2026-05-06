@@ -1,6 +1,7 @@
 import { makeStyles, mergeClasses, tokens } from '@fluentui/react-components'
 import { useEffect, useRef, useState } from 'react'
 import { MarkdownEditor } from './MarkdownEditor'
+import type { PreviewSyncPosition } from './MarkdownEditor'
 import { MarkdownPreview } from './MarkdownPreview'
 import { buildApiUrl } from '../lib/apiClient'
 import type { DraftAsset } from '../shared/assetTypes'
@@ -57,7 +58,7 @@ export function ArticleMarkdownWorkspace({
   onPasteImages,
 }: ArticleMarkdownWorkspaceProps) {
   const styles = useStyles()
-  const [previewScrollRatio, setPreviewScrollRatio] = useState(0)
+  const [previewSyncPosition, setPreviewSyncPosition] = useState<PreviewSyncPosition>({ ratio: 0, line: 1, source: 'cursor' })
   const onAssetObjectUrlsChangeRef = useRef(onAssetObjectUrlsChange)
 
   useEffect(() => {
@@ -103,7 +104,7 @@ export function ArticleMarkdownWorkspace({
         <MarkdownEditor
           value={markdown}
           onChange={onChange}
-          onScrollRatioChange={setPreviewScrollRatio}
+          onScrollRatioChange={setPreviewSyncPosition}
           insertRequest={insertRequest}
           onInsertConsumed={onInsertConsumed}
           onPasteImages={onPasteImages}
@@ -113,7 +114,7 @@ export function ArticleMarkdownWorkspace({
         <MarkdownPreview
           markdown={markdown}
           resolveResourceUrl={resolveResourceUrl}
-          scrollRatio={previewScrollRatio}
+          syncPosition={previewSyncPosition}
         />
       </div>
     </div>

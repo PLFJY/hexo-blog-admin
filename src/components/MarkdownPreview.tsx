@@ -10,6 +10,7 @@ import { makeStyles, tokens } from '@fluentui/react-components'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import 'katex/dist/katex.min.css'
 import { extractFrontMatterTitle, stripFrontMatter } from '../shared/frontMatter'
+import type { PreviewSyncPosition } from './MarkdownEditor'
 
 const useStyles = makeStyles({
   root: {
@@ -116,7 +117,7 @@ const useStyles = makeStyles({
 type MarkdownPreviewProps = {
   markdown: string
   resolveResourceUrl?: (src: string) => string
-  scrollRatio?: number
+  syncPosition?: PreviewSyncPosition
 }
 
 function createMarkdownRenderer(resolveResourceUrl?: (src: string) => string) {
@@ -152,27 +153,62 @@ function createMarkdownRenderer(resolveResourceUrl?: (src: string) => string) {
     return defaultLinkOpenRenderer ? defaultLinkOpenRenderer(tokens, index, options, env, self) : self.renderToken(tokens, index, options)
   }
 
+  md.core.ruler.push('source_line_attrs', (state) => {
+    const lineForRenderedLine = state.env.lineForRenderedLine as ((line: number) => number) | undefined
+    for (const token of state.tokens) {
+      if (!token.map || token.nesting === -1) continue
+      const sourceLine = lineForRenderedLine?.(token.map[0] + 1) ?? token.map[0] + 1
+      token.attrSet('data-source-line', String(sourceLine))
+    }
+  })
+
   return md
 }
 
-export function MarkdownPreview({ markdown, resolveResourceUrl, scrollRatio }: MarkdownPreviewProps) {
+const bodyStartLine = (markdown: string) => {
+  const normalized = markdown.replace(/\r\n/g, '\n')
+  if (!normalized.startsWith('---\n')) return 1
+  const end = normalized.indexOf('\n---', 4)
+  if (end === -1) return 1
+  const afterFenceStart = end + 4
+  return normalized.slice(0, normalized[afterFenceStart] === '\n' ? afterFenceStart + 1 : afterFenceStart).split('\n').length
+}
+
+export function MarkdownPreview({ markdown, resolveResourceUrl, syncPosition }: MarkdownPreviewProps) {
   const styles = useStyles()
   const rootRef = useRef<HTMLDivElement>(null)
-  const scrollRatioRef = useRef(scrollRatio)
+  const syncPositionRef = useRef(syncPosition)
   const frameRef = useRef<number | undefined>(undefined)
   const renderer = useMemo(() => createMarkdownRenderer(resolveResourceUrl), [resolveResourceUrl])
   const html = useMemo(() => {
     const title = extractFrontMatterTitle(markdown)
     const body = stripFrontMatter(markdown)
-    return renderer.render(`${title ? `# ${title}\n\n` : ''}${body}`)
+    const titleLineCount = title ? 2 : 0
+    const startLine = bodyStartLine(markdown)
+    return renderer.render(`${title ? `# ${title}\n\n` : ''}${body}`, {
+      lineForRenderedLine: (line: number) => (title && line <= titleLineCount ? 1 : line - titleLineCount + startLine - 1),
+    })
   }, [markdown, renderer])
 
   const syncScroll = useCallback(() => {
-    const ratio = scrollRatioRef.current
-    if (ratio === undefined || !rootRef.current) return
+    const position = syncPositionRef.current
+    if (!position || !rootRef.current) return
     const element = rootRef.current
     const maxScrollTop = element.scrollHeight - element.clientHeight
-    element.scrollTop = maxScrollTop > 0 ? maxScrollTop * ratio : 0
+
+    if (position.source === 'cursor') {
+      const targets = Array.from(element.querySelectorAll<HTMLElement>('[data-source-line]'))
+      const target = targets.reduce<HTMLElement | undefined>((matched, candidate) => {
+        const sourceLine = Number(candidate.dataset.sourceLine)
+        return Number.isFinite(sourceLine) && sourceLine <= position.line ? candidate : matched
+      }, undefined)
+      if (target) {
+        element.scrollTop = Math.max(0, target.offsetTop - element.offsetTop - element.clientHeight * 0.18)
+        return
+      }
+    }
+
+    element.scrollTop = maxScrollTop > 0 ? maxScrollTop * position.ratio : 0
   }, [])
 
   const scheduleSyncScroll = useCallback(() => {
@@ -181,9 +217,9 @@ export function MarkdownPreview({ markdown, resolveResourceUrl, scrollRatio }: M
   }, [syncScroll])
 
   useEffect(() => {
-    scrollRatioRef.current = scrollRatio
+    syncPositionRef.current = syncPosition
     scheduleSyncScroll()
-  }, [scheduleSyncScroll, scrollRatio, html])
+  }, [scheduleSyncScroll, syncPosition, html])
 
   useEffect(() => {
     const element = rootRef.current
