@@ -74,7 +74,7 @@ function rewriteToIndexRequest(request: Request): Request {
 
 async function handleApiRequest(request: Request, env: WorkerEnv, pathname: string): Promise<Response> {
   if (pathname === '/api/health') return json(health)
-  if (pathname === '/api/setup/status') return handleSetupStatus(env)
+  if (pathname === '/api/setup/status') return handleSetupStatus(env, request)
   if (pathname === '/api/config/public') return handlePublicConfig(env)
   if (pathname === '/api/auth/status') return handleAuthStatus(request, env)
 
