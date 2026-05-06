@@ -3,6 +3,7 @@ import { Navigate, Outlet } from 'react-router'
 import { ErrorState } from '../components/ErrorState'
 import { LoadingState } from '../components/LoadingState'
 import { getJson } from '../lib/apiClient'
+import { AdminBackgroundProvider } from './AdminBackgroundProvider'
 
 type AuthState =
   | { status: 'loading' }
@@ -27,5 +28,9 @@ export function AuthGate() {
   if (state.status === 'error') return <ErrorState message={state.message} onRetry={load} />
   if (!state.authenticated) return <Navigate to="/login" replace />
 
-  return <Outlet />
+  return (
+    <AdminBackgroundProvider>
+      <Outlet />
+    </AdminBackgroundProvider>
+  )
 }

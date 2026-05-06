@@ -231,6 +231,7 @@ const useSetupStyles = makeStyles({
 type SetupRequiredPageProps = {
   setup: SetupStatus
   onRefresh: (options?: { commit?: boolean }) => Promise<SetupStatus>
+  embedded?: boolean
 }
 
 type SetupGroup = {
@@ -296,7 +297,7 @@ function setupSnippet(items: string[]) {
   return items.map((item) => `${item}=${setupValuePlaceholder(item)}`).join('\n')
 }
 
-export function SetupRequiredPage({ setup, onRefresh }: SetupRequiredPageProps) {
+export function SetupRequiredPage({ setup, onRefresh, embedded }: SetupRequiredPageProps) {
   const styles = usePageStyles()
   const localStyles = useSetupStyles()
   const { t } = useTranslation()
@@ -341,7 +342,7 @@ export function SetupRequiredPage({ setup, onRefresh }: SetupRequiredPageProps) 
           setCompleting(true)
           window.setTimeout(() => {
             void onRefresh()
-          }, 380)
+          }, embedded ? 180 : 380)
         } else {
           await onRefresh()
         }
@@ -351,10 +352,8 @@ export function SetupRequiredPage({ setup, onRefresh }: SetupRequiredPageProps) 
     }
   }
 
-  const content = (
-    <section className={localStyles.overlay}>
-      <div className={mergeClasses(localStyles.shell, completing && localStyles.shellCompleting)}>
-      <div className={mergeClasses(localStyles.shellContent, completing && localStyles.shellContentCompleting)}>
+  const body = (
+    <div className={mergeClasses(localStyles.shellContent, completing && localStyles.shellContentCompleting)}>
       <header className={styles.header}>
         <Title1>{t('setup.title')}</Title1>
         <Body1>{t('setup.description')}</Body1>
@@ -489,7 +488,15 @@ export function SetupRequiredPage({ setup, onRefresh }: SetupRequiredPageProps) 
           </section>
         </section>
       </section>
-      </div>
+    </div>
+  )
+
+  if (embedded) return body
+
+  const content = (
+    <section className={localStyles.overlay}>
+      <div className={mergeClasses(localStyles.shell, completing && localStyles.shellCompleting)}>
+        {body}
       </div>
     </section>
   )

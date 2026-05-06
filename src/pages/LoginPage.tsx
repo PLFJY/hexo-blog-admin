@@ -8,7 +8,7 @@ import { ThemeSwitcher } from '../app/ThemeSwitcher'
 import { ErrorState } from '../components/ErrorState'
 import { LoadingState } from '../components/LoadingState'
 import { getJson, sendJson } from '../lib/apiClient'
-import { safeGetLocalStorage, safeRemoveLocalStorage } from '../lib/storage'
+import { safeRemoveLocalStorage } from '../lib/storage'
 import type { SetupStatus } from '../shared/apiTypes'
 import { SetupRequiredPage } from './SetupRequiredPage'
 
@@ -41,7 +41,6 @@ const useStyles = makeStyles({
     boxShadow: tokens.shadow8,
   },
   panel: {
-    width: 'min(420px, 100%)',
     display: 'grid',
     gap: tokens.spacingVerticalXL,
     padding: tokens.spacingVerticalXXL,
@@ -49,18 +48,22 @@ const useStyles = makeStyles({
     borderRadius: tokens.borderRadiusXLarge,
     backgroundColor: tokens.colorNeutralBackground1,
     boxShadow: tokens.shadow64,
+    transition: 'width 0.36s cubic-bezier(0.4, 0, 0.2, 1), max-height 0.36s cubic-bezier(0.4, 0, 0.2, 1)',
     '@media (max-width: 480px)': {
       padding: tokens.spacingVerticalXL,
     },
   },
-  panelFromSetup: {
-    animationName: {
-      from: { opacity: 0.96, transform: 'scale(1)' },
-      to: { opacity: 1, transform: 'scale(1)' },
+  loginPanel: {
+    width: 'min(420px, 100%)',
+    maxHeight: '520px',
+  },
+  setupPanel: {
+    width: 'min(1120px, 100%)',
+    maxHeight: 'min(820px, calc(100vh - 48px))',
+    overflow: 'auto',
+    '@media (max-width: 720px)': {
+      maxHeight: 'calc(100vh - 32px)',
     },
-    animationDuration: '0.18s',
-    animationTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
-    animationFillMode: 'both',
   },
   heading: {
     display: 'grid',
@@ -93,21 +96,10 @@ export function LoginPage({ onLoggedIn }: LoginPageProps) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
-  const [fromSetup, setFromSetup] = useState(() => {
-    const enabled = safeGetLocalStorage('setup-login-transition') === '1'
-    if (enabled) safeRemoveLocalStorage('setup-login-transition')
-    return enabled
-  })
 
   const refreshSetup = async (options?: { commit?: boolean }) => {
     const setup = await getJson<SetupStatus>('/setup/status')
-    if (setup.configured && safeGetLocalStorage('setup-login-transition') === '1') {
-      safeRemoveLocalStorage('setup-login-transition')
-      setFromSetup(true)
-    } else if (!setup.configured) {
-      safeRemoveLocalStorage('setup-login-transition')
-      setFromSetup(false)
-    }
+    safeRemoveLocalStorage('setup-login-transition')
     if (options?.commit !== false) setSetupState({ status: 'ready', setup })
     return setup
   }
@@ -132,7 +124,8 @@ export function LoginPage({ onLoggedIn }: LoginPageProps) {
   if (setupState.status === 'error') {
     return <ErrorState message={setupState.message} onRetry={() => void refreshSetup()} />
   }
-  if (!setupState.setup.configured) return <SetupRequiredPage setup={setupState.setup} onRefresh={refreshSetup} />
+
+  const configured = setupState.setup.configured
 
   return (
     <main className={styles.root}>
@@ -140,38 +133,44 @@ export function LoginPage({ onLoggedIn }: LoginPageProps) {
         <ThemeSwitcher />
         <LanguageSwitcher />
       </div>
-      <section className={fromSetup ? mergeClasses(styles.panel, styles.panelFromSetup) : styles.panel}>
-        <header className={styles.heading}>
-          <Title1>{t('app.name')}</Title1>
-          <Text className={styles.subtitle}>{t('app.subtitle')}</Text>
-        </header>
-        <form
-          className={styles.form}
-          onSubmit={(event) => {
-            event.preventDefault()
-            login()
-          }}
-        >
-          <Field label={t('auth.username')}>
-            <Input
-              value={username}
-              onChange={(_, data) => setUsername(data.value)}
-              autoComplete="username"
-              autoFocus
-            />
-          </Field>
-          <Field label={t('auth.password')} validationState={error ? 'error' : undefined} validationMessage={error}>
-            <Input
-              type="password"
-              value={password}
-              onChange={(_, data) => setPassword(data.value)}
-              autoComplete="current-password"
-            />
-          </Field>
-          <Button appearance="primary" icon={<LockClosedRegular />} type="submit">
-            {t('auth.login')}
-          </Button>
-        </form>
+      <section className={mergeClasses(styles.panel, configured ? styles.loginPanel : styles.setupPanel)}>
+        {configured ? (
+          <>
+            <header className={styles.heading}>
+              <Title1>{t('app.name')}</Title1>
+              <Text className={styles.subtitle}>{t('app.subtitle')}</Text>
+            </header>
+            <form
+              className={styles.form}
+              onSubmit={(event) => {
+                event.preventDefault()
+                login()
+              }}
+            >
+              <Field label={t('auth.username')}>
+                <Input
+                  value={username}
+                  onChange={(_, data) => setUsername(data.value)}
+                  autoComplete="username"
+                  autoFocus
+                />
+              </Field>
+              <Field label={t('auth.password')} validationState={error ? 'error' : undefined} validationMessage={error}>
+                <Input
+                  type="password"
+                  value={password}
+                  onChange={(_, data) => setPassword(data.value)}
+                  autoComplete="current-password"
+                />
+              </Field>
+              <Button appearance="primary" icon={<LockClosedRegular />} type="submit">
+                {t('auth.login')}
+              </Button>
+            </form>
+          </>
+        ) : (
+          <SetupRequiredPage setup={setupState.setup} onRefresh={refreshSetup} embedded />
+        )}
       </section>
     </main>
   )

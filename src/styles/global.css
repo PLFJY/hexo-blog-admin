@@ -4,16 +4,19 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  --admin-background-layer: none;
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
   --login-background-overlay: rgba(12, 18, 31, 0.72);
+  --admin-background-overlay: rgba(12, 18, 31, 0.72);
 }
 
 :root[data-theme="light"] {
   color-scheme: light;
   --login-background-overlay: rgba(255, 255, 255, 0.78);
+  --admin-background-overlay: rgba(255, 255, 255, 0.78);
 }
 
 * {

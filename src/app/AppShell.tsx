@@ -11,6 +11,11 @@ const useStyles = makeStyles({
     height: '100vh',
     overflow: 'hidden',
     boxSizing: 'border-box',
+    backgroundColor: tokens.colorNeutralBackground1,
+    backgroundImage: 'var(--admin-background-layer)',
+    backgroundPosition: 'center',
+    backgroundRepeat: 'no-repeat',
+    backgroundSize: 'cover',
   },
   body: {
     display: 'grid',

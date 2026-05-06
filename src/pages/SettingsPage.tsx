@@ -2,11 +2,12 @@ import { Button, Body1, Field, Input, Popover, PopoverSurface, PopoverTrigger, T
 import { ArrowClockwiseRegular, DeleteRegular } from '@fluentui/react-icons'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useAdminBackground } from '../app/AdminBackgroundContext'
 import { ErrorState } from '../components/ErrorState'
 import { LoadingState } from '../components/LoadingState'
 import { StatusBadge } from '../components/StatusBadge'
 import { ApiError, getJson, sendJson } from '../lib/apiClient'
-import type { GitHubRepoStatus, SetupIncompleteError, SetupStatus } from '../shared/apiTypes'
+import type { AdminUiSettingsResponse, GitHubRepoStatus, SetupIncompleteError, SetupStatus, UpdateAdminUiSettingsRequest } from '../shared/apiTypes'
 import type { AuthUser, CreateUserRequest } from '../shared/authTypes'
 import { usePageStyles } from './pageStyles'
 
@@ -26,11 +27,13 @@ const useSettingsStyles = makeStyles({
   },
   confirmSurface: { display: 'grid', gap: tokens.spacingVerticalM, width: '300px' },
   confirmActions: { display: 'flex', justifyContent: 'flex-end', gap: tokens.spacingHorizontalS },
+  formActions: { display: 'flex', flexWrap: 'wrap', gap: tokens.spacingHorizontalS, alignItems: 'center' },
+  statusText: { color: tokens.colorNeutralForeground3 },
 })
 
 type SettingsState =
   | { status: 'loading' }
-  | { status: 'ready'; setup: SetupStatus; github: GitHubRepoStatus | SetupIncompleteError; users: AuthUser[] }
+  | { status: 'ready'; setup: SetupStatus; github: GitHubRepoStatus | SetupIncompleteError; users: AuthUser[]; uiSettings: AdminUiSettingsResponse }
   | { status: 'error'; message: string }
 
 const githubFallback = (error: unknown): GitHubRepoStatus | SetupIncompleteError => {
@@ -47,6 +50,7 @@ const githubFallback = (error: unknown): GitHubRepoStatus | SetupIncompleteError
 export function SettingsPage() {
   const styles = usePageStyles()
   const { t } = useTranslation()
+  const { setBackgroundUrl } = useAdminBackground()
   const [state, setState] = useState<SettingsState>({ status: 'loading' })
 
   const load = () => {
@@ -55,8 +59,9 @@ export function SettingsPage() {
       getJson<SetupStatus>('/setup/status'),
       getJson<GitHubRepoStatus>('/github/repo').catch(githubFallback),
       getJson<{ users: AuthUser[] }>('/users'),
+      getJson<AdminUiSettingsResponse>('/settings/ui'),
     ])
-      .then(([setup, github, users]) => setState({ status: 'ready', setup, github, users: users.users }))
+      .then(([setup, github, users, uiSettings]) => setState({ status: 'ready', setup, github, users: users.users, uiSettings }))
       .catch((error: unknown) => {
         setState({ status: 'error', message: error instanceof Error ? error.message : 'Unknown error' })
       })
@@ -79,6 +84,12 @@ export function SettingsPage() {
       setState({ ...state, users: state.users.filter((user) => user.username !== username) }),
     )
   }
+  const updateUiSettings = (request: UpdateAdminUiSettingsRequest) =>
+    sendJson<AdminUiSettingsResponse>('/settings/ui', 'PUT', request).then((uiSettings) => {
+      setBackgroundUrl(uiSettings.backgroundUrl)
+      setState({ ...state, uiSettings })
+      return uiSettings
+    })
 
   return (
     <section className={styles.page}>
@@ -115,7 +126,62 @@ export function SettingsPage() {
           <code>{JSON.stringify(github, null, 2)}</code>
         </pre>
       </section>
+      <AppearanceSettings uiSettings={state.uiSettings} onUpdate={updateUiSettings} />
       <UserManager users={state.users} onCreate={createUser} onDelete={deleteUser} />
+    </section>
+  )
+}
+
+type AppearanceSettingsProps = {
+  uiSettings: AdminUiSettingsResponse
+  onUpdate: (request: UpdateAdminUiSettingsRequest) => Promise<AdminUiSettingsResponse>
+}
+
+function AppearanceSettings({ uiSettings, onUpdate }: AppearanceSettingsProps) {
+  const styles = usePageStyles()
+  const localStyles = useSettingsStyles()
+  const { t } = useTranslation()
+  const [backgroundUrl, setBackgroundUrl] = useState(uiSettings.backgroundUrl)
+  const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [message, setMessage] = useState('')
+
+  const save = () => {
+    setStatus('saving')
+    setMessage('')
+    void onUpdate({ backgroundUrl })
+      .then((settings) => {
+        setBackgroundUrl(settings.backgroundUrl)
+        setStatus('saved')
+      })
+      .catch((error: unknown) => {
+        setStatus('error')
+        setMessage(error instanceof Error ? error.message : 'Unknown error')
+      })
+  }
+
+  return (
+    <section className={styles.card}>
+      <Title3>{t('settings.appearanceTitle')}</Title3>
+      <Field label={t('settings.backgroundUrlLabel')} hint={t('settings.backgroundUrlHint')}>
+        <Input value={backgroundUrl} placeholder="https://example.com/background.jpg" onChange={(_, data) => setBackgroundUrl(data.value)} />
+      </Field>
+      <div className={localStyles.formActions}>
+        <Button appearance="primary" onClick={save} disabled={status === 'saving'}>
+          {status === 'saving' ? t('actions.saving') : t('actions.save')}
+        </Button>
+        <Button
+          appearance="secondary"
+          onClick={() => {
+            setBackgroundUrl('')
+            setStatus('idle')
+            setMessage('')
+          }}
+        >
+          {t('actions.clear')}
+        </Button>
+        {status === 'saved' && <Text className={localStyles.statusText}>{t('settings.saved')}</Text>}
+        {status === 'error' && <Text className={localStyles.statusText}>{message}</Text>}
+      </div>
     </section>
   )
 }

@@ -2,7 +2,7 @@ import type { HealthResponse } from '../shared/apiTypes'
 import type { WorkerEnv } from './env'
 import { handleAssetBlob, handleAssetCache, handleAssetRename, handleAssets } from './routes/assetRoutes'
 import { handleAuthStatus, handleCreateUser, handleDeleteUser, handleListUsers, handleLogin, handleLogout } from './routes/authRoutes'
-import { handlePublicConfig, handleSetupStatus } from './routes/configRoutes'
+import { handleAdminUiSettings, handlePublicConfig, handleSetupStatus, handleUpdateAdminUiSettings } from './routes/configRoutes'
 import { handleDeployStatus, handleDispatchDeploy, handleLatestDeploy } from './routes/deployRoutes'
 import { handleCreateDraft, handleDraftById, handleDrafts, handlePublishDraft } from './routes/draftRoutes'
 import { handleGitHubRepo } from './routes/githubRoutes'
@@ -95,6 +95,8 @@ async function handleApiRequest(request: Request, env: WorkerEnv, pathname: stri
   }
 
   if (pathname === '/api/github/repo') return handleGitHubRepo(env)
+  if (pathname === '/api/settings/ui' && request.method === 'GET') return handleAdminUiSettings(env)
+  if (pathname === '/api/settings/ui' && request.method === 'PUT') return handleUpdateAdminUiSettings(env, request)
   if (pathname === '/api/users' && request.method === 'GET') return handleListUsers(env)
   if (pathname === '/api/users' && request.method === 'POST') return handleCreateUser(env, request)
   if (pathname.startsWith('/api/users/') && request.method === 'DELETE') {

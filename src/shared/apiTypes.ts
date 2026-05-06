@@ -20,6 +20,14 @@ export type SetupStatus = {
 
 export type PublicConfigResponse = SetupStatus['config']
 
+export type AdminUiSettingsResponse = {
+  backgroundUrl: string
+}
+
+export type UpdateAdminUiSettingsRequest = {
+  backgroundUrl: string
+}
+
 export type GitHubRepoStatus = {
   connected: boolean
   fullName?: string
