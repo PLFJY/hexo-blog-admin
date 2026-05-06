@@ -4,11 +4,13 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearchParams } from 'react-router'
 import { ArticleMarkdownWorkspace } from '../components/ArticleMarkdownWorkspace'
+import { EditorConflictResolverDialog } from '../components/EditorConflictResolverDialog'
 import { ErrorState } from '../components/ErrorState'
 import { LoadingState } from '../components/LoadingState'
 import { MarkdownAssetPanel } from '../components/MarkdownAssetPanel'
 import type { MarkdownAssetPanelHandle } from '../components/MarkdownAssetPanel'
 import { StatusBadge } from '../components/StatusBadge'
+import { decideEditorConflict } from '../lib/editorConflict'
 import { deleteEditorSnapshot, readEditorSnapshot, writeEditorSnapshot } from '../lib/editorSnapshot'
 import { getJson, sendJson } from '../lib/apiClient'
 import { resolveMarkdownResourceUrl } from '../lib/markdownResource'
@@ -125,6 +127,14 @@ type State =
       indexSynced?: boolean
       saving?: boolean
       publishing?: boolean
+      baseMarkdown: string
+      baseUpdatedAt?: string
+      snapshotDisabled?: boolean
+      conflict?: {
+        legacy?: boolean
+        cloudMarkdown: string
+        localMarkdown: string
+      }
     }
   | { status: 'error'; message: string }
 
@@ -149,8 +159,25 @@ export function DraftEditorPage() {
       getJson<PostTreeResponse>('/posts/tree').catch(() => ({ posts: [], tree: [] })),
     ])
       .then(async ([draft, draftList, publicConfig, postIndex]) => {
-        const snapshot = draft.id ? readEditorSnapshot(`draft:${draft.id}`) : null
-        const nextDraft = snapshot && snapshot.updatedAt > draft.updatedAt ? { ...draft, markdown: snapshot.markdown } : draft
+        const snapshotScope = draft.id ? `draft:${draft.id}` : ''
+        const snapshot = snapshotScope ? readEditorSnapshot(snapshotScope) : { kind: 'none' as const }
+        const decision = decideEditorConflict({ cloudMarkdown: draft.markdown, snapshot })
+        let nextDraft = draft
+        let message: string | undefined
+        let conflict: Extract<State, { status: 'ready' }>['conflict']
+        if (decision.kind === 'use-cloud') {
+          if (snapshotScope) deleteEditorSnapshot(snapshotScope)
+          if (decision.reason === 'local-behind-cloud') message = t('conflict.localBehindCloud')
+        } else if (decision.kind === 'use-local') {
+          nextDraft = { ...draft, markdown: decision.localMarkdown }
+          message = t('conflict.safeLocalRestored')
+        } else if (decision.kind === 'legacy-snapshot') {
+          conflict = { legacy: true, cloudMarkdown: draft.markdown, localMarkdown: decision.localMarkdown }
+          message = t('conflict.legacySnapshotDescription')
+        } else {
+          conflict = { cloudMarkdown: decision.cloudMarkdown, localMarkdown: decision.localMarkdown }
+          message = t('conflict.conflictDetected')
+        }
         const assetResponse = nextDraft.id
           ? await getJson<DraftAssetListResponse>(`/assets?draftId=${encodeURIComponent(nextDraft.id)}&relativeId=${encodeURIComponent(nextDraft.relativeId)}`)
           : { manifest: { assets: [] as DraftAsset[] } }
@@ -163,7 +190,10 @@ export function DraftEditorPage() {
           publicConfig,
           postRelativeIds: postIndex.posts.map((post) => post.relativeId),
           assetObjectUrls: {},
-          message: snapshot && snapshot.updatedAt > draft.updatedAt ? t('drafts.snapshotRestored') : undefined,
+          message,
+          baseMarkdown: draft.markdown,
+          baseUpdatedAt: draft.updatedAt,
+          conflict,
         })
       })
       .catch((error: unknown) => setState({ status: 'error', message: error instanceof Error ? error.message : 'Unknown error' }))
@@ -171,8 +201,14 @@ export function DraftEditorPage() {
   }, [draftId])
 
   useEffect(() => {
-    if (state.status !== 'ready' || !state.draft.id) return
-    const timer = window.setTimeout(() => writeEditorSnapshot(`draft:${state.draft.id}`, state.draft.markdown), 400)
+    if (state.status !== 'ready' || !state.draft.id || state.snapshotDisabled || state.conflict) return
+    const timer = window.setTimeout(() => writeEditorSnapshot({
+      scope: `draft:${state.draft.id}`,
+      source: 'draft',
+      markdown: state.draft.markdown,
+      baseMarkdown: state.baseMarkdown,
+      baseUpdatedAt: state.baseUpdatedAt,
+    }), 400)
     return () => window.clearTimeout(timer)
   }, [state])
 
@@ -219,8 +255,8 @@ export function DraftEditorPage() {
     setState({ ...state, saving: true })
     void sendJson<DraftRecord>(path, method, { ...state.draft, relativeId: normalizedRelativeId })
       .then((draft) => {
-        writeEditorSnapshot(`draft:${draft.id}`, draft.markdown)
-        setState({ ...state, draft, saving: false, message: t('drafts.saved'), assets: state.assets.map((asset) => ({ ...asset, draftId: draft.id })) })
+        deleteEditorSnapshot(`draft:${draft.id}`)
+        setState({ ...state, draft, saving: false, message: t('drafts.saved'), assets: state.assets.map((asset) => ({ ...asset, draftId: draft.id })), baseMarkdown: draft.markdown, baseUpdatedAt: draft.updatedAt })
         if (!draftId) navigate(`/drafts/edit?draftId=${encodeURIComponent(draft.id)}`, { replace: true })
       })
       .catch((error: unknown) => setState({ ...state, saving: false, message: error instanceof Error ? error.message : 'Unknown error' }))
@@ -263,6 +299,7 @@ export function DraftEditorPage() {
         setState({
           ...state,
           publishing: false,
+          snapshotDisabled: true,
           assets: [],
           message: `${t('drafts.published')}: ${response.commitSha}`,
           publishCommitSha: response.commitSha,
@@ -281,12 +318,43 @@ export function DraftEditorPage() {
         ? localStyles.statusPanelSuccess
         : ''
   const showStatusPanel = Boolean(state.message || state.publishCommitSha || state.deploy || state.indexSynced)
-
+  const snapshotScope = state.draft.id ? `draft:${state.draft.id}` : ''
+  const resolveConflictWithCloud = () => {
+    if (snapshotScope) deleteEditorSnapshot(snapshotScope)
+    setState({ ...state, draft: { ...state.draft, markdown: state.conflict?.cloudMarkdown ?? state.draft.markdown }, conflict: undefined, message: undefined, baseMarkdown: state.conflict?.cloudMarkdown ?? state.baseMarkdown })
+  }
+  const resolveConflictWithLocal = (markdown = state.conflict?.localMarkdown ?? state.draft.markdown, message = t('conflict.cloudBehindLocal')) => {
+    if (snapshotScope) {
+      writeEditorSnapshot({
+        scope: snapshotScope,
+        source: 'draft',
+        markdown,
+        baseMarkdown: state.conflict?.cloudMarkdown ?? state.baseMarkdown,
+        baseUpdatedAt: state.baseUpdatedAt,
+      })
+    }
+    setState({ ...state, draft: { ...state.draft, markdown }, conflict: undefined, message, baseMarkdown: state.conflict?.cloudMarkdown ?? state.baseMarkdown })
+  }
   return (
     <section className={styles.page}>
+      {state.conflict ? (
+        <EditorConflictResolverDialog
+          open
+          title={state.conflict.legacy ? t('conflict.legacySnapshotTitle') : t('conflict.title')}
+          cloudLabel={t('conflict.cloudVersion')}
+          localLabel={t('conflict.localVersion')}
+          cloudMarkdown={state.conflict.cloudMarkdown}
+          localMarkdown={state.conflict.localMarkdown}
+          legacy={state.conflict.legacy}
+          onUseCloud={resolveConflictWithCloud}
+          onUseLocal={() => resolveConflictWithLocal(state.conflict?.localMarkdown, state.conflict?.legacy ? t('conflict.legacySnapshotDescription') : t('conflict.cloudBehindLocal'))}
+          onApplyMerged={(markdown) => resolveConflictWithLocal(markdown, t('conflict.safeLocalRestored'))}
+        />
+      ) : null}
       <header className={styles.header}>
         <Title1>{state.draft.id ? state.draft.relativeId : t('drafts.newDraft')}</Title1>
         <Body1>{t('drafts.description')}</Body1>
+        <Text>{t('drafts.localCloudDraftNote')}</Text>
       </header>
       <section className={styles.card}>
         <div className={styles.row}>

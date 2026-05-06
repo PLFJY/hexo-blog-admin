@@ -1,14 +1,16 @@
-import { Body1, Button, Field, Input, Popover, PopoverSurface, PopoverTrigger, Text, Title1, Title2, Title3, makeStyles, mergeClasses, tokens } from '@fluentui/react-components'
+import { Body1, Button, Field, Input, Popover, PopoverSurface, PopoverTrigger, Text, Title1, Title2, makeStyles, mergeClasses, tokens } from '@fluentui/react-components'
 import { ArrowLeftRegular, DeleteRegular, SaveRegular } from '@fluentui/react-icons'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearchParams } from 'react-router'
 import { ArticleMarkdownWorkspace } from '../components/ArticleMarkdownWorkspace'
+import { EditorConflictResolverDialog } from '../components/EditorConflictResolverDialog'
 import { ErrorState } from '../components/ErrorState'
 import { LoadingState } from '../components/LoadingState'
 import { MarkdownAssetPanel } from '../components/MarkdownAssetPanel'
 import type { MarkdownAssetPanelHandle } from '../components/MarkdownAssetPanel'
 import { ApiError, getJson, sendJson } from '../lib/apiClient'
+import { decideEditorConflict } from '../lib/editorConflict'
 import { deleteEditorSnapshot, readEditorSnapshot, writeEditorSnapshot } from '../lib/editorSnapshot'
 import { resolveMarkdownResourceUrl } from '../lib/markdownResource'
 import type { PublicConfigResponse } from '../shared/apiTypes'
@@ -95,15 +97,21 @@ type State =
       status: 'ready'
       post: PostContentResponse
       markdown: string
+      baseMarkdown: string
+      baseRevision?: string
       assets: DraftAsset[]
       publicConfig?: PublicConfigResponse
-      localSnapshot?: { markdown: string; updatedAt: string }
       insertRequest?: { id: number; text: string }
       message?: string
       savedDraft?: DraftRecord
       assetObjectUrls: Record<string, string>
       changingId?: boolean
       committing?: boolean
+      conflict?: {
+        legacy?: boolean
+        cloudMarkdown: string
+        localMarkdown: string
+      }
     }
   | { status: 'missing'; relativeId: string }
   | { status: 'error'; message: string }
@@ -130,14 +138,35 @@ export function SourcePostEditorPage() {
       getJson<DraftAssetListResponse>(`/assets?draftId=${encodeURIComponent(relativeId)}&relativeId=${encodeURIComponent(relativeId)}`).catch(() => ({ manifest: { assets: [] } })),
     ])
       .then(([post, publicConfig, assetResponse]) => {
+        const snapshotScope = `source:${relativeId}`
+        const decision = decideEditorConflict({ cloudMarkdown: post.markdown, snapshot: readEditorSnapshot(snapshotScope) })
+        let markdown = post.markdown
+        let message: string | undefined
+        let conflict: Extract<State, { status: 'ready' }>['conflict']
+        if (decision.kind === 'use-cloud') {
+          deleteEditorSnapshot(snapshotScope)
+          if (decision.reason === 'local-behind-cloud') message = t('conflict.localBehindCloud')
+        } else if (decision.kind === 'use-local') {
+          markdown = decision.localMarkdown
+          message = t('conflict.safeLocalRestored')
+        } else if (decision.kind === 'legacy-snapshot') {
+          conflict = { legacy: true, cloudMarkdown: post.markdown, localMarkdown: decision.localMarkdown }
+          message = t('conflict.legacySnapshotDescription')
+        } else {
+          conflict = { cloudMarkdown: decision.cloudMarkdown, localMarkdown: decision.localMarkdown }
+          message = t('conflict.conflictDetected')
+        }
         setState({
           status: 'ready',
           post,
-          markdown: post.markdown,
+          markdown,
+          baseMarkdown: post.markdown,
+          baseRevision: post.sha,
           assets: assetResponse.manifest.assets,
           publicConfig,
-          localSnapshot: readEditorSnapshot(`source:${relativeId}`) ?? undefined,
           assetObjectUrls: {},
+          message,
+          conflict,
         })
       })
       .catch((error: unknown) => {
@@ -150,8 +179,14 @@ export function SourcePostEditorPage() {
   }, [relativeId])
 
   useEffect(() => {
-    if (state.status !== 'ready') return
-    const timer = window.setTimeout(() => writeEditorSnapshot(`source:${relativeId}`, state.markdown), 400)
+    if (state.status !== 'ready' || state.conflict || state.savedDraft) return
+    const timer = window.setTimeout(() => writeEditorSnapshot({
+      scope: `source:${relativeId}`,
+      source: 'source',
+      markdown: state.markdown,
+      baseMarkdown: state.baseMarkdown,
+      baseRevision: state.baseRevision,
+    }), 400)
     return () => window.clearTimeout(timer)
   }, [relativeId, state])
 
@@ -240,6 +275,7 @@ export function SourcePostEditorPage() {
       markdown: state.markdown,
     })
       .then((draft) => {
+        deleteEditorSnapshot(`source:${relativeId}`)
         setState({ ...state, savedDraft: draft, message: t('drafts.saved'), assets: state.assets.map((asset) => ({ ...asset, draftId: draft.id })) })
       })
       .catch((error: unknown) => setState({ ...state, message: error instanceof Error ? error.message : 'Unknown error' }))
@@ -253,27 +289,41 @@ export function SourcePostEditorPage() {
       })
       .catch((error: unknown) => setState({ ...state, message: error instanceof Error ? error.message : 'Unknown error' }))
   }
-
+  const resolveConflictWithCloud = () => {
+    deleteEditorSnapshot(`source:${relativeId}`)
+    setState({ ...state, markdown: state.conflict?.cloudMarkdown ?? state.markdown, conflict: undefined, message: undefined, baseMarkdown: state.conflict?.cloudMarkdown ?? state.baseMarkdown })
+  }
+  const resolveConflictWithLocal = (markdown = state.conflict?.localMarkdown ?? state.markdown, message = t('conflict.cloudBehindLocal')) => {
+    writeEditorSnapshot({
+      scope: `source:${relativeId}`,
+      source: 'source',
+      markdown,
+      baseMarkdown: state.conflict?.cloudMarkdown ?? state.baseMarkdown,
+      baseRevision: state.baseRevision,
+    })
+    setState({ ...state, markdown, conflict: undefined, message, baseMarkdown: state.conflict?.cloudMarkdown ?? state.baseMarkdown })
+  }
   return (
     <section className={styles.page}>
+      {state.conflict ? (
+        <EditorConflictResolverDialog
+          open
+          title={state.conflict.legacy ? t('conflict.legacySnapshotTitle') : t('conflict.title')}
+          cloudLabel={t('conflict.cloudVersion')}
+          localLabel={t('conflict.localVersion')}
+          cloudMarkdown={state.conflict.cloudMarkdown}
+          localMarkdown={state.conflict.localMarkdown}
+          legacy={state.conflict.legacy}
+          onUseCloud={resolveConflictWithCloud}
+          onUseLocal={() => resolveConflictWithLocal(state.conflict?.localMarkdown, state.conflict?.legacy ? t('conflict.legacySnapshotDescription') : t('conflict.cloudBehindLocal'))}
+          onApplyMerged={(markdown) => resolveConflictWithLocal(markdown, t('conflict.safeLocalRestored'))}
+        />
+      ) : null}
       <header className={mergeClasses(styles.header, localStyles.headerRow)}>
         <Title1>{state.post.post.title}</Title1>
         <Body1>{state.post.post.relativeId}</Body1>
+        <Text>{t('posts.localCloudDraftNote')}</Text>
       </header>
-      {state.localSnapshot ? (
-        <section className={styles.card}>
-          <Title3>{t('posts.localSnapshotTitle')}</Title3>
-          <Text>{t('posts.localSnapshotDescription', { updatedAt: state.localSnapshot.updatedAt })}</Text>
-          <div className={styles.row}>
-            <Button appearance="primary" onClick={() => setState({ ...state, markdown: state.localSnapshot?.markdown ?? state.markdown, localSnapshot: undefined })}>
-              {t('posts.restoreLocal')}
-            </Button>
-            <Button onClick={() => { deleteEditorSnapshot(`source:${relativeId}`); setState({ ...state, localSnapshot: undefined }) }}>
-              {t('posts.discardLocal')}
-            </Button>
-          </div>
-        </section>
-      ) : null}
       {state.savedDraft ? (
         <DraftSavedOverlay
           draft={state.savedDraft}
