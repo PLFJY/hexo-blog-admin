@@ -161,7 +161,9 @@ BLOG_ADMIN_DB
 BLOG_ASSET_CACHE
 ```
 
-`wrangler.jsonc` 只声明代码需要的 binding 名。请填入你的 D1 `database_id`，或在 Cloudflare Dashboard 的 Worker Bindings 里手动绑定 D1 database。Dashboard 手动绑定时 binding 名也必须是 `BLOG_ADMIN_DB`。
+`wrangler.jsonc` 只声明代码需要的 binding 名，不提交占位 `database_id` 或 `database_name`，避免 CI 部署时把占位值当成无效资源配置。请在 Cloudflare Dashboard 的 Worker Bindings 里手动绑定 D1 database；Dashboard 手动绑定时 binding 名必须是 `BLOG_ADMIN_DB`。
+
+如果你的部署方式要求在 `wrangler.jsonc` 中显式写入 id，请使用 `pnpm wrangler d1 create hexo-blog-admin` 返回的真实 `database_id`，不要保留占位值。
 
 请在 Cloudflare Dashboard 的 Worker Bindings 里把你自己的 KV/R2 资源绑定到上面的名称。KV 只保留 admin-index cache、session/auth 状态和少量配置缓存；草稿正文和草稿图片 metadata 存在 D1，R2 继续保存草稿图片临时对象。
 

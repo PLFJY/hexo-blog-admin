@@ -19,15 +19,15 @@
 	],
 	"d1_databases": [
 		{
-			"binding": "BLOG_ADMIN_DB",
-			"database_name": "hexo-blog-admin",
-			"database_id": "replace-with-your-d1-database-id"
+			"binding": "BLOG_ADMIN_DB"
+			// Bind this name to your own D1 namespace in Cloudflare.
 		}
 	],
 	"r2_buckets": [
 		{
 			"binding": "BLOG_ASSET_CACHE"
 			// Bind this name to your own R2 bucket in Cloudflare. 
+			
 		}
 	]
 }

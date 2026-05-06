@@ -161,7 +161,9 @@ BLOG_ADMIN_DB
 BLOG_ASSET_CACHE
 ```
 
-`wrangler.jsonc` only declares the binding names expected by the code. Fill in your D1 `database_id`, or bind the D1 database manually in the Cloudflare Dashboard. When using Dashboard binding, the binding name must still be `BLOG_ADMIN_DB`.
+`wrangler.jsonc` only declares the binding name. It does not commit a placeholder `database_id` or `database_name`, because CI deploys can treat placeholder resource config as invalid. Bind the D1 database manually in the Cloudflare Dashboard. The binding name must still be `BLOG_ADMIN_DB`.
+
+If your deployment flow requires an explicit id in `wrangler.jsonc`, use the real `database_id` returned by `pnpm wrangler d1 create hexo-blog-admin`; do not keep a placeholder value.
 
 Bind your own KV/R2 resources to the names above in the Cloudflare Dashboard. KV only keeps admin-index cache, session/auth state, and small configuration cache entries; draft Markdown and draft image metadata are stored in D1, while R2 continues to store temporary draft image objects.
 
