@@ -222,6 +222,8 @@ API 路径：
 tools/generate-admin-index.mjs
 ```
 
+本仓库提供了一份可直接复制的示例脚本：`tools/generate-admin-index.mjs`。
+
 脚本需要扫描：
 
 ```txt

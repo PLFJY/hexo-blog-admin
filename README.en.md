@@ -222,6 +222,8 @@ Recommended script path:
 tools/generate-admin-index.mjs
 ```
 
+This repository includes a copy-ready example script at `scripts/generate-admin-index.mjs`.
+
 The script should scan:
 
 ```txt
