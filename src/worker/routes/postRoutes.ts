@@ -1,6 +1,7 @@
-import type { PostContentResponse } from '../../shared/postTypes'
+import type { PostContentResponse, TogglePostPublishedRequest, TogglePostPublishedResponse } from '../../shared/postTypes'
 import type { WorkerEnv } from '../env'
 import { buildPostAssetPaths, buildPostPaths } from '../../features/posts/postPathUtils'
+import { setFrontMatterBoolean } from '../../shared/frontMatter'
 import { getGitHubFile, getGitHubFileBase64 } from '../services/github/githubContent'
 import { createBatchCommit } from '../services/github/githubGitCommit'
 import { getAdminIndex } from '../services/indexer/adminIndex'
@@ -31,6 +32,8 @@ type RenamePostRequest = {
 type DeletePostRequest = {
   relativeId?: string
 }
+
+type TogglePostPublishedBody = Partial<TogglePostPublishedRequest>
 
 export async function handlePostsTree(env: WorkerEnv): Promise<Response> {
   return json(await getAdminIndex(env))
@@ -190,6 +193,37 @@ export async function handleDeletePost(env: WorkerEnv, request: Request): Promis
     deletions,
   })
   return json({ commitSha: commit.commitSha, relativeId })
+}
+
+export async function handleTogglePostPublished(env: WorkerEnv, request: Request): Promise<Response> {
+  if (request.method !== 'POST') return json({ error: 'METHOD_NOT_ALLOWED' }, { status: 405 })
+  const body = (await request.json()) as TogglePostPublishedBody
+  if (!body.relativeId || typeof body.published !== 'boolean') {
+    return json({ error: 'BAD_REQUEST', message: 'relativeId and published are required' }, { status: 400 })
+  }
+  const relativeId = assertSafeRelativeId(body.relativeId)
+  const config = requireConfig(env)
+  const index = await getAdminIndex(env)
+  const post = index.posts.find((item) => item.relativeId === relativeId)
+  if (!post) return json({ error: 'NOT_FOUND', message: 'Post not found' }, { status: 404 })
+
+  const fallbackPath = buildPostPaths({ postsDir: config.POSTS_DIR, relativeId }).postPath
+  const path = post.path || fallbackPath
+  const currentMarkdown = await getGitHubFile(env, path).then((file) => file.content)
+  const markdown = setFrontMatterBoolean(currentMarkdown, 'published', body.published)
+  const commit = await createBatchCommit(env, {
+    branch: config.GITHUB_BRANCH,
+    message: `${body.published ? 'Publish' : 'Unpublish'} post ${relativeId}`,
+    files: [{ path, encoding: 'utf-8', content: markdown }],
+  })
+
+  const response: TogglePostPublishedResponse = {
+    commitSha: commit.commitSha,
+    relativeId,
+    published: body.published,
+    markdown,
+  }
+  return json(response)
 }
 
 export async function handlePostContent(env: WorkerEnv, request: Request): Promise<Response> {

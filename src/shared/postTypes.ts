@@ -4,6 +4,7 @@ export type PostFile = {
   path: string
   metadata?: {
     publishedAt?: string
+    published?: boolean
   }
   publishedAt?: string
   folderPath?: string
@@ -16,6 +17,7 @@ export type PostFile = {
   categories?: string[]
   assets?: PostAsset[]
   updatedAt?: string
+  published?: boolean
 }
 
 export type PostAsset = {
@@ -51,4 +53,16 @@ export type PostContentResponse = {
   post: PostFile
   markdown: string
   sha?: string
+}
+
+export type TogglePostPublishedRequest = {
+  relativeId: string
+  published: boolean
+}
+
+export type TogglePostPublishedResponse = {
+  commitSha: string
+  relativeId: string
+  published: boolean
+  markdown: string
 }

@@ -1,5 +1,5 @@
 import { Body1, Button, Popover, PopoverSurface, PopoverTrigger, Spinner, Text, Title1, Title3, makeStyles, tokens } from '@fluentui/react-components'
-import { ArrowSyncRegular, DeleteRegular, DocumentEditRegular, FolderRegular } from '@fluentui/react-icons'
+import { ArrowSyncRegular, DeleteRegular, DocumentEditRegular, FolderRegular, EyeOffRegular, EyeRegular } from '@fluentui/react-icons'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router'
@@ -8,7 +8,7 @@ import { ErrorState } from '../components/ErrorState'
 import { LoadingState } from '../components/LoadingState'
 import { getJson, sendJson } from '../lib/apiClient'
 import { getCachedAdminIndex, setCachedAdminIndex } from '../lib/indexCache'
-import type { PostFile, PostTreeNode, PostTreeResponse } from '../shared/postTypes'
+import type { PostFile, PostTreeNode, PostTreeResponse, TogglePostPublishedResponse } from '../shared/postTypes'
 import { usePageStyles } from './pageStyles'
 
 const usePostStyles = makeStyles({
@@ -122,24 +122,40 @@ const usePostStyles = makeStyles({
       borderLeftColor: tokens.colorNeutralStrokeDisabled,
     },
   },
+  publishButton: {
+    color: tokens.colorNeutralForegroundOnBrand,
+    backgroundColor: tokens.colorPaletteGreenBackground3,
+    ':hover': {
+      color: tokens.colorNeutralForegroundOnBrand,
+      backgroundColor: tokens.colorPaletteGreenForeground1,
+    },
+    ':disabled': {
+      backgroundColor: tokens.colorNeutralBackgroundDisabled,
+      color: tokens.colorNeutralForegroundDisabled,
+    },
+  },
   popoverSurface: { display: 'grid', gap: tokens.spacingVerticalM, width: '320px' },
   confirmActions: { display: 'flex', justifyContent: 'flex-end', gap: tokens.spacingHorizontalS },
 })
 
 type PostsState =
   | { status: 'loading' }
-  | { status: 'ready'; index: PostTreeResponse; openingRelativeId?: string; deletingRelativeId?: string; message?: string; syncing?: boolean }
+  | { status: 'ready'; index: PostTreeResponse; openingRelativeId?: string; deletingRelativeId?: string; togglingRelativeId?: string; message?: string; syncing?: boolean }
   | { status: 'error'; message: string }
 
 type TreeProps = {
   nodes: PostTreeNode[]
   onOpen: (post: PostFile) => void
   onDelete: (post: PostFile) => void
+  onTogglePublished: (post: PostFile, published: boolean) => void
   openingRelativeId?: string
   deletingRelativeId?: string
+  togglingRelativeId?: string
 }
 
-function PostTree({ nodes, onOpen, onDelete, openingRelativeId, deletingRelativeId }: TreeProps) {
+const isPostPublished = (post: PostFile) => (typeof post.published === 'boolean' ? post.published : post.metadata?.published !== false)
+
+function PostTree({ nodes, onOpen, onDelete, onTogglePublished, openingRelativeId, deletingRelativeId, togglingRelativeId }: TreeProps) {
   const localStyles = usePostStyles()
   if (nodes.length === 0) return null
   return (
@@ -153,30 +169,62 @@ function PostTree({ nodes, onOpen, onDelete, openingRelativeId, deletingRelative
               {node.sortPublishedAt ? <Text size={200}>{node.sortPublishedAt}</Text> : null}
             </div>
             <div className={localStyles.childGrid}>
-              <PostTree nodes={node.children ?? []} onOpen={onOpen} onDelete={onDelete} openingRelativeId={openingRelativeId} deletingRelativeId={deletingRelativeId} />
+              <PostTree nodes={node.children ?? []} onOpen={onOpen} onDelete={onDelete} onTogglePublished={onTogglePublished} openingRelativeId={openingRelativeId} deletingRelativeId={deletingRelativeId} togglingRelativeId={togglingRelativeId} />
             </div>
           </section>
         ) : node.post ? (
-          <PostCard key={node.id} post={node.post} onOpen={onOpen} onDelete={onDelete} opening={openingRelativeId === node.post.relativeId} deleting={deletingRelativeId === node.post.relativeId} />
+          <PostCard
+            key={node.id}
+            post={node.post}
+            onOpen={onOpen}
+            onDelete={onDelete}
+            onTogglePublished={onTogglePublished}
+            opening={openingRelativeId === node.post.relativeId}
+            deleting={deletingRelativeId === node.post.relativeId}
+            toggling={togglingRelativeId === node.post.relativeId}
+          />
         ) : null,
       )}
     </div>
   )
 }
 
-function PostCard({ post, opening, deleting, onOpen, onDelete }: { post: PostFile; opening?: boolean; deleting?: boolean; onOpen: (post: PostFile) => void; onDelete: (post: PostFile) => void }) {
+function PostCard({
+  post,
+  opening,
+  deleting,
+  toggling,
+  onOpen,
+  onDelete,
+  onTogglePublished,
+}: {
+  post: PostFile
+  opening?: boolean
+  deleting?: boolean
+  toggling?: boolean
+  onOpen: (post: PostFile) => void
+  onDelete: (post: PostFile) => void
+  onTogglePublished: (post: PostFile, published: boolean) => void
+}) {
   const styles = usePostStyles()
   const { t } = useTranslation()
+  const published = isPostPublished(post)
   return (
     <article className={styles.postCard}>
       <span className={styles.postMeta}>
         <Text weight="semibold" truncate>{post.title}</Text>
         <Text size={200} truncate>{post.relativeId}</Text>
-        <Text size={200}>{post.metadata?.publishedAt ?? post.publishedAt ?? post.date ?? '-'}</Text>
+        <Text size={200}>{post.metadata?.publishedAt ?? post.publishedAt ?? post.date ?? '-'} · {published ? t('posts.publishedStatus') : t('posts.unpublishedStatus')}</Text>
       </span>
       <span className={styles.postActions}>
-        <Button appearance="primary" icon={opening ? <Spinner size="tiny" /> : <DocumentEditRegular />} disabled={opening || deleting} onClick={() => onOpen(post)}>{t('actions.edit')}</Button>
-        <DeletePostPopover disabled={opening || deleting} busy={deleting} onConfirm={() => onDelete(post)} />
+        <Button appearance="primary" icon={opening ? <Spinner size="tiny" /> : <DocumentEditRegular />} disabled={opening || deleting || toggling} onClick={() => onOpen(post)}>{t('actions.edit')}</Button>
+        <TogglePublishedPopover
+          disabled={opening || deleting || toggling}
+          busy={toggling}
+          published={published}
+          onConfirm={() => onTogglePublished(post, !published)}
+        />
+        <DeletePostPopover disabled={opening || deleting || toggling} busy={deleting} onConfirm={() => onDelete(post)} />
       </span>
     </article>
   )
@@ -205,6 +253,7 @@ export function PostsPage() {
           index,
           openingRelativeId: current.status === 'ready' ? current.openingRelativeId : undefined,
           deletingRelativeId: current.status === 'ready' ? current.deletingRelativeId : undefined,
+          togglingRelativeId: current.status === 'ready' ? current.togglingRelativeId : undefined,
           message: current.status === 'ready' ? current.message : undefined,
           syncing: false,
         }))
@@ -227,6 +276,40 @@ export function PostsPage() {
     void sendJson<{ commitSha: string }>('/posts/delete', 'POST', { relativeId: post.relativeId })
       .then((response) => setState({ ...state, deletingRelativeId: undefined, message: t('posts.deleteSuccess', { commitSha: response.commitSha }) }))
       .catch((error: unknown) => setState({ ...state, deletingRelativeId: undefined, message: error instanceof Error ? error.message : 'Unknown error' }))
+  }
+
+  const patchPostPublished = (nodes: PostTreeNode[], relativeId: string, published: boolean): PostTreeNode[] =>
+    nodes.map((node) =>
+      node.type === 'folder'
+        ? { ...node, children: patchPostPublished(node.children ?? [], relativeId, published) }
+        : node.post?.relativeId === relativeId
+          ? { ...node, post: { ...node.post, published, metadata: { ...node.post.metadata, published } } }
+          : node,
+    )
+
+  const togglePostPublished = (post: PostFile, published: boolean) => {
+    if (state.status !== 'ready') return
+    setState({ ...state, togglingRelativeId: post.relativeId, message: undefined })
+    void sendJson<TogglePostPublishedResponse>('/posts/published', 'POST', { relativeId: post.relativeId, published })
+      .then((response) => {
+        const nextIndex = {
+          ...state.index,
+          posts: state.index.posts.map((item) =>
+            item.relativeId === response.relativeId
+              ? { ...item, published: response.published, metadata: { ...item.metadata, published: response.published } }
+              : item,
+          ),
+          tree: patchPostPublished(state.index.tree, response.relativeId, response.published),
+        }
+        setCachedAdminIndex(nextIndex)
+        setState({
+          ...state,
+          index: nextIndex,
+          togglingRelativeId: undefined,
+          message: t('posts.publishedToggleSuccess', { status: response.published ? t('posts.publishedStatus') : t('posts.unpublishedStatus'), commitSha: response.commitSha }),
+        })
+      })
+      .catch((error: unknown) => setState({ ...state, togglingRelativeId: undefined, message: error instanceof Error ? error.message : 'Unknown error' }))
   }
 
   useEffect(load, [])
@@ -254,10 +337,64 @@ export function PostsPage() {
           <Title3>{t('posts.loaded')}: {state.index.posts.length}</Title3>
           {state.index.generatedAt ? <Text>{t('posts.generatedAt')}: {state.index.generatedAt}</Text> : null}
           {state.message ? <section className={localStyles.folder}><Text>{state.message}</Text></section> : null}
-          <PostTree nodes={state.index.tree} onOpen={openPost} onDelete={deletePost} openingRelativeId={state.openingRelativeId} deletingRelativeId={state.deletingRelativeId} />
+          <PostTree
+            nodes={state.index.tree}
+            onOpen={openPost}
+            onDelete={deletePost}
+            onTogglePublished={togglePostPublished}
+            openingRelativeId={state.openingRelativeId}
+            deletingRelativeId={state.deletingRelativeId}
+            togglingRelativeId={state.togglingRelativeId}
+          />
         </section>
       )}
     </section>
+  )
+}
+
+function TogglePublishedPopover({
+  disabled,
+  busy,
+  published,
+  onConfirm,
+}: {
+  disabled?: boolean
+  busy?: boolean
+  published: boolean
+  onConfirm: () => void
+}) {
+  const styles = usePostStyles()
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const icon = busy ? <Spinner size="tiny" /> : published ? <EyeOffRegular /> : <EyeRegular />
+  return (
+    <Popover open={open} onOpenChange={(_, data) => setOpen(data.open)}>
+      <PopoverTrigger disableButtonEnhancement>
+        <Button
+          appearance={published ? 'secondary' : 'primary'}
+          className={published ? undefined : styles.publishButton}
+          icon={icon}
+          disabled={disabled}
+        >
+          {published ? t('posts.unpublishPost') : t('posts.publishPost')}
+        </Button>
+      </PopoverTrigger>
+      <PopoverSurface className={styles.popoverSurface}>
+        <Text weight="semibold">{published ? t('posts.confirmUnpublishTitle') : t('posts.confirmPublishTitle')}</Text>
+        <Text>{published ? t('posts.confirmUnpublishDescription') : t('posts.confirmPublishDescription')}</Text>
+        <div className={styles.confirmActions}>
+          <Button onClick={() => setOpen(false)}>{t('actions.cancel')}</Button>
+          <Button
+            appearance={published ? 'secondary' : 'primary'}
+            className={published ? undefined : styles.publishButton}
+            icon={published ? <EyeOffRegular /> : <EyeRegular />}
+            onClick={() => { setOpen(false); onConfirm() }}
+          >
+            {published ? t('posts.unpublishPost') : t('posts.publishPost')}
+          </Button>
+        </div>
+      </PopoverSurface>
+    </Popover>
   )
 }
 

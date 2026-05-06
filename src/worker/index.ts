@@ -15,6 +15,7 @@ import {
   handlePostsTree,
   handleRenamePost,
   handleRenamePostAsset,
+  handleTogglePostPublished,
 } from './routes/postRoutes'
 import { json } from './utils/response'
 import { getSetupStatus } from './utils/setup'
@@ -109,6 +110,7 @@ async function handleApiRequest(request: Request, env: WorkerEnv, pathname: stri
   if (pathname === '/api/posts/asset/rename') return handleRenamePostAsset(env, request)
   if (pathname === '/api/posts/asset/delete') return handleDeletePostAsset(env, request)
   if (pathname === '/api/posts/rename') return handleRenamePost(env, request)
+  if (pathname === '/api/posts/published') return handleTogglePostPublished(env, request)
   if (pathname === '/api/posts/delete') return handleDeletePost(env, request)
   if (pathname === '/api/drafts' && request.method === 'GET') return handleDrafts(env)
   if (pathname === '/api/drafts' && request.method === 'POST') return handleCreateDraft(env, request)

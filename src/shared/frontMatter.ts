@@ -26,6 +26,46 @@ export function extractFrontMatterTitle(markdown: string) {
     .replace(/^['"]|['"]$/g, '')
 }
 
+export function readFrontMatterBoolean(markdown: string, key: string): boolean | undefined {
+  const normalized = markdown.replace(/\r\n/g, '\n')
+  if (!normalized.startsWith('---\n')) return undefined
+
+  const end = normalized.indexOf('\n---', 4)
+  if (end === -1) return undefined
+
+  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const line = normalized.slice(4, end).split('\n').find((item) => new RegExp(`^\\s*${escapedKey}\\s*:`).test(item))
+  if (!line) return undefined
+  const value = line.replace(new RegExp(`^\\s*${escapedKey}\\s*:\\s*`), '').trim().replace(/^['"]|['"]$/g, '').toLowerCase()
+  if (value === 'true') return true
+  if (value === 'false') return false
+  return undefined
+}
+
+export function setFrontMatterBoolean(markdown: string, key: string, value: boolean) {
+  const normalized = markdown.replace(/\r\n/g, '\n')
+  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const nextLine = `${key}: ${value ? 'true' : 'false'}`
+
+  if (!normalized.startsWith('---\n')) {
+    return `---\n${nextLine}\n---\n\n${normalized}`
+  }
+
+  const end = normalized.indexOf('\n---', 4)
+  if (end === -1) return `---\n${nextLine}\n---\n\n${normalized}`
+
+  const frontMatter = normalized.slice(4, end)
+  const body = normalized.slice(end)
+  const lines = frontMatter.split('\n')
+  const existingIndex = lines.findIndex((line) => new RegExp(`^\\s*${escapedKey}\\s*:`).test(line))
+  if (existingIndex >= 0) {
+    lines[existingIndex] = nextLine
+  } else {
+    lines.push(nextLine)
+  }
+  return `---\n${lines.join('\n')}${body}`
+}
+
 const hasUsableDate = (value: string) => {
   const trimmed = value.trim().replace(/^['"]|['"]$/g, '')
   if (!trimmed) return false
