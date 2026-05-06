@@ -10,9 +10,9 @@
 | --- | --- |
 | 正式 Markdown 文章 | GitHub 仓库 |
 | 正式图片资源 | GitHub 仓库 |
-| 草稿 Markdown | Cloudflare KV |
+| 草稿 Markdown | Cloudflare D1 |
 | 草稿图片临时缓存 | Cloudflare R2 |
-| 草稿图片 manifest | Cloudflare KV |
+| 草稿图片 metadata | Cloudflare D1 |
 | 运行时配置 | Worker Variables / KV |
 | GitHub Token | Worker Secret |
 | 构建和部署 | GitHub Actions |
@@ -121,12 +121,30 @@ WORKFLOW_FILE=Build Pages.yml
 
 当前兼容日期固定为 `2026-04-30`，这是已安装本地 Miniflare 运行时支持的最新日期；升级 Cloudflare 工具链后可以按需调高。
 
-## KV 和 R2 绑定
+## KV、D1 和 R2 绑定
 
-创建用于后台状态和草稿的 KV namespace。namespace 名字可以自定，但 Worker binding 名必须是 `BLOG_ADMIN_KV`：
+创建用于后台低频状态的 KV namespace。namespace 名字可以自定，但 Worker binding 名必须是 `BLOG_ADMIN_KV`：
 
 ```bash
 pnpm wrangler kv namespace create BLOG_ADMIN_KV
+```
+
+创建 D1 database，用于草稿正文和草稿图片 metadata：
+
+```bash
+pnpm wrangler d1 create hexo-blog-admin
+```
+
+D1 binding 名必须是：
+
+```txt
+BLOG_ADMIN_DB
+```
+
+应用 D1 migrations：
+
+```bash
+pnpm wrangler d1 migrations apply hexo-blog-admin
 ```
 
 创建用于草稿图片临时缓存的 R2 bucket。bucket 名字可以自定，但 Worker binding 名必须是 `BLOG_ASSET_CACHE`：
@@ -139,12 +157,15 @@ pnpm wrangler r2 bucket create hexo-blog-admin-cache
 
 ```txt
 BLOG_ADMIN_KV
+BLOG_ADMIN_DB
 BLOG_ASSET_CACHE
 ```
 
-`wrangler.jsonc` 只声明代码需要的 binding 名，不指定你的 KV namespace id，也不指定你的 R2 bucket name。请在 Cloudflare Dashboard 的 Worker Bindings 里把你自己的 KV/R2 绑定到上面的名称。
+`wrangler.jsonc` 只声明代码需要的 binding 名。请填入你的 D1 `database_id`，或在 Cloudflare Dashboard 的 Worker Bindings 里手动绑定 D1 database。Dashboard 手动绑定时 binding 名也必须是 `BLOG_ADMIN_DB`。
 
-KV/R2 binding 同样是必需项：没有绑定 `BLOG_ADMIN_KV` 或 `BLOG_ASSET_CACHE` 时，后台不会进入主界面。
+请在 Cloudflare Dashboard 的 Worker Bindings 里把你自己的 KV/R2 资源绑定到上面的名称。KV 只保留 admin-index cache、session/auth 状态和少量配置缓存；草稿正文和草稿图片 metadata 存在 D1，R2 继续保存草稿图片临时对象。
+
+KV/D1/R2 binding 同样是必需项：没有绑定 `BLOG_ADMIN_KV`、`BLOG_ADMIN_DB` 或 `BLOG_ASSET_CACHE` 时，后台不会进入主界面。
 
 ## 部署入口
 
@@ -288,14 +309,14 @@ ADMIN_INDEX_PATH=/admin-index.json
   - `/api/drafts/publish`
   - `/api/deploy/latest`
   - `/api/deploy/dispatch`
-- 缺少 Worker variables、secrets、KV、R2 bindings 时的 Setup Gate。
+- 缺少 Worker variables、secrets、KV、D1、R2 bindings 时的 Setup Gate。
 - 独立管理员登录页，内置管理员账号来自 Worker Secret `ADMIN_USERNAME` / `ADMIN_PASSWORD`。
 - 设置页账号管理，新增账号的密码以加盐哈希保存到 KV。
 - 前后端复用的 TypeScript API 和领域类型。
 - 面向文件夹分类文章和文章资源目录的 Hexo 路径工具函数。
 - 从博客站点读取 `admin-index.json`，展示真实文章树。
 - 通过 GitHub REST API 读取文章 Markdown。
-- 基于 KV 的草稿创建、保存、读取和删除。
+- 基于 D1 的草稿创建、保存、读取和删除。
 - 文章和草稿编辑时提供实时 Markdown 预览，并支持 `==高亮==` 语法。
 - 在 Markdown 编辑器中上传图片到 R2 临时缓存，自动插入最终 Markdown 图片路径。
 - 管理草稿图片缓存，支持查看和删除 R2 临时图片。

@@ -16,6 +16,7 @@ export function getSetupStatus(env: WorkerEnv): SetupStatus {
   if (!hasValue(env.ADMIN_USERNAME)) missing.push('ADMIN_USERNAME')
   if (!hasValue(env.ADMIN_PASSWORD)) missing.push('ADMIN_PASSWORD')
   if (!env.BLOG_ADMIN_KV) missing.push('BLOG_ADMIN_KV')
+  if (!env.BLOG_ADMIN_DB) missing.push('BLOG_ADMIN_DB')
   if (!env.BLOG_ASSET_CACHE) missing.push('BLOG_ASSET_CACHE')
 
   return {

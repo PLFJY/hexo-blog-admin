@@ -17,6 +17,13 @@
 			// Bind this name to your own KV namespace in Cloudflare.
 		}
 	],
+	"d1_databases": [
+		{
+			"binding": "BLOG_ADMIN_DB",
+			"database_name": "hexo-blog-admin",
+			"database_id": "replace-with-your-d1-database-id"
+		}
+	],
 	"r2_buckets": [
 		{
 			"binding": "BLOG_ASSET_CACHE"

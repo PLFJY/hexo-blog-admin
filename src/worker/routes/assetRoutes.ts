@@ -8,7 +8,7 @@ import {
   renameDraftAsset,
   listDraftAssetManifests,
   deleteDraftAssets,
-} from '../services/assets/draftAssetCache'
+} from '../services/d1/d1DraftAssets'
 import { requireConfig } from '../utils/config'
 import { json } from '../utils/response'
 

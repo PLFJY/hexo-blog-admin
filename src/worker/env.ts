@@ -10,5 +10,6 @@ export type WorkerEnv = {
   ADMIN_INDEX_PATH?: string
   WORKFLOW_FILE?: string
   BLOG_ADMIN_KV?: KVNamespace
+  BLOG_ADMIN_DB?: D1Database
   BLOG_ASSET_CACHE?: R2Bucket
 }

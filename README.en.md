@@ -10,9 +10,9 @@ The intended data model is:
 | --- | --- |
 | Published Markdown posts | GitHub repository |
 | Published image assets | GitHub repository |
-| Draft Markdown | Cloudflare KV |
+| Draft Markdown | Cloudflare D1 |
 | Temporary draft images | Cloudflare R2 |
-| Draft image manifests | Cloudflare KV |
+| Draft image metadata | Cloudflare D1 |
 | Runtime configuration | Worker variables / KV |
 | GitHub token | Worker secret |
 | Build and deploy | GitHub Actions |
@@ -121,12 +121,30 @@ These variables have no fallback and no default value. If any required item is m
 
 The compatibility date is pinned to `2026-04-30`, the latest date supported by the installed local Miniflare runtime; bump it after upgrading Cloudflare tooling if needed.
 
-## KV And R2 Bindings
+## KV, D1, And R2 Bindings
 
-Create a KV namespace for admin state and drafts. The namespace name can be anything, but the Worker binding name must be `BLOG_ADMIN_KV`:
+Create a KV namespace for low-frequency admin state. The namespace name can be anything, but the Worker binding name must be `BLOG_ADMIN_KV`:
 
 ```bash
 pnpm wrangler kv namespace create BLOG_ADMIN_KV
+```
+
+Create the D1 database for draft Markdown and draft image metadata:
+
+```bash
+pnpm wrangler d1 create hexo-blog-admin
+```
+
+The D1 binding name must be:
+
+```txt
+BLOG_ADMIN_DB
+```
+
+Apply D1 migrations:
+
+```bash
+pnpm wrangler d1 migrations apply hexo-blog-admin
 ```
 
 Create an R2 bucket for temporary draft assets. The bucket name can be anything, but the Worker binding name must be `BLOG_ASSET_CACHE`:
@@ -139,12 +157,15 @@ Bind them as:
 
 ```txt
 BLOG_ADMIN_KV
+BLOG_ADMIN_DB
 BLOG_ASSET_CACHE
 ```
 
-`wrangler.jsonc` only declares the binding names expected by the code. It does not specify your KV namespace id or R2 bucket name. Bind your own KV/R2 resources to the names above in the Cloudflare Dashboard.
+`wrangler.jsonc` only declares the binding names expected by the code. Fill in your D1 `database_id`, or bind the D1 database manually in the Cloudflare Dashboard. When using Dashboard binding, the binding name must still be `BLOG_ADMIN_DB`.
 
-KV/R2 bindings are required too: without `BLOG_ADMIN_KV` or `BLOG_ASSET_CACHE`, the admin UI will remain blocked.
+Bind your own KV/R2 resources to the names above in the Cloudflare Dashboard. KV only keeps admin-index cache, session/auth state, and small configuration cache entries; draft Markdown and draft image metadata are stored in D1, while R2 continues to store temporary draft image objects.
+
+KV/D1/R2 bindings are required too: without `BLOG_ADMIN_KV`, `BLOG_ADMIN_DB`, or `BLOG_ASSET_CACHE`, the admin UI will remain blocked.
 
 ## Deployment Entrypoint
 
@@ -288,14 +309,14 @@ ADMIN_INDEX_PATH=/admin-index.json
   - `/api/drafts/publish`
   - `/api/deploy/latest`
   - `/api/deploy/dispatch`
-- Setup gate for missing Worker variables, secrets, KV, and R2 bindings.
+- Setup gate for missing Worker variables, secrets, KV, D1, and R2 bindings.
 - Dedicated admin login page backed by Worker Secrets `ADMIN_USERNAME` / `ADMIN_PASSWORD`.
 - Account management in Settings; regular account passwords are stored in KV as salted hashes.
 - Shared TypeScript API/domain types.
 - Hexo post path utility functions for folder-based post IDs and post-folder assets.
 - Reads `admin-index.json` from the blog site and shows the real post tree.
 - Reads post Markdown through the GitHub REST API.
-- Creates, saves, reads, and deletes drafts in KV.
+- Creates, saves, reads, and deletes drafts in D1.
 - Provides live Markdown preview for post and draft editing, including `==highlight==` syntax.
 - Uploads images from the Markdown editor into the R2 temporary cache and inserts the final Markdown image path.
 - Manages draft image cache entries, including listing and deleting temporary R2 images.

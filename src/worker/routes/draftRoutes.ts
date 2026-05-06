@@ -2,9 +2,9 @@ import type { DraftListResponse, PublishDraftRequest, PublishDraftResponse, Save
 import { ensureFrontMatterDate, extractFrontMatterTitle } from '../../shared/frontMatter'
 import type { WorkerEnv } from '../env'
 import { buildPostPaths } from '../../features/posts/postPathUtils'
-import { getDraftAsset, getDraftAssetManifest, deleteDraftAssetManifest, moveDraftAssetManifest } from '../services/assets/draftAssetCache'
+import { getDraftAsset, getDraftAssetManifest, moveDraftAssetManifest } from '../services/d1/d1DraftAssets'
 import { createBatchCommit } from '../services/github/githubGitCommit'
-import { deleteDraft, getDraft, isValidRelativeId, listDrafts, saveDraft } from '../services/kv/kvDrafts'
+import { deleteDraft, getDraft, isValidRelativeId, listDrafts, saveDraft } from '../services/d1/d1Drafts'
 import { requireConfig } from '../utils/config'
 import { json } from '../utils/response'
 
@@ -69,7 +69,6 @@ export async function handleDraftById(env: WorkerEnv, request: Request, id: stri
   }
 
   if (request.method === 'DELETE') {
-    await deleteDraftAssetManifest(env, id)
     return json(await deleteDraft(env, id))
   }
 
@@ -112,7 +111,6 @@ export async function handlePublishDraft(env: WorkerEnv, request: Request): Prom
       )).filter((file): file is { path: string; encoding: 'base64'; content: string } => Boolean(file)),
     ],
   })
-  await deleteDraftAssetManifest(env, draft.id)
   await deleteDraft(env, draft.id)
 
   const response: PublishDraftResponse = {
