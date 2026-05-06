@@ -1,5 +1,5 @@
 import { Body1, Button, Field, Input, Popover, PopoverSurface, PopoverTrigger, Text, Title1, makeStyles, mergeClasses, tokens } from '@fluentui/react-components'
-import { DeleteRegular, RocketRegular, SaveRegular } from '@fluentui/react-icons'
+import { ArrowLeftRegular, DeleteRegular, RocketRegular, SaveRegular } from '@fluentui/react-icons'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearchParams } from 'react-router'
@@ -352,6 +352,11 @@ export function DraftEditorPage() {
         />
       ) : null}
       <header className={styles.header}>
+        <div>
+          <Button appearance="subtle" icon={<ArrowLeftRegular />} onClick={() => navigate('/drafts')}>
+            {t('actions.back')}
+          </Button>
+        </div>
         <Title1>{state.draft.id ? state.draft.relativeId : t('drafts.newDraft')}</Title1>
         <Body1>{t('drafts.description')}</Body1>
         <Text>{t('drafts.localCloudDraftNote')}</Text>

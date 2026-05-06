@@ -212,6 +212,11 @@ export function SourcePostEditorPage() {
     return (
       <section className={styles.page}>
         <header className={styles.header}>
+          <div>
+            <Button appearance="subtle" icon={<ArrowLeftRegular />} onClick={() => navigate('/posts')}>
+              {t('actions.back')}
+            </Button>
+          </div>
           <Title1>{t('posts.postNotFoundTitle')}</Title1>
           <Body1>{state.relativeId}</Body1>
         </header>
@@ -320,6 +325,11 @@ export function SourcePostEditorPage() {
         />
       ) : null}
       <header className={mergeClasses(styles.header, localStyles.headerRow)}>
+        <div>
+          <Button appearance="subtle" icon={<ArrowLeftRegular />} onClick={() => navigate('/posts')}>
+            {t('actions.back')}
+          </Button>
+        </div>
         <Title1>{state.post.post.title}</Title1>
         <Body1>{state.post.post.relativeId}</Body1>
         <Text>{t('posts.localCloudDraftNote')}</Text>
