@@ -55,10 +55,10 @@ const useStyles = makeStyles({
   },
   panelFromSetup: {
     animationName: {
-      from: { opacity: 0, transform: 'scale(0.72) translateY(12px)' },
-      to: { opacity: 1, transform: 'scale(1) translateY(0)' },
+      from: { opacity: 0.96, transform: 'scale(1)' },
+      to: { opacity: 1, transform: 'scale(1)' },
     },
-    animationDuration: '0.38s',
+    animationDuration: '0.18s',
     animationTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
     animationFillMode: 'both',
   },
@@ -104,6 +104,9 @@ export function LoginPage({ onLoggedIn }: LoginPageProps) {
     if (setup.configured && safeGetLocalStorage('setup-login-transition') === '1') {
       safeRemoveLocalStorage('setup-login-transition')
       setFromSetup(true)
+    } else if (!setup.configured) {
+      safeRemoveLocalStorage('setup-login-transition')
+      setFromSetup(false)
     }
     if (options?.commit !== false) setSetupState({ status: 'ready', setup })
     return setup

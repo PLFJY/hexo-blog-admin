@@ -198,10 +198,31 @@ const useSetupStyles = makeStyles({
   },
   shellCompleting: {
     animationName: {
-      from: { opacity: 1, transform: 'scale(1)' },
-      to: { opacity: 0, transform: 'scale(0.72) translateY(12px)' },
+      from: {
+        width: 'min(1120px, 100%)',
+        maxHeight: 'min(820px, calc(100vh - 48px))',
+        transform: 'scale(1)',
+      },
+      to: {
+        width: 'min(420px, 100%)',
+        maxHeight: '520px',
+        transform: 'scale(1)',
+      },
     },
     animationDuration: '0.36s',
+    animationTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
+    animationFillMode: 'both',
+  },
+  shellContent: {
+    display: 'grid',
+    gap: tokens.spacingVerticalXL,
+  },
+  shellContentCompleting: {
+    animationName: {
+      from: { opacity: 1, transform: 'translateY(0)' },
+      to: { opacity: 0, transform: 'translateY(-6px)' },
+    },
+    animationDuration: '0.18s',
     animationTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
     animationFillMode: 'both',
   },
@@ -320,7 +341,7 @@ export function SetupRequiredPage({ setup, onRefresh }: SetupRequiredPageProps) 
           setCompleting(true)
           window.setTimeout(() => {
             void onRefresh()
-          }, 360)
+          }, 380)
         } else {
           await onRefresh()
         }
@@ -333,6 +354,7 @@ export function SetupRequiredPage({ setup, onRefresh }: SetupRequiredPageProps) 
   const content = (
     <section className={localStyles.overlay}>
       <div className={mergeClasses(localStyles.shell, completing && localStyles.shellCompleting)}>
+      <div className={mergeClasses(localStyles.shellContent, completing && localStyles.shellContentCompleting)}>
       <header className={styles.header}>
         <Title1>{t('setup.title')}</Title1>
         <Body1>{t('setup.description')}</Body1>
@@ -467,6 +489,7 @@ export function SetupRequiredPage({ setup, onRefresh }: SetupRequiredPageProps) 
           </section>
         </section>
       </section>
+      </div>
       </div>
     </section>
   )
