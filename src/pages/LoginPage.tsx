@@ -1,12 +1,16 @@
 import { Button, Field, Input, Text, Title1, makeStyles, mergeClasses, tokens } from '@fluentui/react-components'
 import { LockClosedRegular } from '@fluentui/react-icons'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router'
 import { LanguageSwitcher } from '../app/LanguageSwitcher'
 import { ThemeSwitcher } from '../app/ThemeSwitcher'
-import { sendJson } from '../lib/apiClient'
+import { ErrorState } from '../components/ErrorState'
+import { LoadingState } from '../components/LoadingState'
+import { getJson, sendJson } from '../lib/apiClient'
 import { safeGetLocalStorage, safeRemoveLocalStorage } from '../lib/storage'
+import type { SetupStatus } from '../shared/apiTypes'
+import { SetupRequiredPage } from './SetupRequiredPage'
 
 const useStyles = makeStyles({
   root: {
@@ -76,18 +80,40 @@ type LoginPageProps = {
   onLoggedIn?: () => void
 }
 
+type SetupState =
+  | { status: 'loading' }
+  | { status: 'ready'; setup: SetupStatus }
+  | { status: 'error'; message: string }
+
 export function LoginPage({ onLoggedIn }: LoginPageProps) {
   const styles = useStyles()
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const [setupState, setSetupState] = useState<SetupState>({ status: 'loading' })
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
-  const [fromSetup] = useState(() => {
+  const [fromSetup, setFromSetup] = useState(() => {
     const enabled = safeGetLocalStorage('setup-login-transition') === '1'
     if (enabled) safeRemoveLocalStorage('setup-login-transition')
     return enabled
   })
+
+  const refreshSetup = async (options?: { commit?: boolean }) => {
+    const setup = await getJson<SetupStatus>('/setup/status')
+    if (setup.configured && safeGetLocalStorage('setup-login-transition') === '1') {
+      safeRemoveLocalStorage('setup-login-transition')
+      setFromSetup(true)
+    }
+    if (options?.commit !== false) setSetupState({ status: 'ready', setup })
+    return setup
+  }
+
+  useEffect(() => {
+    void refreshSetup().catch((error: unknown) => {
+      setSetupState({ status: 'error', message: error instanceof Error ? error.message : 'Unknown error' })
+    })
+  }, [])
 
   const login = () => {
     setError('')
@@ -98,6 +124,12 @@ export function LoginPage({ onLoggedIn }: LoginPageProps) {
       })
       .catch(() => setError(t('auth.invalidPassword')))
   }
+
+  if (setupState.status === 'loading') return <LoadingState />
+  if (setupState.status === 'error') {
+    return <ErrorState message={setupState.message} onRetry={() => void refreshSetup()} />
+  }
+  if (!setupState.setup.configured) return <SetupRequiredPage setup={setupState.setup} onRefresh={refreshSetup} />
 
   return (
     <main className={styles.root}>
