@@ -7,7 +7,7 @@ import markdownItMark from 'markdown-it-mark'
 import markdownItSub from 'markdown-it-sub'
 import markdownItSup from 'markdown-it-sup'
 import { makeStyles, tokens } from '@fluentui/react-components'
-import { useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import 'katex/dist/katex.min.css'
 import { extractFrontMatterTitle, stripFrontMatter } from '../shared/frontMatter'
 
@@ -158,6 +158,8 @@ function createMarkdownRenderer(resolveResourceUrl?: (src: string) => string) {
 export function MarkdownPreview({ markdown, resolveResourceUrl, scrollRatio }: MarkdownPreviewProps) {
   const styles = useStyles()
   const rootRef = useRef<HTMLDivElement>(null)
+  const scrollRatioRef = useRef(scrollRatio)
+  const frameRef = useRef<number | undefined>(undefined)
   const renderer = useMemo(() => createMarkdownRenderer(resolveResourceUrl), [resolveResourceUrl])
   const html = useMemo(() => {
     const title = extractFrontMatterTitle(markdown)
@@ -165,12 +167,50 @@ export function MarkdownPreview({ markdown, resolveResourceUrl, scrollRatio }: M
     return renderer.render(`${title ? `# ${title}\n\n` : ''}${body}`)
   }, [markdown, renderer])
 
-  useEffect(() => {
-    if (scrollRatio === undefined || !rootRef.current) return
+  const syncScroll = useCallback(() => {
+    const ratio = scrollRatioRef.current
+    if (ratio === undefined || !rootRef.current) return
     const element = rootRef.current
     const maxScrollTop = element.scrollHeight - element.clientHeight
-    element.scrollTop = maxScrollTop > 0 ? maxScrollTop * scrollRatio : 0
-  }, [scrollRatio, html])
+    element.scrollTop = maxScrollTop > 0 ? maxScrollTop * ratio : 0
+  }, [])
+
+  const scheduleSyncScroll = useCallback(() => {
+    window.cancelAnimationFrame(frameRef.current ?? 0)
+    frameRef.current = window.requestAnimationFrame(syncScroll)
+  }, [syncScroll])
+
+  useEffect(() => {
+    scrollRatioRef.current = scrollRatio
+    scheduleSyncScroll()
+  }, [scheduleSyncScroll, scrollRatio, html])
+
+  useEffect(() => {
+    const element = rootRef.current
+    if (!element) return undefined
+
+    const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(scheduleSyncScroll)
+    for (const child of Array.from(element.children)) observer?.observe(child)
+
+    const images = Array.from(element.querySelectorAll('img'))
+    for (const image of images) {
+      image.addEventListener('load', scheduleSyncScroll)
+      image.addEventListener('error', scheduleSyncScroll)
+      if (image.complete) scheduleSyncScroll()
+    }
+
+    return () => {
+      observer?.disconnect()
+      for (const image of images) {
+        image.removeEventListener('load', scheduleSyncScroll)
+        image.removeEventListener('error', scheduleSyncScroll)
+      }
+    }
+  }, [html, scheduleSyncScroll])
+
+  useEffect(() => {
+    return () => window.cancelAnimationFrame(frameRef.current ?? 0)
+  }, [])
 
   return <div className={styles.root} ref={rootRef} dangerouslySetInnerHTML={{ __html: html }} />
 }
