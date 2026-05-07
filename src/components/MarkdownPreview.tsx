@@ -155,6 +155,7 @@ function createMarkdownRenderer(resolveResourceUrl?: (src: string) => string) {
 
   md.core.ruler.push('source_line_attrs', (state) => {
     const lineForRenderedLine = state.env.lineForRenderedLine as ((line: number) => number) | undefined
+    // Store source line numbers on block tokens so editor cursor movement can scroll the preview.
     for (const token of state.tokens) {
       if (!token.map || token.nesting === -1) continue
       const sourceLine = lineForRenderedLine?.(token.map[0] + 1) ?? token.map[0] + 1

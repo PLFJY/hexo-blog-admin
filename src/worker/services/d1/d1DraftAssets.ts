@@ -149,6 +149,7 @@ export async function putDraftAsset(env: WorkerEnv, options: PutDraftAssetOption
     )
     .bind(draftId, relativeId, now)
     .run()
+  // Uploading an image may happen before the user saves the editor, so create a placeholder draft row.
   const asset: DraftAsset = {
     key,
     draftId,
@@ -171,6 +172,7 @@ export async function putDraftAsset(env: WorkerEnv, options: PutDraftAssetOption
     .bind(draftId, asset.markdownPath)
     .first<{ id: string; r2_key: string }>()
 
+  // Re-uploading the same markdown path replaces the old R2 object but preserves one metadata row.
   await putObject(env, key, options.body, asset)
   if (existing) await bucket(env).delete(existing.r2_key)
 
@@ -314,6 +316,7 @@ export async function moveDraftAssetManifest(env: WorkerEnv, options: MoveDraftA
   const manifest = await getDraftAssetManifest(env, options.draftId, relativeId)
   const now = nowIso()
 
+  // When relativeId changes, both Markdown paths and R2 object keys need to follow the new article slug.
   await Promise.all(
     manifest.assets.map(async (asset) => {
       const object = await env.BLOG_ASSET_CACHE?.get(asset.key)

@@ -79,11 +79,13 @@ async function handleApiRequest(request: Request, env: WorkerEnv, pathname: stri
   if (pathname === '/api/config/public') return handlePublicConfig(env)
   if (pathname === '/api/auth/status') return handleAuthStatus(request, env)
 
+  // Most APIs depend on GitHub/KV/D1/R2, so setup is checked before auth-gated routing.
   const setup = await getSetupStatus(env)
   if (!setup.configured && !setupBypassPaths.has(pathname)) {
     return json({ error: 'SETUP_INCOMPLETE', missing: setup.missing }, { status: 503 })
   }
 
+  // D1 can be bound after deploy from the Cloudflare dashboard; initialize lazily on requests.
   if (env.BLOG_ADMIN_DB) await ensureD1Schema(env)
 
   if (pathname === '/api/auth/login' && request.method === 'POST') return handleLogin(request, env)
@@ -146,6 +148,7 @@ export default {
 
     if (env.ASSETS) {
       if (shouldServeSpa(pathname)) {
+        // Workers Assets must receive /index.html for deep React Router URLs such as /posts/edit.
         return env.ASSETS.fetch(rewriteToIndexRequest(request))
       }
 

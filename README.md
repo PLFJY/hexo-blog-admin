@@ -46,6 +46,8 @@ pnpm typecheck
 pnpm build
 ```
 
+更完整的架构、目录、API 和开发约定见 [开发文档](docs/development.md)。
+
 预览生产构建：
 
 ```bash

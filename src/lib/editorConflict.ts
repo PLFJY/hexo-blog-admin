@@ -33,6 +33,7 @@ export function decideEditorConflict(options: {
   const localMatchesCloud = localHash === cloudHash && localMarkdown === cloudMarkdown
   const localMatchesBase = localHash === baseHash && localMarkdown === baseMarkdown
   const cloudMatchesBase = cloudHash === baseHash && cloudMarkdown === baseMarkdown
+  // Treat the editor snapshot as a three-way merge: base is what the user originally opened.
   if (localMatchesCloud) return { kind: 'use-cloud', reason: 'same' }
   if (localMatchesBase && !cloudMatchesBase) return { kind: 'use-cloud', reason: 'local-behind-cloud' }
   if (cloudMatchesBase && !localMatchesBase) {

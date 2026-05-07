@@ -34,6 +34,7 @@ let initialization: Promise<void> | undefined
 
 export async function ensureD1Schema(env: WorkerEnv): Promise<void> {
   if (!env.BLOG_ADMIN_DB) throw new Error('BLOG_ADMIN_DB binding is not configured')
+  // Share one in-flight schema initialization per isolate so parallel API requests do not race D1.
   initialization ??= env.BLOG_ADMIN_DB.batch(schemaStatements.map((statement) => env.BLOG_ADMIN_DB!.prepare(statement))).then(() => undefined)
   await initialization
 }

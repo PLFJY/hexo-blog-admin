@@ -82,6 +82,7 @@ export async function getAdminIndex(env: WorkerEnv): Promise<PostTreeResponse> {
     const index = await fetchOnlineAdminIndex(env)
     return await writeCachedAdminIndex(env, index, sourceCommitSha)
   } catch (error) {
+    // If the public blog is between deploy states, keep the admin usable with the last known index.
     if (cached) return cached
     throw error
   }

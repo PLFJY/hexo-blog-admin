@@ -76,6 +76,7 @@ export async function createBatchCommit(
     }),
   })
 
+  // Use a single Git Data API commit so Markdown, assets, and deletions land atomically.
   await githubJson(env, `/repos/${owner}/${repo}/git/refs/heads/${encodeURIComponent(branch)}`, {
     method: 'PATCH',
     body: JSON.stringify({
