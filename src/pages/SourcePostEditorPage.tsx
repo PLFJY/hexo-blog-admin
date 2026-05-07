@@ -1,8 +1,10 @@
-import { Body1, Button, Field, Input, Popover, PopoverSurface, PopoverTrigger, Text, Title1, Title2, makeStyles, mergeClasses, tokens } from '@fluentui/react-components'
+import { Body1, Button, Field, FluentProvider, Input, Popover, PopoverSurface, PopoverTrigger, Text, Title1, Title2, makeStyles, mergeClasses, tokens, webDarkTheme, webLightTheme } from '@fluentui/react-components'
 import { ArrowLeftRegular, DeleteRegular, SaveRegular } from '@fluentui/react-icons'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearchParams } from 'react-router'
+import { useAppTheme } from '../app/ThemeProvider'
 import { ArticleMarkdownWorkspace } from '../components/ArticleMarkdownWorkspace'
 import { EditorConflictResolverDialog } from '../components/EditorConflictResolverDialog'
 import { ErrorState } from '../components/ErrorState'
@@ -64,11 +66,14 @@ const useSourceEditorStyles = makeStyles({
     placeItems: 'center',
     padding: tokens.spacingHorizontalM,
     backgroundColor: 'rgba(0, 0, 0, 0.48)',
+    minHeight: '100dvh',
   },
   decisionPanel: {
     display: 'grid',
     gap: tokens.spacingVerticalL,
     width: 'min(560px, 100%)',
+    maxHeight: 'calc(100dvh - 32px)',
+    overflowY: 'auto',
     padding: tokens.spacingVerticalXL,
     borderRadius: tokens.borderRadiusLarge,
     boxShadow: tokens.shadow64,
@@ -406,21 +411,33 @@ function DraftSavedOverlay({
 }) {
   const styles = useSourceEditorStyles()
   const { t } = useTranslation()
-  return (
-    <div className={styles.overlay} role="dialog" aria-modal="true" aria-labelledby="draft-saved-title">
-      <section className={styles.decisionPanel}>
-        <div>
-          <Title2 id="draft-saved-title">{t('posts.draftSavedTitle')}</Title2>
-          <br/>
-          <Body1>{t('posts.draftSavedDescription')}</Body1>
-        </div>
-        <Text>{t('posts.draftSavedId', { id: draft.relativeId })}</Text>
-        <div className={styles.decisionActions}>
-          <Button onClick={onOpenDrafts}>{t('posts.goToDrafts')}</Button>
-          <Button appearance="primary" onClick={onContinueDraft}>{t('posts.continueDraft')}</Button>
-        </div>
-      </section>
-    </div>
+  const { resolvedMode } = useAppTheme()
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [])
+
+  return createPortal(
+    <FluentProvider theme={resolvedMode === 'dark' ? webDarkTheme : webLightTheme}>
+      <div className={styles.overlay} role="dialog" aria-modal="true" aria-labelledby="draft-saved-title">
+        <section className={styles.decisionPanel}>
+          <div>
+            <Title2 id="draft-saved-title">{t('posts.draftSavedTitle')}</Title2>
+            <br/>
+            <Body1>{t('posts.draftSavedDescription')}</Body1>
+          </div>
+          <Text>{t('posts.draftSavedId', { id: draft.relativeId })}</Text>
+          <div className={styles.decisionActions}>
+            <Button onClick={onOpenDrafts}>{t('posts.goToDrafts')}</Button>
+            <Button appearance="primary" onClick={onContinueDraft}>{t('posts.continueDraft')}</Button>
+          </div>
+        </section>
+      </div>
+    </FluentProvider>,
+    document.body,
   )
 }
 
