@@ -2,7 +2,7 @@ import type { AuthUser } from '../../shared/authTypes'
 import type { WorkerEnv } from '../env'
 
 const cookieName = 'hba_session'
-const sessionMaxAgeSeconds = 60 * 60 * 24 * 7
+const sessionMaxAgeSeconds = 60 * 60 * 24
 const userPrefix = 'auth:user:'
 
 type StoredUser = {
