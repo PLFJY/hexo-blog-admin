@@ -8,7 +8,7 @@
 
 核心职责：
 
-- 从博客公开站点读取 `admin-index.json`，展示正式文章列表和资源索引。
+- 从博客公开站点读取 `admin-index.json`，展示正式文章列表、资源索引、站点摘要和 Customize 能力摘要。
 - 通过 GitHub REST API 读取、移动、删除和提交正式 Markdown / 图片资源。
 - 使用 Cloudflare D1 保存草稿正文和草稿图片 metadata。
 - 使用 Cloudflare R2 临时保存草稿图片 blob。
@@ -112,7 +112,7 @@ BLOG_ASSET_PUBLIC_URL=https://blog-admin-cache.plfjy.top
 
 - Markdown：`POSTS_DIR/<folder>/<slug>.md`
 - 正式图片：`POSTS_DIR/<folder>/<slug>/<filename>`
-- 文章索引：博客构建产物 `BLOG_PUBLIC_URL + ADMIN_INDEX_PATH`
+- 后台公开索引摘要：博客构建产物 `BLOG_PUBLIC_URL + ADMIN_INDEX_PATH`
 
 草稿数据存在 Cloudflare：
 
@@ -294,7 +294,7 @@ GitHub API 封装在 `src/worker/services/github/`：
 4. Worker 用 Git Data API 创建一个 batch commit。
 5. 发布成功后删除 D1 草稿和对应 R2 暂存图片。
 6. 前端按 commit SHA 轮询 GitHub Actions 状态。
-7. workflow 成功后前端调用 `/api/index/sync-online`，刷新 KV 中的文章索引。
+7. workflow 成功后前端调用 `/api/index/sync-online`，刷新 KV 中的 admin-index 摘要缓存。
 
 ## 路径安全规则
 
@@ -348,16 +348,19 @@ GitHub API 封装在 `src/worker/services/github/`：
 - 扫描 `source/_posts/**/*.md`。
 - 简单解析 front matter 的 title、date、updated、tags、categories、published。
 - 扫描每篇文章同名资源目录里的图片。
+- 读取 `_config.yml` 和 `package.json` 生成 `site` 摘要。
+- 写入 `customize` adapter、panel 和 editable file 存在状态摘要，不写入配置正文。
 - 输出 `public/admin-index.json`。
 - 尝试写入 Git commit SHA 和每篇文章最近 Git 提交日期。
 
-后台依赖这个文件展示文章树和源站图片仓。
+后台依赖这个文件展示文章树、源站图片仓、站点摘要和 Customize 首页能力摘要。
 
 ## 开发约定
 
 - 共享 API 类型优先放在 `src/shared/`，避免前后端类型漂移。
 - 涉及文章路径时优先使用 `buildPostPaths` / `buildPostAssetPaths`。
 - Worker 中任何来自请求的路径都要先经过 `pathSafety` 校验。
+- 新增 Customize 主题 adapter 时参考 [Customize 主题 Adapter 开发指南](customize-adapter-development.md)。
 - D1 schema 修改时同时更新 `migrations/0001_create_drafts.sql` 和 `src/worker/services/d1/d1Schema.ts`。
 - 新增可见文案时同步更新 `src/i18n/resources.ts` 的中英文翻译。
 - 新增 API 时同时更新本文档的 API 概览。

@@ -26,6 +26,7 @@ export type PostAsset = {
   markdownPath: string
   size?: number
   publicUrl?: string
+  postRelativeId?: string
 }
 
 export type PostTreeNode = {
@@ -42,11 +43,37 @@ export type PostTreeResponse = {
   generatedAt?: string
   postsDir?: string
   assetMode?: string
+  site?: {
+    title?: string
+    subtitle?: string
+    author?: string
+    url?: string
+    language?: string
+    timezone?: string
+    theme?: {
+      name?: string
+      packageName?: string
+      packageVersion?: string
+      configPath?: string
+    }
+  }
+  customize?: {
+    detectedTheme?: string
+    availableAdapters?: string[]
+    availablePanels?: string[]
+    files?: Array<{
+      id: string
+      path: string
+      type?: string
+      exists?: boolean
+    }>
+  }
   stale?: boolean
   sourceCommitSha?: string
   cacheSyncedAt?: string
   posts: PostFile[]
   tree: PostTreeNode[]
+  assets?: PostAsset[]
 }
 
 export type PostContentResponse = {

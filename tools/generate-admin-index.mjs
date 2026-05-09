@@ -15,6 +15,7 @@ import path from 'node:path'
 import process from 'node:process'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import { parse as parseYaml } from 'yaml'
 
 const rootDir = process.cwd()
 const postsDir = process.env.ADMIN_INDEX_POSTS_DIR ?? 'source/_posts'
@@ -181,6 +182,119 @@ function normalizePublished(value) {
   return true
 }
 
+function getRecord(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+}
+
+function getString(value) {
+  if (value === null || value === undefined) return undefined
+  const text = String(value).trim()
+  return text || undefined
+}
+
+async function readYamlFile(repoPath) {
+  try {
+    const raw = await fs.readFile(path.join(rootDir, repoPath), 'utf8')
+    return getRecord(parseYaml(raw))
+  } catch (error) {
+    if (error?.code === 'ENOENT') return {}
+    throw error
+  }
+}
+
+async function readJsonFile(repoPath) {
+  try {
+    const raw = await fs.readFile(path.join(rootDir, repoPath), 'utf8')
+    return getRecord(JSON.parse(raw))
+  } catch (error) {
+    if (error?.code === 'ENOENT') return {}
+    throw error
+  }
+}
+
+async function pathExists(repoPath) {
+  try {
+    await fs.access(path.join(rootDir, repoPath))
+    return true
+  } catch {
+    return false
+  }
+}
+
+const commonCustomizeFiles = [
+  { id: 'site-config', path: '_config.yml', type: 'yaml' },
+  { id: 'about-page', path: 'source/about/index.md', type: 'markdown' },
+]
+
+const redefineCustomizeFiles = [
+  { id: 'redefine-config', path: '_config.redefine.yml', type: 'yaml' },
+  { id: 'redefine-bookmarks-page', path: 'source/bookmarks/index.md', type: 'markdown' },
+  { id: 'redefine-bookmarks-data', path: 'source/_data/bookmarks.yml', type: 'yaml' },
+  { id: 'redefine-links-page', path: 'source/links/index.md', type: 'markdown' },
+  { id: 'redefine-links-data', path: 'source/_data/links.yml', type: 'yaml' },
+]
+
+const commonCustomizePanels = [
+  'site-basic',
+  'about-page',
+]
+
+const redefineCustomizePanels = [
+  'redefine-basic',
+  'redefine-visual',
+  'redefine-home-banner',
+  'redefine-navigation',
+  'redefine-bookmarks',
+  'redefine-links',
+  'redefine-page-templates',
+]
+
+async function buildSiteAndCustomizeSummary() {
+  const siteConfig = await readYamlFile('_config.yml')
+  const detectedTheme = getString(siteConfig.theme)?.toLowerCase()
+  const themeConfigPath = detectedTheme ? `_config.${detectedTheme}.yml` : undefined
+  const themeConfig = themeConfigPath ? await readYamlFile(themeConfigPath) : {}
+  const themeInfo = getRecord(themeConfig.info)
+  const packageJson = await readJsonFile('package.json')
+  const dependencies = getRecord(packageJson.dependencies)
+  const devDependencies = getRecord(packageJson.devDependencies)
+  const themePackageName = detectedTheme ? `hexo-theme-${detectedTheme}` : undefined
+  const themePackageVersion = themePackageName
+    ? getString(dependencies[themePackageName]) ?? getString(devDependencies[themePackageName])
+    : undefined
+  const isRedefine = detectedTheme === 'redefine'
+  const editableFiles = isRedefine
+    ? [commonCustomizeFiles[0], redefineCustomizeFiles[0], commonCustomizeFiles[1], ...redefineCustomizeFiles.slice(1)]
+    : commonCustomizeFiles
+  const availablePanels = [...commonCustomizePanels, ...(isRedefine ? redefineCustomizePanels : [])]
+
+  return {
+    site: {
+      title: getString(siteConfig.title) ?? getString(themeInfo.title),
+      subtitle: getString(siteConfig.subtitle) ?? getString(themeInfo.subtitle),
+      author: getString(siteConfig.author) ?? getString(themeInfo.author),
+      url: getString(siteConfig.url) ?? getString(themeInfo.url),
+      language: getString(siteConfig.language),
+      timezone: getString(siteConfig.timezone),
+      theme: {
+        name: detectedTheme,
+        packageName: themePackageName,
+        packageVersion: themePackageVersion,
+        configPath: themeConfigPath,
+      },
+    },
+    customize: {
+      detectedTheme,
+      availableAdapters: ['common', ...(isRedefine ? ['redefine'] : [])],
+      availablePanels,
+      files: await Promise.all(editableFiles.map(async (file) => ({
+        ...file,
+        exists: await pathExists(file.path),
+      }))),
+    },
+  }
+}
+
 function addToTree(tree, post) {
   const segments = post.relativeId.split('/')
   let current = tree
@@ -287,15 +401,21 @@ async function main() {
     addToTree(tree, post)
   }
   sortTree(tree)
+  const assets = posts.flatMap((post) => post.assets.map((asset) => ({
+    ...asset,
+    postRelativeId: post.relativeId,
+  })))
 
   const index = {
-    version: 1,
+    version: 2,
     generatedAt: new Date().toISOString(),
     sourceCommitSha: await getSourceCommitSha(),
     postsDir,
     assetMode,
+    ...await buildSiteAndCustomizeSummary(),
     posts,
     tree,
+    assets,
   }
 
   const outputAbsolutePath = path.join(rootDir, outputPath)

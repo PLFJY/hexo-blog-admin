@@ -16,7 +16,7 @@ The intended data model is:
 | Runtime configuration | Worker variables / KV |
 | GitHub token | Worker secret |
 | Build and deploy | GitHub Actions |
-| Post index | Blog build artifact `admin-index.json` |
+| Public admin index summary | Blog build artifact `admin-index.json` |
 
 R2 is only a temporary draft cache, not the final image host.
 
@@ -45,6 +45,8 @@ Useful checks:
 pnpm typecheck
 pnpm build
 ```
+
+For architecture, APIs, and development conventions, see the [development guide](docs/development.md). For adding theme customization support, see the [Customize theme adapter development guide](docs/customize-adapter-development.en.md).
 
 Preview a production build:
 
@@ -112,7 +114,7 @@ Variable meanings:
 | `GITHUB_BRANCH` | Blog repository branch, for example `main`. Post reads, draft commits, and workflow dispatches use this branch. |
 | `POSTS_DIR` | Hexo posts directory, for example `source/_posts`. Used to calculate Markdown paths from `relativeId`. |
 | `BLOG_PUBLIC_URL` | Public URL of the deployed blog. The admin reads `ADMIN_INDEX_PATH` from this site. |
-| `ADMIN_INDEX_PATH` | Blog build artifact path for the post index, for example `/admin-index.json`. |
+| `ADMIN_INDEX_PATH` | Blog build artifact path for the public admin index summary, for example `/admin-index.json`. |
 | `WORKFLOW_FILE` | GitHub Actions workflow filename in the blog repository, for example `Build Pages.yml` or `deploy.yml`. |
 
 These variables have no fallback and no default value. If any required item is missing, the app shows SetupRequiredPage and blocks the main admin UI.
@@ -224,7 +226,7 @@ If you previously configured blog subpath routes such as `blog.plfjy.top/admin` 
 
 ## Blog Repository admin-index.json Setup
 
-The admin post list comes from the publicly deployed `admin-index.json` file on the blog site. Your Hexo blog repository needs to generate this file into `public/` and publish it together with the blog output.
+The admin public summary comes from the deployed `admin-index.json` file on the blog site. It is no longer just a post list: it is the fast public index entry generated after the blog build. Your Hexo blog repository needs to generate this file into `public/` and publish it together with the blog output.
 
 Recommended script path:
 
@@ -232,9 +234,9 @@ Recommended script path:
 tools/generate-admin-index.mjs
 ```
 
-This repository includes a copy-ready example script at `scripts/generate-admin-index.mjs`.
+This repository includes a copy-ready example script at `tools/generate-admin-index.mjs`.
 
-The script should scan:
+The script should scan posts, read site summary config, and check whether Customize-related files exist:
 
 ```txt
 source/_posts/**/*.md
@@ -246,14 +248,49 @@ And output:
 public/admin-index.json
 ```
 
+`admin-index.json` v2 contains:
+
+- `posts` / `tree` / per-post `assets`: the post management index.
+- `site`: site and theme summary.
+- `customize`: available adapters, panels, and editable file existence.
+
+It does not contain the body of `_config.yml`, theme config, or `_data/*.yml`. Customize still reads source files through the GitHub API when editing actual content.
+
 The index should contain at least:
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "generatedAt": "2026-05-05T00:00:00.000Z",
   "postsDir": "source/_posts",
   "assetMode": "post-folder",
+  "site": {
+    "title": "My Blog",
+    "subtitle": "Notes and code",
+    "author": "PLFJY",
+    "url": "https://example.com",
+    "language": "en",
+    "timezone": "Asia/Shanghai",
+    "theme": {
+      "name": "redefine",
+      "packageName": "hexo-theme-redefine",
+      "packageVersion": "^2.9.0",
+      "configPath": "_config.redefine.yml"
+    }
+  },
+  "customize": {
+    "detectedTheme": "redefine",
+    "availableAdapters": ["common", "redefine"],
+    "availablePanels": ["site-basic", "about-page", "redefine-basic", "redefine-visual"],
+    "files": [
+      {
+        "id": "site-config",
+        "path": "_config.yml",
+        "type": "yaml",
+        "exists": true
+      }
+    ]
+  },
   "posts": [
     {
       "relativeId": "ap-csa/00-about-ap-csa",
@@ -341,7 +378,7 @@ ADMIN_INDEX_PATH=/admin-index.json
 - Account management in Settings; regular account passwords are stored in KV as salted hashes.
 - Shared TypeScript API/domain types.
 - Hexo post path utility functions for folder-based post IDs and post-folder assets.
-- Reads `admin-index.json` from the blog site and shows the real post tree.
+- Reads `admin-index.json` from the blog site and shows the real post tree, site summary, and Customize capability summary.
 - Reads post Markdown through the GitHub REST API.
 - Creates, saves, reads, and deletes drafts in D1.
 - Provides live Markdown preview for post and draft editing, including `==highlight==` syntax.

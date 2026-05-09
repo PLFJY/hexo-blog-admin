@@ -3,6 +3,13 @@ import type { WorkerEnv } from './env'
 import { handleAssetBlob, handleAssetCache, handleAssetRename, handleAssets } from './routes/assetRoutes'
 import { handleAuthStatus, handleCreateUser, handleDeleteUser, handleListUsers, handleLogin, handleLogout } from './routes/authRoutes'
 import { handleAdminUiSettings, handlePublicConfig, handleSetupStatus, handleUpdateAdminUiSettings } from './routes/configRoutes'
+import {
+  handleCustomizeFile,
+  handleCustomizeManifest,
+  handleCustomizePanel,
+  handleSaveCustomizeFile,
+  handleSaveCustomizePanel,
+} from './routes/customizeRoutes'
 import { handleDeployStatus, handleDispatchDeploy, handleLatestDeploy } from './routes/deployRoutes'
 import { handleCreateDraft, handleDraftById, handleDrafts, handlePublishDraft } from './routes/draftRoutes'
 import { handleGitHubRepo } from './routes/githubRoutes'
@@ -106,6 +113,11 @@ async function handleApiRequest(request: Request, env: WorkerEnv, pathname: stri
     return handleDeleteUser(env, decodeURIComponent(pathname.slice('/api/users/'.length)))
   }
   if (pathname === '/api/index') return handleAdminIndex(env)
+  if (pathname === '/api/customize/manifest') return handleCustomizeManifest(env)
+  if (pathname === '/api/customize/file' && request.method === 'GET') return handleCustomizeFile(env, request)
+  if (pathname === '/api/customize/file' && request.method === 'PUT') return handleSaveCustomizeFile(env, request)
+  if (pathname === '/api/customize/panel' && request.method === 'GET') return handleCustomizePanel(env, request)
+  if (pathname === '/api/customize/panel' && request.method === 'PUT') return handleSaveCustomizePanel(env, request)
   if (pathname === '/api/posts/tree') return handlePostsTree(env)
   if (pathname === '/api/posts/content') return handlePostContent(env, request)
   if (pathname === '/api/posts/asset/blob') return handlePostAssetBlob(env, request)

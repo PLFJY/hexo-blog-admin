@@ -16,7 +16,7 @@
 | 运行时配置 | Worker Variables / KV |
 | GitHub Token | Worker Secret |
 | 构建和部署 | GitHub Actions |
-| 文章索引 | 博客构建产物 `admin-index.json` |
+| 后台公开索引摘要 | 博客构建产物 `admin-index.json` |
 
 R2 只作为草稿临时缓存，不作为正式图床。
 
@@ -46,7 +46,7 @@ pnpm typecheck
 pnpm build
 ```
 
-更完整的架构、目录、API 和开发约定见 [开发文档](docs/development.md)。
+更完整的架构、目录、API 和开发约定见 [开发文档](docs/development.md)。开发新主题定制 adapter 见 [Customize 主题 Adapter 开发指南](docs/customize-adapter-development.md)。
 
 预览生产构建：
 
@@ -114,7 +114,7 @@ WORKFLOW_FILE=Build Pages.yml
 | `GITHUB_BRANCH` | 博客仓库发布分支，例如 `main`。读取文章、提交草稿和触发 Action 都使用这个分支。 |
 | `POSTS_DIR` | Hexo 文章目录，例如 `source/_posts`。用于计算 `relativeId` 对应的 Markdown 路径。 |
 | `BLOG_PUBLIC_URL` | 已部署博客的公开地址。后台会从这里读取 `ADMIN_INDEX_PATH`。 |
-| `ADMIN_INDEX_PATH` | 博客构建产物里的文章索引路径，例如 `/admin-index.json`。 |
+| `ADMIN_INDEX_PATH` | 博客构建产物里的后台公开索引摘要路径，例如 `/admin-index.json`。 |
 | `WORKFLOW_FILE` | 博客仓库里负责构建部署的 GitHub Actions workflow 文件名，例如 `Build Pages.yml` 或 `deploy.yml`。 |
 
 这些变量没有 fallback，也没有默认值。缺少任意一项时，后台会显示 SetupRequiredPage 并阻止进入主界面。
@@ -226,7 +226,7 @@ API 路径：
 
 ## 博客仓库侧配置 admin-index.json
 
-后台的文章列表来自博客站点公开发布的 `admin-index.json`。你的 Hexo 博客仓库需要在构建产物 `public/` 中生成这个文件，并且在部署博客前把它一起发布出去。
+后台的公开索引摘要来自博客站点发布的 `admin-index.json`。它不再只是文章列表，而是博客构建后生成的后台快速索引入口。你的 Hexo 博客仓库需要在构建产物 `public/` 中生成这个文件，并且在部署博客前把它一起发布出去。
 
 推荐做法是在博客仓库新增一个脚本，例如：
 
@@ -236,7 +236,7 @@ tools/generate-admin-index.mjs
 
 **本仓库提供了一份可直接复制的示例脚本：`tools/generate-admin-index.mjs`。**
 
-脚本需要扫描：
+脚本需要扫描文章、读取站点摘要配置，并检查 Customize 相关文件是否存在：
 
 ```txt
 source/_posts/**/*.md
@@ -248,14 +248,49 @@ source/_posts/**/*.md
 public/admin-index.json
 ```
 
+`admin-index.json` v2 包含：
+
+- `posts` / `tree` / 每篇文章的 `assets`：文章管理索引。
+- `site`：站点和主题摘要。
+- `customize`：可用 adapter、面板和可编辑文件存在状态。
+
+它不包含 `_config.yml`、主题配置或 `_data/*.yml` 的正文。Customize 真正编辑内容时仍然通过 GitHub API 读取源文件。
+
 索引至少需要包含：
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "generatedAt": "2026-05-05T00:00:00.000Z",
   "postsDir": "source/_posts",
   "assetMode": "post-folder",
+  "site": {
+    "title": "My Blog",
+    "subtitle": "Notes and code",
+    "author": "PLFJY",
+    "url": "https://example.com",
+    "language": "zh-CN",
+    "timezone": "Asia/Shanghai",
+    "theme": {
+      "name": "redefine",
+      "packageName": "hexo-theme-redefine",
+      "packageVersion": "^2.9.0",
+      "configPath": "_config.redefine.yml"
+    }
+  },
+  "customize": {
+    "detectedTheme": "redefine",
+    "availableAdapters": ["common", "redefine"],
+    "availablePanels": ["site-basic", "about-page", "redefine-basic", "redefine-visual"],
+    "files": [
+      {
+        "id": "site-config",
+        "path": "_config.yml",
+        "type": "yaml",
+        "exists": true
+      }
+    ]
+  },
   "posts": [
     {
       "relativeId": "ap-csa/00-about-ap-csa",
@@ -343,7 +378,7 @@ ADMIN_INDEX_PATH=/admin-index.json
 - 设置页账号管理，新增账号的密码以加盐哈希保存到 KV。
 - 前后端复用的 TypeScript API 和领域类型。
 - 面向文件夹分类文章和文章资源目录的 Hexo 路径工具函数。
-- 从博客站点读取 `admin-index.json`，展示真实文章树。
+- 从博客站点读取 `admin-index.json`，展示真实文章树、站点摘要和 Customize 能力摘要。
 - 通过 GitHub REST API 读取文章 Markdown。
 - 基于 D1 的草稿创建、保存、读取和删除。
 - 文章和草稿编辑时提供实时 Markdown 预览，并支持 `==高亮==` 语法。
