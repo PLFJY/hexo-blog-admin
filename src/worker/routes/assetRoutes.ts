@@ -11,7 +11,7 @@ import {
 } from '../services/d1/d1DraftAssets'
 import {
   withDraftAssetManifestPublicUrls,
-  withDraftAssetMutationPublicUrls,
+  withDraftAssetUploadPublicUrls,
 } from '../services/assets/publicDraftAssetUrl'
 import { requireConfig } from '../utils/config'
 import { json } from '../utils/response'
@@ -70,7 +70,7 @@ export async function handleAssets(env: WorkerEnv, request: Request): Promise<Re
       }
 
       return json(
-        withDraftAssetMutationPublicUrls(env, await putDraftAsset(env, {
+        withDraftAssetUploadPublicUrls(env, await putDraftAsset(env, {
           postsDir: requireConfig(env).POSTS_DIR,
           relativeId: body.relativeId,
           filename: body.filename,
@@ -91,7 +91,7 @@ export async function handleAssets(env: WorkerEnv, request: Request): Promise<Re
       }
 
       return json(
-        withDraftAssetMutationPublicUrls(env, await putDraftAsset(env, {
+        withDraftAssetUploadPublicUrls(env, await putDraftAsset(env, {
           postsDir: requireConfig(env).POSTS_DIR,
           relativeId: postRelativeId,
           filename,
@@ -110,7 +110,7 @@ export async function handleAssets(env: WorkerEnv, request: Request): Promise<Re
     }
 
     return json(
-      withDraftAssetMutationPublicUrls(env, await putDraftAsset(env, {
+      withDraftAssetUploadPublicUrls(env, await putDraftAsset(env, {
         postsDir: requireConfig(env).POSTS_DIR,
         relativeId: postRelativeId,
         filename: file.name,
@@ -134,7 +134,7 @@ export async function handleAssetRename(env: WorkerEnv, request: Request): Promi
   if (request.method !== 'POST') return json({ error: 'METHOD_NOT_ALLOWED' }, { status: 405 })
   const body = (await request.json()) as RenameAssetRequest
   if (!body.key || !body.filename) return json({ error: 'BAD_REQUEST', message: 'key and filename are required' }, { status: 400 })
-  return json(withDraftAssetMutationPublicUrls(env, await renameDraftAsset(env, body.key, body.filename, requireConfig(env).POSTS_DIR)))
+  return json(withDraftAssetUploadPublicUrls(env, await renameDraftAsset(env, body.key, body.filename, requireConfig(env).POSTS_DIR)))
 }
 
 export async function handleAssetCache(env: WorkerEnv, request: Request): Promise<Response> {
