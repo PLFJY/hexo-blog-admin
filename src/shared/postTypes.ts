@@ -11,6 +11,9 @@ export type PostFile = {
   postSlug?: string
   assetDir?: string
   markdownAssetPrefix?: string
+  assetIndexPath?: string
+  assetCount?: number
+  assetTotalSize?: number
   date?: string
   updated?: string
   tags?: string[]
@@ -35,6 +38,7 @@ export type PostTreeNode = {
   type: 'folder' | 'post'
   sortPublishedAt?: string
   children?: PostTreeNode[]
+  postRef?: string
   post?: PostFile
 }
 
@@ -43,6 +47,8 @@ export type PostTreeResponse = {
   generatedAt?: string
   postsDir?: string
   assetMode?: string
+  assetIndexMode?: string
+  assetIndexBasePath?: string
   site?: {
     title?: string
     subtitle?: string
@@ -74,6 +80,12 @@ export type PostTreeResponse = {
   posts: PostFile[]
   tree: PostTreeNode[]
   assets?: PostAsset[]
+}
+
+export type PostAssetIndexResponse = {
+  relativeId: string
+  assetIndexPath?: string
+  assets: PostAsset[]
 }
 
 export type PostContentResponse = {

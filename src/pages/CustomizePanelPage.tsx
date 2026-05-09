@@ -2,6 +2,7 @@ import {
   Body1,
   Button,
   Checkbox,
+  ColorPicker,
   Field,
   Input,
   Popover,
@@ -26,7 +27,6 @@ import {
 import { useEffect, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useParams } from 'react-router'
-import { HexColorPicker } from 'react-colorful'
 import { ErrorState } from '../components/ErrorState'
 import { LoadingState } from '../components/LoadingState'
 import { MarkdownEditor } from '../components/MarkdownEditor'
@@ -325,7 +325,7 @@ export function CustomizePanelPage() {
     <section className={styles.page}>
       <header className={styles.header}>
         <div>
-          <BackToCustomizeButton />
+          <BackToCustomizeButton adapterId={state.panel.panel.adapterId} />
         </div>
         <Title1>{t(`customize.panels.${state.panel.panel.id}.title`, { defaultValue: state.panel.panel.title })}</Title1>
         <Body1 className={localStyles.subtitle}>
@@ -468,7 +468,11 @@ function ColorField({ label, value, onChange }: { label: string; value: string; 
               />
             </PopoverTrigger>
             <PopoverSurface className={styles.colorPopover}>
-              <HexColorPicker className={styles.colorPicker} color={pickerValue} onChange={onChange} />
+              <ColorPicker
+                className={styles.colorPicker}
+                color={hexToHsv(pickerValue)}
+                onColorChange={(_, data) => onChange(hsvToHex(data.color))}
+              />
             </PopoverSurface>
           </Popover>
           <Text size={200} className={styles.previewText}>
@@ -563,8 +567,6 @@ function RedefineBasicsEditor({ data, onChange }: { data: RedefineBasicsData; on
   const { t } = useTranslation()
   return (
     <div className={styles.section}>
-      <Title2>Hexo _config.yml</Title2>
-      <SiteBasicsEditor data={data.site} onChange={(site) => onChange({ ...data, site })} />
       <Title2>Redefine info</Title2>
       <TwoColumnSection>
         <TextField label={t('customize.fields.themeTitle')} value={data.info.title} onChange={(title) => onChange({ ...data, info: { ...data.info, title } })} />
@@ -691,15 +693,10 @@ function BookmarksEditor({ data, onChange }: { data: BookmarksPanelData; onChang
   const { t } = useTranslation()
   const updateCategory = (index: number, category: BookmarksPanelData['categories'][number]) =>
     onChange({ ...data, categories: data.categories.map((item, itemIndex) => itemIndex === index ? category : item) })
+  const addCategory = () => onChange({ ...data, categories: [...data.categories, { category: t('customize.defaultCategory'), icon: '', items: [] }] })
   return (
     <div className={styles.section}>
-      <MarkdownPageEditor data={data.page} onChange={(page) => onChange({ ...data, page })} />
-      <div className={styles.row}>
-        <Title2>{t('customize.sections.bookmarksData')}</Title2>
-        <Button icon={<AddRegular />} onClick={() => onChange({ ...data, categories: [...data.categories, { category: t('customize.defaultCategory'), icon: '', items: [] }] })}>
-          {t('customize.addCategory')}
-        </Button>
-      </div>
+      <Title2>{t('customize.sections.bookmarksData')}</Title2>
       <div className={styles.nestedList}>
         {data.categories.map((category, index) => (
           <section className={styles.itemBox} key={`${category.category}-${index}`}>
@@ -714,12 +711,7 @@ function BookmarksEditor({ data, onChange }: { data: BookmarksPanelData; onChang
               <TextField label={t('customize.fields.categoryName')} value={category.category} onChange={(value) => updateCategory(index, { ...category, category: value })} />
               <IconField label={t('customize.fields.icon')} value={category.icon} onChange={(icon) => updateCategory(index, { ...category, icon })} />
             </TwoColumnSection>
-            <div className={styles.row}>
-              <Title3>{t('customize.sections.bookmarks')}</Title3>
-              <Button icon={<AddRegular />} onClick={() => updateCategory(index, { ...category, items: [...category.items, { name: '', link: '', description: '', image: '' }] })}>
-                {t('customize.addBookmark')}
-              </Button>
-            </div>
+            <Title3>{t('customize.sections.bookmarks')}</Title3>
             {category.items.map((bookmark, bookmarkIndex) => (
               <section className={styles.itemBox} key={`${bookmark.name}-${bookmarkIndex}`}>
                 <ItemActions
@@ -737,9 +729,16 @@ function BookmarksEditor({ data, onChange }: { data: BookmarksPanelData; onChang
                 </TwoColumnSection>
               </section>
             ))}
+            <Button icon={<AddRegular />} onClick={() => updateCategory(index, { ...category, items: [...category.items, { name: '', link: '', description: '', image: '' }] })}>
+              {t('customize.addBookmark')}
+            </Button>
           </section>
         ))}
+        <Button icon={<AddRegular />} onClick={addCategory}>
+          {t('customize.addCategory')}
+        </Button>
       </div>
+      <MarkdownPageEditor data={data.page} onChange={(page) => onChange({ ...data, page })} />
     </div>
   )
 }
@@ -749,15 +748,10 @@ function LinksEditor({ data, onChange }: { data: LinksPanelData; onChange: (data
   const { t } = useTranslation()
   const updateCategory = (index: number, category: LinksPanelData['categories'][number]) =>
     onChange({ ...data, categories: data.categories.map((item, itemIndex) => itemIndex === index ? category : item) })
+  const addCategory = () => onChange({ ...data, categories: [...data.categories, { links_category: t('customize.defaultCategory'), has_thumbnail: false, list: [] }] })
   return (
     <div className={styles.section}>
-      <MarkdownPageEditor data={data.page} onChange={(page) => onChange({ ...data, page })} />
-      <div className={styles.row}>
-        <Title2>{t('customize.sections.linksData')}</Title2>
-        <Button icon={<AddRegular />} onClick={() => onChange({ ...data, categories: [...data.categories, { links_category: t('customize.defaultCategory'), has_thumbnail: false, list: [] }] })}>
-          {t('customize.addCategory')}
-        </Button>
-      </div>
+      <Title2>{t('customize.sections.linksData')}</Title2>
       <div className={styles.nestedList}>
         {data.categories.map((category, index) => (
           <section className={styles.itemBox} key={`${category.links_category}-${index}`}>
@@ -772,12 +766,7 @@ function LinksEditor({ data, onChange }: { data: LinksPanelData; onChange: (data
               <TextField label={t('customize.fields.linksCategory')} value={category.links_category} onChange={(value) => updateCategory(index, { ...category, links_category: value })} />
               <BooleanField label={t('customize.fields.hasThumbnail')} value={category.has_thumbnail} onChange={(hasThumbnail) => updateCategory(index, { ...category, has_thumbnail: hasThumbnail })} />
             </TwoColumnSection>
-            <div className={styles.row}>
-              <Title3>{t('customize.sections.friendLinks')}</Title3>
-              <Button icon={<AddRegular />} onClick={() => updateCategory(index, { ...category, list: [...category.list, { name: '', description: '', link: '', avatar: '', thumbnail: '' }] })}>
-                {t('customize.addFriendLink')}
-              </Button>
-            </div>
+            <Title3>{t('customize.sections.friendLinks')}</Title3>
             {category.list.map((link, linkIndex) => (
               <section className={styles.itemBox} key={`${link.name}-${linkIndex}`}>
                 <ItemActions
@@ -796,9 +785,16 @@ function LinksEditor({ data, onChange }: { data: LinksPanelData; onChange: (data
                 </TwoColumnSection>
               </section>
             ))}
+            <Button icon={<AddRegular />} onClick={() => updateCategory(index, { ...category, list: [...category.list, { name: '', description: '', link: '', avatar: '', thumbnail: '' }] })}>
+              {t('customize.addFriendLink')}
+            </Button>
           </section>
         ))}
+        <Button icon={<AddRegular />} onClick={addCategory}>
+          {t('customize.addCategory')}
+        </Button>
       </div>
+      <MarkdownPageEditor data={data.page} onChange={(page) => onChange({ ...data, page })} />
     </div>
   )
 }
@@ -975,6 +971,60 @@ function normalizeHexColor(value: string | undefined) {
     return `#${trimmed.slice(1).split('').map((char) => `${char}${char}`).join('')}`
   }
   return null
+}
+
+type HsvColor = {
+  h: number
+  s: number
+  v: number
+  a?: number
+}
+
+function hexToHsv(hex: string): HsvColor {
+  const normalized = normalizeHexColor(hex) ?? '#000000'
+  const red = Number.parseInt(normalized.slice(1, 3), 16) / 255
+  const green = Number.parseInt(normalized.slice(3, 5), 16) / 255
+  const blue = Number.parseInt(normalized.slice(5, 7), 16) / 255
+  const max = Math.max(red, green, blue)
+  const min = Math.min(red, green, blue)
+  const delta = max - min
+  let hue = 0
+
+  if (delta !== 0) {
+    if (max === red) hue = 60 * (((green - blue) / delta) % 6)
+    else if (max === green) hue = 60 * ((blue - red) / delta + 2)
+    else hue = 60 * ((red - green) / delta + 4)
+  }
+
+  return {
+    h: hue < 0 ? hue + 360 : hue,
+    s: max === 0 ? 0 : delta / max,
+    v: max,
+  }
+}
+
+function hsvToHex(color: HsvColor) {
+  const hue = ((color.h % 360) + 360) % 360
+  const saturation = clamp01(color.s)
+  const value = clamp01(color.v)
+  const chroma = value * saturation
+  const x = chroma * (1 - Math.abs((hue / 60) % 2 - 1))
+  const match = value - chroma
+  const [red, green, blue] =
+    hue < 60 ? [chroma, x, 0]
+      : hue < 120 ? [x, chroma, 0]
+        : hue < 180 ? [0, chroma, x]
+          : hue < 240 ? [0, x, chroma]
+            : hue < 300 ? [x, 0, chroma]
+              : [chroma, 0, x]
+  return `#${[red, green, blue]
+    .map((channel) => Math.round((channel + match) * 255).toString(16).padStart(2, '0'))
+    .join('')}`
+}
+
+function clamp01(value: number) {
+  if (!Number.isFinite(value)) return 0
+  return Math.min(1, Math.max(0, value))
 }
 
 function detectIconSet(value: string | undefined) {

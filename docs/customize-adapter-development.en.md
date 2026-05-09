@@ -1,28 +1,31 @@
-# Customize Theme Adapter Development Guide
+# Theme Settings Adapter Development Guide
 
 English | [简体中文](customize-adapter-development.md)
 
-This guide is for developers who want to add Hexo theme support to the Customize center in `hexo-blog-admin`. Customize is not meant to be a generic SaaS CMS. Its job is to expose the site content and theme options that a blog owner changes often enough to deserve a web UI.
+This guide is for developers who want to add theme settings support to `hexo-blog-admin`. The settings system is not meant to be a generic SaaS CMS. Its job is to expose the site content and theme options that a blog owner changes often enough to deserve a web UI.
 
 ## Design Goals
 
-Customize separates common Hexo behavior from theme-specific behavior through adapters:
+The settings system separates common Hexo behavior from theme-specific behavior through adapters:
 
 - The `common` adapter is always enabled. It owns generic Hexo content such as `_config.yml` and the About page.
-- Theme adapters are enabled from `customize.detectedTheme` in `admin-index.json` v2. For example, `detectedTheme: redefine` enables the `redefine` adapter.
+- Common Hexo behavior appears in the frontend as “Hexo Settings”; theme behavior appears as theme-named entries such as “Redefine Settings”.
+- Theme adapters are enabled from `customize.detectedTheme` in `admin-index.json` v3. For example, `detectedTheme: redefine` enables the `redefine` adapter.
 - Adding a new theme should only require a new adapter and registry entry. Worker routes, save flow, and deployment tracking should remain unchanged.
-- `admin-index.json` stores only site and adapter capability summaries. It does not store configuration file contents.
+- Each theme adapter should live in its own `src/customize/<theme-name>/` directory. Redefine, for example, lives in `src/customize/redefine/`.
+- `admin-index.json` v3 stores only `site` / `customize` summaries and the lightweight post index. It does not store configuration file contents.
+- Article image indexes are not settings adapter data; they are managed by per-post asset shards.
 
 The save flow is shared:
 
-1. The Customize home page reads the `site` / `customize` summary from `/api/index` first, then displays the current theme, adapters, panels, and file existence.
+1. The Hexo Settings and theme settings pages read the `site` / `customize` summary from `/api/index` first, then display the current theme, adapters, panels, and file existence.
 2. Structured panels read `/api/customize/panel?id=...`.
 3. Raw file editing reads `/api/customize/file?id=...`.
 4. On save, the Worker writes to the source blog repository through GitHub's Git Data API.
 5. The frontend receives `commitSha` and polls GitHub Actions deployment status.
-6. After a successful deploy, the frontend calls `/api/index/sync-online` to refresh the admin-index cache.
+6. After a successful deploy, the frontend calls `/api/index/sync-online` to refetch the online admin-index and update the browser-local cache.
 
-This means the Customize home page should not scan the GitHub repository in real time just to display capabilities. Source files are read from GitHub only after the user opens a structured panel or Raw File Editor.
+This means settings home pages should not scan the GitHub repository in real time just to display capabilities. Source files are read from GitHub only after the user opens a structured panel or Raw File Editor.
 
 ## Relevant Directories
 
@@ -38,10 +41,10 @@ src/shared/customizeTypes.ts
   Shared frontend/Worker types for manifests, panels, files, save status, and structured data
 
 src/worker/routes/customizeRoutes.ts
-  Customize API route handlers
+  Settings API route handlers
 
 src/pages/Customize*.tsx
-  Customize home, structured panel page, and raw file editor
+  Hexo Settings, theme settings, structured panel page, and raw file editor
 ```
 
 ## What An Adapter Declares
@@ -93,7 +96,7 @@ Notes:
 
 ## Panel Descriptors
 
-Panel descriptors decide how the Customize home page groups and displays features.
+Panel descriptors decide how Hexo Settings or theme settings pages group and display features.
 
 ```ts
 const panels = [
@@ -262,7 +265,9 @@ If you only need fallback editing, declare `files` without declaring panels. Raw
 
 5. Update the blog-side admin-index summary generator.
 
-`tools/generate-admin-index.mjs` emits `site` and `customize` summaries. Once a theme adapter is official, add its adapter id, panel id, and editable file id/path/type/exists summaries there too. The admin-index should contain summaries only, not full config file contents; actual file contents are still read from GitHub source files by `/api/customize/panel` or `/api/customize/file`.
+`tools/generate-admin-index.mjs` emits the v3 lightweight index plus `site` and `customize` summaries. Once a theme adapter is official, add its adapter id, panel id, and editable file id/path/type/exists summaries there too if the panel should appear on Hexo Settings or theme settings pages. The admin-index should contain summaries only, not full config file contents; actual file contents are still read from GitHub source files by `/api/customize/panel` or `/api/customize/file`.
+
+Article image indexes are managed by per-post asset shards under `public/admin-index/post-assets/<relativeId>.json`; do not model them as settings adapter capabilities.
 
 ## When To Build A Structured Panel
 
@@ -337,7 +342,7 @@ After adding an adapter, verify:
 - Every panel PUT creates a GitHub commit.
 - Raw File Editor can read and save declared files.
 - The frontend can track deployment by `commitSha`.
-- After successful deployment, admin-index sync works.
+- After successful deployment, the online admin-index can be refetched and the browser-local cache updates.
 - `pnpm typecheck` passes.
 - `pnpm build` passes.
 
@@ -347,4 +352,4 @@ If you changed the blog-side `tools/generate-admin-index.mjs`, run it in a real 
 node tools/generate-admin-index.mjs
 ```
 
-Confirm that `public/admin-index.json` includes the new `site` / `customize` summaries.
+Confirm that `public/admin-index.json` includes the new `site` / `customize` summaries and that `public/admin-index/post-assets/` still contains the generated article image shards.

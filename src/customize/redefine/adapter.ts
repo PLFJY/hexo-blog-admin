@@ -68,10 +68,10 @@ const panelDescriptors = [
   {
     id: 'redefine-basic',
     adapterId: 'redefine',
-    title: '站点 / Redefine 基础信息',
-    description: '维护 Hexo 站点信息和 Redefine info 区域，可手动保持二者一致。',
+    title: 'Redefine 基础信息',
+    description: '维护 Redefine 主题配置中的 info 区域。',
     group: 'basic' as const,
-    fileIds: ['site-config', 'redefine-config'],
+    fileIds: ['redefine-config'],
   },
   {
     id: 'redefine-visual',
@@ -143,27 +143,15 @@ function readBasics(siteConfig: Record<string, unknown>, themeConfig: Record<str
   }
 }
 
-function writeBasics(siteContent: string, themeContent: string, rawData: unknown) {
+function writeBasics(themeContent: string, rawData: unknown) {
   const data = getRecord(rawData)
-  const site = getRecord(data.site)
   const info = getRecord(data.info)
-  return {
-    siteContent: setYamlPaths(siteContent, [
-      { path: ['title'], value: getString(site.title) },
-      { path: ['subtitle'], value: getString(site.subtitle) },
-      { path: ['description'], value: getString(site.description) },
-      { path: ['author'], value: getString(site.author) },
-      { path: ['language'], value: getString(site.language) },
-      { path: ['timezone'], value: getString(site.timezone) },
-      { path: ['url'], value: getString(site.url) },
-    ]),
-    themeContent: setYamlPaths(themeContent, [
-      { path: ['info', 'title'], value: getString(info.title) },
-      { path: ['info', 'subtitle'], value: getString(info.subtitle) },
-      { path: ['info', 'author'], value: getString(info.author) },
-      { path: ['info', 'url'], value: getString(info.url) },
-    ]),
-  }
+  return setYamlPaths(themeContent, [
+    { path: ['info', 'title'], value: getString(info.title) },
+    { path: ['info', 'subtitle'], value: getString(info.subtitle) },
+    { path: ['info', 'author'], value: getString(info.author) },
+    { path: ['info', 'url'], value: getString(info.url) },
+  ])
 }
 
 function readVisual(themeConfig: Record<string, unknown>) {
@@ -474,13 +462,7 @@ export const redefineAdapter: CustomizeAdapter = {
   writePanel(panelId, context) {
     const themeContent = context.files['redefine-config']?.content ?? ''
     if (panelId === 'redefine-basic') {
-      const result = writeBasics(context.files['site-config']?.content ?? '', themeContent, context.data)
-      return {
-        files: [
-          { id: 'site-config', content: result.siteContent },
-          { id: 'redefine-config', content: result.themeContent },
-        ],
-      }
+      return { files: [{ id: 'redefine-config', content: writeBasics(themeContent, context.data) }] }
     }
     if (panelId === 'redefine-visual') return { files: [{ id: 'redefine-config', content: writeVisual(themeContent, context.data) }] }
     if (panelId === 'redefine-home-banner') return { files: [{ id: 'redefine-config', content: writeHomeBanner(themeContent, context.data) }] }

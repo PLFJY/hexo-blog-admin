@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { getJson, sendJson } from '../lib/apiClient'
+import { setCachedAdminIndex } from '../lib/indexCache'
 import type { CustomizeSaveStatus } from '../shared/customizeTypes'
 import type { DeployRecord, DeployStatusResponse } from '../shared/deployTypes'
+import type { PostTreeResponse } from '../shared/postTypes'
 
 export function useCommitDeployTracker() {
   const { t } = useTranslation()
@@ -12,8 +14,11 @@ export function useCommitDeployTracker() {
   useEffect(() => () => window.clearTimeout(pollTimer.current), [])
 
   const syncIndex = (commitSha: string, deploy: DeployRecord) => {
-    void sendJson('/index/sync-online', 'POST')
-      .then(() => setStatus({ commitSha, deploy, indexSynced: true, message: t('customize.indexSynced') }))
+    void sendJson<PostTreeResponse>('/index/sync-online', 'POST')
+      .then((index) => {
+        setCachedAdminIndex(index)
+        setStatus({ commitSha, deploy, indexSynced: true, message: t('customize.indexSynced') })
+      })
       .catch((error: unknown) => setStatus({
         commitSha,
         deploy,

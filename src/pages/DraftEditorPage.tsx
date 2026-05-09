@@ -13,13 +13,14 @@ import type { MarkdownAssetPanelHandle } from '../components/MarkdownAssetPanel'
 import { StatusBadge } from '../components/StatusBadge'
 import { decideEditorConflict } from '../lib/editorConflict'
 import { deleteEditorSnapshot, readEditorSnapshot, writeEditorSnapshot } from '../lib/editorSnapshot'
+import { getCachedAdminIndex, setCachedAdminIndex } from '../lib/indexCache'
 import { getJson, sendJson } from '../lib/apiClient'
 import { resolveMarkdownResourceUrl } from '../lib/markdownResource'
 import type { PublicConfigResponse } from '../shared/apiTypes'
 import type { DraftAsset, DraftAssetListResponse } from '../shared/assetTypes'
 import type { DeployRecord, DeployStatusResponse } from '../shared/deployTypes'
 import type { DraftListResponse, DraftRecord, PublishDraftResponse } from '../shared/draftTypes'
-import type { PostAsset, PostTreeResponse } from '../shared/postTypes'
+import type { PostAsset, PostAssetIndexResponse, PostTreeResponse } from '../shared/postTypes'
 import { usePageStyles } from './pageStyles'
 
 const useStyles = makeStyles({
@@ -110,6 +111,14 @@ const isValidRelativeId = (relativeId: string) => {
   return /^[a-zA-Z0-9][a-zA-Z0-9/_-]*[a-zA-Z0-9_-]$/.test(normalized)
 }
 
+async function fetchSourceAssets(relativeId: string, postIndex: PostTreeResponse): Promise<PostAsset[]> {
+  const normalized = normalizeRelativeId(relativeId)
+  if (!normalized || !postIndex.posts.some((post) => post.relativeId === normalized)) return []
+  return await getJson<PostAssetIndexResponse>(`/posts/assets?relativeId=${encodeURIComponent(normalized)}`)
+    .then((response) => response.assets)
+    .catch(() => [])
+}
+
 type State =
   | { status: 'loading' }
   | {
@@ -154,11 +163,21 @@ export function DraftEditorPage() {
   useEffect(() => {
     setState({ status: 'loading' })
     const draftRequest = draftId ? getJson<DraftRecord>(`/drafts/${encodeURIComponent(draftId)}`) : Promise.resolve(emptyDraft())
+    const cachedPostIndex = getCachedAdminIndex()
+    const postIndexRequest = cachedPostIndex
+      ? Promise.resolve(cachedPostIndex)
+      : getJson<PostTreeResponse>('/posts/tree')
+        .then((index) => {
+          setCachedAdminIndex(index)
+          return index
+        })
+        .catch(() => ({ posts: [], tree: [] }))
+
     void Promise.all([
       draftRequest,
       getJson<DraftListResponse>('/drafts'),
       getJson<PublicConfigResponse>('/config/public'),
-      getJson<PostTreeResponse>('/posts/tree').catch(() => ({ posts: [], tree: [] })),
+      postIndexRequest,
     ])
       .then(async ([draft, draftList, publicConfig, postIndex]) => {
         const snapshotScope = draft.id ? `draft:${draft.id}` : ''
@@ -183,12 +202,13 @@ export function DraftEditorPage() {
         const assetResponse = nextDraft.id
           ? await getJson<DraftAssetListResponse>(`/assets?draftId=${encodeURIComponent(nextDraft.id)}&relativeId=${encodeURIComponent(nextDraft.relativeId)}`)
           : { manifest: { assets: [] as DraftAsset[] } }
+        const sourceAssets = await fetchSourceAssets(nextDraft.relativeId, postIndex)
         setState({
           status: 'ready',
           draft: nextDraft,
           drafts: draftList.drafts,
           assets: assetResponse.manifest.assets,
-          sourceAssets: postIndex.posts.find((post) => post.relativeId === nextDraft.relativeId)?.assets ?? [],
+          sourceAssets,
           publicConfig,
           postRelativeIds: postIndex.posts.map((post) => post.relativeId),
           assetObjectUrls: {},
@@ -197,6 +217,23 @@ export function DraftEditorPage() {
           baseUpdatedAt: draft.updatedAt,
           conflict,
         })
+        if (cachedPostIndex) {
+          void getJson<PostTreeResponse>('/posts/tree')
+            .then(async (freshIndex) => {
+              setCachedAdminIndex(freshIndex)
+              const freshSourceAssets = await fetchSourceAssets(nextDraft.relativeId, freshIndex)
+              setState((current) =>
+                current.status === 'ready'
+                  ? {
+                      ...current,
+                      sourceAssets: current.draft.relativeId === nextDraft.relativeId ? freshSourceAssets : current.sourceAssets,
+                      postRelativeIds: freshIndex.posts.map((post) => post.relativeId),
+                    }
+                  : current,
+              )
+            })
+            .catch(() => undefined)
+        }
       })
       .catch((error: unknown) => setState({ status: 'error', message: error instanceof Error ? error.message : 'Unknown error' }))
     return () => window.clearTimeout(pollTimer.current)
@@ -275,8 +312,11 @@ export function DraftEditorPage() {
   }
 
   const syncIndex = (commitSha: string, deploy: DeployRecord) => {
-    void sendJson('/index/sync-online', 'POST')
-      .then(() => setState((current) => (current.status === 'ready' ? { ...current, deploy, indexSynced: true, message: `${t('drafts.indexSynced')}: ${commitSha}` } : current)))
+    void sendJson<PostTreeResponse>('/index/sync-online', 'POST')
+      .then((index) => {
+        setCachedAdminIndex(index)
+        setState((current) => (current.status === 'ready' ? { ...current, deploy, indexSynced: true, message: `${t('drafts.indexSynced')}: ${commitSha}` } : current))
+      })
       .catch((error: unknown) => setState((current) => (current.status === 'ready' ? { ...current, deploy, message: error instanceof Error ? error.message : 'Unknown error' } : current)))
   }
 

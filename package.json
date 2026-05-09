@@ -28,7 +28,6 @@
     "markdown-it-sub": "^2.0.0",
     "markdown-it-sup": "^2.0.0",
     "react": "^19.2.6",
-    "react-colorful": "^5.7.0",
     "react-dom": "^19.2.6",
     "react-i18next": "^17.0.7",
     "react-router": "^7.15.0",

@@ -46,7 +46,7 @@ pnpm typecheck
 pnpm build
 ```
 
-更完整的架构、目录、API 和开发约定见 [开发文档](docs/development.md)。开发新主题定制 adapter 见 [Customize 主题 Adapter 开发指南](docs/customize-adapter-development.md)。
+更完整的架构、目录、API 和开发约定见 [开发文档](docs/development.md)。开发新主题设置 adapter 见 [主题设置 Adapter 开发指南](docs/customize-adapter-development.md)。
 
 预览生产构建：
 
@@ -181,7 +181,7 @@ BLOG_ASSET_CACHE
 
 如果你的部署方式要求在 `wrangler.jsonc` 中显式写入 id，请使用 `pnpm wrangler d1 create hexo-blog-admin` 返回的真实 `database_id`，不要保留占位值。
 
-请在 Cloudflare Dashboard 的 Worker Bindings 里把你自己的 KV/R2 资源绑定到上面的名称。KV 只保留 admin-index cache、session/auth 状态和少量配置缓存；草稿正文和草稿图片 metadata 存在 D1，R2 继续保存草稿图片临时对象。
+请在 Cloudflare Dashboard 的 Worker Bindings 里把你自己的 KV/R2 资源绑定到上面的名称。KV 保留 session/auth 状态和少量配置缓存；`admin-index.json` 每次从博客公开站点直接读取。草稿正文和草稿图片 metadata 存在 D1，R2 继续保存草稿图片临时对象。
 
 KV/D1/R2 binding 同样是必需项：没有绑定 `BLOG_ADMIN_KV`、`BLOG_ADMIN_DB` 或 `BLOG_ASSET_CACHE` 时，后台不会进入主界面。
 
@@ -236,7 +236,7 @@ tools/generate-admin-index.mjs
 
 **本仓库提供了一份可直接复制的示例脚本：`tools/generate-admin-index.mjs`。**
 
-脚本需要扫描文章、读取站点摘要配置，并检查 Customize 相关文件是否存在：
+脚本需要扫描文章、读取站点摘要配置，并检查 Hexo 设置和主题设置相关文件是否存在：
 
 ```txt
 source/_posts/**/*.md
@@ -246,24 +246,36 @@ source/_posts/**/*.md
 
 ```txt
 public/admin-index.json
+public/admin-index/post-assets/<relativeId>.json
 ```
 
-`admin-index.json` v2 包含：
+`admin-index.json` v3 是后台公开轻索引摘要，包含：
 
-- `posts` / `tree` / 每篇文章的 `assets`：文章管理索引。
+- `posts` / `tree`：文章管理索引。
+- 每篇文章的 `assetIndexPath` / `assetCount` / `assetTotalSize`。
 - `site`：站点和主题摘要。
 - `customize`：可用 adapter、面板和可编辑文件存在状态。
 
-它不包含 `_config.yml`、主题配置或 `_data/*.yml` 的正文。Customize 真正编辑内容时仍然通过 GitHub API 读取源文件。
+它不包含全站图片清单、每篇文章完整图片数组、`_config.yml`、主题配置或 `_data/*.yml` 的正文。Hexo 设置和主题设置真正编辑内容时仍然通过 GitHub API 读取源文件。
+
+每篇文章的源站图片索引会单独生成到：
+
+```txt
+public/admin-index/post-assets/<relativeId>.json
+```
+
+后台编辑某篇文章时才通过 `/api/posts/assets?relativeId=...` 读取该文章自己的图片索引。
 
 索引至少需要包含：
 
 ```json
 {
-  "version": 2,
-  "generatedAt": "2026-05-05T00:00:00.000Z",
+  "version": 3,
+  "generatedAt": "2026-05-09T00:00:00.000Z",
   "postsDir": "source/_posts",
   "assetMode": "post-folder",
+  "assetIndexMode": "per-post-json",
+  "assetIndexBasePath": "/admin-index/post-assets/",
   "site": {
     "title": "My Blog",
     "subtitle": "Notes and code",
@@ -300,16 +312,38 @@ public/admin-index.json
       "postSlug": "00-about-ap-csa",
       "assetDir": "source/_posts/ap-csa/00-about-ap-csa/",
       "markdownAssetPrefix": "00-about-ap-csa",
-      "assets": [
-        {
-          "filename": "ap-csa-range.png",
-          "repoPath": "source/_posts/ap-csa/00-about-ap-csa/ap-csa-range.png",
-          "markdownPath": "00-about-ap-csa/ap-csa-range.png"
-        }
-      ]
+      "assetIndexPath": "/admin-index/post-assets/ap-csa/00-about-ap-csa.json",
+      "assetCount": 1,
+      "assetTotalSize": 12345
     }
   ],
-  "tree": []
+  "tree": [
+    {
+      "id": "ap-csa/00-about-ap-csa",
+      "name": "00-about-ap-csa",
+      "type": "post",
+      "postRef": "ap-csa/00-about-ap-csa"
+    }
+  ]
+}
+```
+
+单篇图片索引 shard 示例：
+
+```json
+{
+  "version": 1,
+  "relativeId": "ap-csa/00-about-ap-csa",
+  "assetCount": 1,
+  "assetTotalSize": 12345,
+  "assets": [
+    {
+      "filename": "ap-csa-range.png",
+      "repoPath": "source/_posts/ap-csa/00-about-ap-csa/ap-csa-range.png",
+      "markdownPath": "00-about-ap-csa/ap-csa-range.png",
+      "size": 12345
+    }
+  ]
 }
 ```
 
@@ -368,6 +402,7 @@ ADMIN_INDEX_PATH=/admin-index.json
   - `/api/index`
   - `/api/posts/tree`
   - `/api/posts/content`
+  - `/api/posts/assets`
   - `/api/drafts`
   - `/api/drafts/:id`
   - `/api/drafts/publish`
@@ -378,7 +413,7 @@ ADMIN_INDEX_PATH=/admin-index.json
 - 设置页账号管理，新增账号的密码以加盐哈希保存到 KV。
 - 前后端复用的 TypeScript API 和领域类型。
 - 面向文件夹分类文章和文章资源目录的 Hexo 路径工具函数。
-- 从博客站点读取 `admin-index.json`，展示真实文章树、站点摘要和 Customize 能力摘要。
+- 从博客站点读取 `admin-index.json`，展示真实文章树、站点摘要、Hexo 设置和主题设置能力摘要。
 - 通过 GitHub REST API 读取文章 Markdown。
 - 基于 D1 的草稿创建、保存、读取和删除。
 - 文章和草稿编辑时提供实时 Markdown 预览，并支持 `==高亮==` 语法。
@@ -387,18 +422,3 @@ ADMIN_INDEX_PATH=/admin-index.json
 - 发布草稿时，将 Markdown 和 R2 中的草稿图片一起提交到博客仓库。
 - 将草稿通过 GitHub batch commit 发布到博客仓库。
 - 查询和触发 GitHub Actions 部署 workflow。
-## admin-index 图片资源建议
-
-建议博客侧在 `admin-index.json` 的每篇文章中提供 `assets` 数组，方便后台图片仓展示源站图片：
-
-```ts
-type PostAsset = {
-  filename: string
-  repoPath: string
-  markdownPath: string
-  size?: number
-  publicUrl?: string
-}
-```
-
-如果没有 `publicUrl`，后台会通过 GitHub contents API 读取 `repoPath` 生成受保护预览。

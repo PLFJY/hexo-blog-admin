@@ -1,4 +1,4 @@
-import { createBrowserRouter } from 'react-router'
+import { createBrowserRouter, Navigate } from 'react-router'
 import { AppShell } from './app/AppShell'
 import { AuthGate } from './app/AuthGate'
 import { SetupGate } from './app/SetupGate'
@@ -40,7 +40,13 @@ export const router = createBrowserRouter([
               { path: 'drafts', element: <DraftsPage /> },
               { path: 'drafts/edit', element: <DraftEditorPage /> },
               { path: 'cache', element: <CachePage /> },
-              { path: 'customize', element: <CustomizeHomePage /> },
+              { path: 'hexo-settings', element: <CustomizeHomePage scope="hexo" /> },
+              { path: 'theme-settings', element: <CustomizeHomePage scope="theme" /> },
+              { path: 'hexo-settings/panel/:panelId', element: <CustomizePanelPage /> },
+              { path: 'theme-settings/panel/:panelId', element: <CustomizePanelPage /> },
+              { path: 'hexo-settings/file/:fileId', element: <CustomizeFileEditorPage /> },
+              { path: 'theme-settings/file/:fileId', element: <CustomizeFileEditorPage /> },
+              { path: 'customize', element: <Navigate to="/hexo-settings" replace /> },
               { path: 'customize/panel/:panelId', element: <CustomizePanelPage /> },
               { path: 'customize/file/:fileId', element: <CustomizeFileEditorPage /> },
               { path: 'deploy', element: <DeployPage /> },

@@ -8,7 +8,10 @@
 //
 //   node tools/generate-admin-index.mjs
 //
-// It scans Markdown files under `source/_posts/` and writes `public/admin-index.json`.
+// It scans Markdown files under `source/_posts/` and writes:
+//
+//   public/admin-index.json
+//   public/admin-index/post-assets/<relativeId>.json
 
 import fs from 'node:fs/promises'
 import path from 'node:path'
@@ -21,6 +24,8 @@ const rootDir = process.cwd()
 const postsDir = process.env.ADMIN_INDEX_POSTS_DIR ?? 'source/_posts'
 const outputPath = process.env.ADMIN_INDEX_OUTPUT ?? 'public/admin-index.json'
 const assetMode = 'post-folder'
+const assetIndexMode = 'per-post-json'
+const assetIndexBasePath = '/admin-index/post-assets/'
 const execFileAsync = promisify(execFile)
 
 const imageExtensions = new Set([
@@ -35,6 +40,7 @@ const imageExtensions = new Set([
 
 const toPosix = (value) => value.split(path.sep).join('/')
 const trimMarkdownExtension = (value) => value.replace(/\.md$/i, '')
+const trimSlashes = (value) => value.replace(/^\/+|\/+$/g, '')
 
 async function collectMarkdownFiles(dir) {
   const entries = await fs.readdir(dir, { withFileTypes: true })
@@ -324,8 +330,38 @@ function addToTree(tree, post) {
     name: segments.at(-1) ?? post.relativeId,
     type: 'post',
     sortPublishedAt: post.publishedAt,
-    post,
+    postRef: post.relativeId,
   })
+}
+
+async function writePostAssetShard({ generatedAt, sourceCommitSha, post, assets }) {
+  const assetCount = assets.length
+  const assetTotalSize = assets.reduce((sum, asset) => sum + (asset.size || 0), 0)
+  const shardPath = `${assetIndexBasePath}${post.relativeId}.json`
+  const shardOutputPath = path.join(path.dirname(outputPath), trimSlashes(shardPath))
+  const shard = {
+    version: 1,
+    generatedAt,
+    sourceCommitSha,
+    relativeId: post.relativeId,
+    postPath: post.path,
+    folderPath: post.folderPath,
+    postSlug: post.postSlug,
+    assetDir: post.assetDir,
+    markdownAssetPrefix: post.markdownAssetPrefix,
+    assetCount,
+    assetTotalSize,
+    assets,
+  }
+
+  await fs.mkdir(path.dirname(path.join(rootDir, shardOutputPath)), { recursive: true })
+  await fs.writeFile(path.join(rootDir, shardOutputPath), `${JSON.stringify(shard, null, 2)}\n`, 'utf8')
+
+  return {
+    assetIndexPath: shardPath,
+    assetCount,
+    assetTotalSize,
+  }
 }
 
 function timestamp(value) {
@@ -356,6 +392,8 @@ async function main() {
   const postsRoot = path.join(rootDir, postsDir)
   const markdownFiles = await collectMarkdownFiles(postsRoot)
   const posts = []
+  const generatedAt = new Date().toISOString()
+  const sourceCommitSha = await getSourceCommitSha()
 
   for (const absolutePath of markdownFiles) {
     const repoPath = toPosix(path.relative(rootDir, absolutePath))
@@ -368,8 +406,8 @@ async function main() {
     const frontMatter = parseFrontMatter(markdown)
     const publishedAt = normalizeDate(frontMatter.date) ?? await getGitFileDate(repoPath)
     const published = normalizePublished(frontMatter.published)
-
-    posts.push({
+    const assets = await collectAssets(path.join(rootDir, assetDirRepo), assetDirRepo, postSlug)
+    const post = {
       relativeId,
       title: typeof frontMatter.title === 'string' ? frontMatter.title : postSlug,
       path: repoPath,
@@ -387,8 +425,9 @@ async function main() {
       updated: normalizeDate(frontMatter.updated),
       tags: normalizeStringArray(frontMatter.tags),
       categories: normalizeStringArray(frontMatter.categories),
-      assets: await collectAssets(path.join(rootDir, assetDirRepo), assetDirRepo, postSlug),
-    })
+    }
+    Object.assign(post, await writePostAssetShard({ generatedAt, sourceCommitSha, post, assets }))
+    posts.push(post)
   }
 
   posts.sort((a, b) => {
@@ -401,21 +440,18 @@ async function main() {
     addToTree(tree, post)
   }
   sortTree(tree)
-  const assets = posts.flatMap((post) => post.assets.map((asset) => ({
-    ...asset,
-    postRelativeId: post.relativeId,
-  })))
 
   const index = {
-    version: 2,
-    generatedAt: new Date().toISOString(),
-    sourceCommitSha: await getSourceCommitSha(),
+    version: 3,
+    generatedAt,
+    sourceCommitSha,
     postsDir,
     assetMode,
+    assetIndexMode,
+    assetIndexBasePath,
     ...await buildSiteAndCustomizeSummary(),
     posts,
     tree,
-    assets,
   }
 
   const outputAbsolutePath = path.join(rootDir, outputPath)

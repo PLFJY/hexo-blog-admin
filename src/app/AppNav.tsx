@@ -67,7 +67,8 @@ const navItems = [
   { value: 'posts', path: '/posts', icon: <DocumentBulletListRegular />, labelKey: 'nav.posts' },
   { value: 'drafts', path: '/drafts', icon: <TextBulletListSquareRegular />, labelKey: 'nav.drafts' },
   { value: 'cache', path: '/cache', icon: <ImageRegular />, labelKey: 'nav.cache' },
-  { value: 'customize', path: '/customize', icon: <PaintBrushRegular />, labelKey: 'nav.customize' },
+  { value: 'hexo-settings', path: '/hexo-settings', icon: <SettingsRegular />, labelKey: 'nav.hexoSettings' },
+  { value: 'theme-settings', path: '/theme-settings', icon: <PaintBrushRegular />, labelKey: 'nav.themeSettings' },
   { value: 'deploy', path: '/deploy', icon: <RocketRegular />, labelKey: 'nav.deploy' },
   { value: 'settings', path: '/settings', icon: <SettingsRegular />, labelKey: 'nav.settings' },
 ] as const
@@ -76,7 +77,9 @@ const selectedValue = (pathname: string) => {
   if (pathname.startsWith('/posts')) return 'posts'
   if (pathname.startsWith('/drafts')) return 'drafts'
   if (pathname.startsWith('/cache')) return 'cache'
-  if (pathname.startsWith('/customize')) return 'customize'
+  if (pathname.startsWith('/hexo-settings')) return 'hexo-settings'
+  if (pathname.startsWith('/theme-settings')) return 'theme-settings'
+  if (pathname.startsWith('/customize')) return 'hexo-settings'
   if (pathname.startsWith('/deploy')) return 'deploy'
   if (pathname.startsWith('/settings')) return 'settings'
   return 'dashboard'

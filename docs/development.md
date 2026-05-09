@@ -8,11 +8,11 @@
 
 核心职责：
 
-- 从博客公开站点读取 `admin-index.json`，展示正式文章列表、资源索引、站点摘要和 Customize 能力摘要。
+- 从博客公开站点读取 `admin-index.json` v3 轻索引，展示正式文章列表、站点摘要、Hexo 设置和主题设置能力摘要，并按需读取单篇文章图片索引 shard。
 - 通过 GitHub REST API 读取、移动、删除和提交正式 Markdown / 图片资源。
 - 使用 Cloudflare D1 保存草稿正文和草稿图片 metadata。
 - 使用 Cloudflare R2 临时保存草稿图片 blob。
-- 使用 Cloudflare KV 保存登录用户、UI 配置和在线索引缓存。
+- 使用 Cloudflare KV 保存登录用户和 UI 配置。
 - 触发并查询 GitHub Actions 部署 workflow。
 
 ## 技术栈
@@ -124,7 +124,8 @@ KV 保存：
 
 - `auth:user:<username>`：后台普通用户密码哈希。
 - `config:adminBackgroundUrl`：后台背景图 URL。
-- `index:online`：最近一次成功读取的 `admin-index.json`。
+
+`admin-index.json` 不再写入 Worker KV；`/api/index` 和 `/api/posts/tree` 每次直接读取博客公开站点。
 
 ## 前端入口与路由
 
@@ -166,7 +167,7 @@ KV 保存：
 
 `MarkdownAssetPanel` 统一管理源站图片与草稿暂存图片：
 
-- 源站图片来自 `admin-index.json` 的 `post.assets`。
+- 源站图片来自 `/api/posts/assets?relativeId=...`，Worker 会读取 v3 的 `post.assetIndexPath` 对应 shard；旧 v2 `post.assets` 仅作短期兼容。
 - 暂存图片来自 `/api/assets`，blob 在 R2，metadata 在 D1。
 - 如果 Worker 配置了 `BLOG_ASSET_PUBLIC_URL`，暂存图片会带 `publicUrl`，预览和缩略图优先使用公开 R2 URL；未配置时回退到 `/api/assets/blob`。
 - 上传大图时，浏览器端可先转 WebP 并压缩。
@@ -226,6 +227,7 @@ KV 保存：
 - `POST /api/index/sync-online`
 - `GET /api/posts/tree`
 - `GET /api/posts/content?relativeId=...`
+- `GET /api/posts/assets?relativeId=...`
 - `GET /api/posts/asset/blob?repoPath=...`
 - `POST /api/posts/asset/rename`
 - `POST /api/posts/asset/delete`
@@ -267,19 +269,41 @@ GitHub API 封装在 `src/worker/services/github/`：
 
 批量提交不会使用 contents API 的单文件更新，而是直接创建 tree，方便一次提交 Markdown、多个图片和删除项。
 
-## admin-index 缓存策略
+## admin-index 读取策略
 
-`src/worker/services/indexer/adminIndex.ts` 从博客站点读取 `admin-index.json`，并把成功结果写入 KV。
+`src/worker/services/indexer/adminIndex.ts` 从博客站点读取 `admin-index.json`，不再读写 Worker KV。
 
 读取逻辑：
 
-1. 先读 KV 缓存。
-2. 查询 GitHub 分支 head SHA。
-3. 如果缓存的 `sourceCommitSha` 等于当前 head 且缓存时间在 30 秒内，直接返回缓存。
-4. 否则读取线上 `admin-index.json` 并写回 KV。
-5. 如果线上读取失败但 KV 有缓存，返回带 `stale: true` 的缓存。
+1. 组合 `BLOG_PUBLIC_URL + ADMIN_INDEX_PATH`。
+2. 使用 `Cache-Control: no-cache` 和 `cf.cacheTtl = 0` 直接 fetch 线上 `admin-index.json`。
+3. `/api/index` 和 `/api/posts/tree` 都返回这份线上结果。
+4. `/api/index/sync-online` 保留为“强制重新 fetch online admin-index 并返回”，不再同步到 KV。
+5. `sourceCommitSha` 以 `admin-index.json` 自身字段为准。
 
-这能避免博客刚发布、索引短暂不可用时后台完全不可用。
+前端通过 `src/lib/indexCache.ts` 把最近一次成功读取的 admin-index 保存在浏览器 localStorage。页面进入时先渲染浏览器缓存，再懒刷新线上索引；刷新失败时继续显示本地缓存并提示错误。
+
+## post asset shard 读取策略
+
+`admin-index.json` v3 不再包含全站图片清单或每篇文章完整 `assets` 数组。每篇文章只保留：
+
+- `assetIndexPath`
+- `assetCount`
+- `assetTotalSize`
+
+单篇源站图片索引由博客构建脚本输出到：
+
+```txt
+public/admin-index/post-assets/<relativeId>.json
+```
+
+Worker 的 `/api/posts/assets?relativeId=...` 会：
+
+1. 读取最新 `admin-index.json`。
+2. 找到对应 post。
+3. 优先读取 `post.assetIndexPath` 指向的 shard。
+4. shard 读取失败时返回空 `assets`，不让文章编辑页整体崩溃。
+5. 旧 v2 索引没有 `assetIndexPath` 时，短期 fallback 到 `post.assets`。
 
 ## 草稿发布流程
 
@@ -294,7 +318,7 @@ GitHub API 封装在 `src/worker/services/github/`：
 4. Worker 用 Git Data API 创建一个 batch commit。
 5. 发布成功后删除 D1 草稿和对应 R2 暂存图片。
 6. 前端按 commit SHA 轮询 GitHub Actions 状态。
-7. workflow 成功后前端调用 `/api/index/sync-online`，刷新 KV 中的 admin-index 摘要缓存。
+7. workflow 成功后前端调用 `/api/index/sync-online`，重新 fetch 线上 admin-index 并更新浏览器 localStorage 缓存。
 
 ## 路径安全规则
 
@@ -350,17 +374,18 @@ GitHub API 封装在 `src/worker/services/github/`：
 - 扫描每篇文章同名资源目录里的图片。
 - 读取 `_config.yml` 和 `package.json` 生成 `site` 摘要。
 - 写入 `customize` adapter、panel 和 editable file 存在状态摘要，不写入配置正文。
-- 输出 `public/admin-index.json`。
+- 输出 `public/admin-index.json` v3 轻索引。
+- 输出 `public/admin-index/post-assets/<relativeId>.json` 单篇图片索引 shard。
 - 尝试写入 Git commit SHA 和每篇文章最近 Git 提交日期。
 
-后台依赖这个文件展示文章树、源站图片仓、站点摘要和 Customize 首页能力摘要。
+后台依赖 `admin-index.json` 展示文章树、站点摘要、Hexo 设置和主题设置能力摘要；编辑某篇文章时再读取对应 post asset shard 展示源站图片。
 
 ## 开发约定
 
 - 共享 API 类型优先放在 `src/shared/`，避免前后端类型漂移。
 - 涉及文章路径时优先使用 `buildPostPaths` / `buildPostAssetPaths`。
 - Worker 中任何来自请求的路径都要先经过 `pathSafety` 校验。
-- 新增 Customize 主题 adapter 时参考 [Customize 主题 Adapter 开发指南](customize-adapter-development.md)。
+- 新增主题设置 adapter 时参考 [主题设置 Adapter 开发指南](customize-adapter-development.md)。
 - D1 schema 修改时同时更新 `migrations/0001_create_drafts.sql` 和 `src/worker/services/d1/d1Schema.ts`。
 - 新增可见文案时同步更新 `src/i18n/resources.ts` 的中英文翻译。
 - 新增 API 时同时更新本文档的 API 概览。
@@ -371,7 +396,7 @@ GitHub API 封装在 `src/worker/services/github/`：
 - 登录失败：检查 `ADMIN_USERNAME`、`ADMIN_PASSWORD`，以及浏览器是否带上 `hba_session` cookie。
 - Setup 页面缺项：访问 `/api/setup/status` 看 `missing` 数组。
 - 文章列表为空：确认博客站点能访问 `BLOG_PUBLIC_URL + ADMIN_INDEX_PATH`。
-- 源站图片预览失败：确认 `post.assets[].repoPath` 在 `POSTS_DIR` 下，且 GitHub token 有 contents read 权限。
+- 源站图片预览失败：确认 `post.assetIndexPath` 指向的 shard 已发布，shard 内 `assets[].repoPath` 在 `POSTS_DIR` 下，且 GitHub token 有 contents read 权限。
 - 草稿图片上传失败：检查 D1/R2 binding，确认 `BLOG_ASSET_CACHE` 可写。
 - 发布失败：检查 GitHub token 是否有 contents write 权限，目标分支是否允许 fast-forward 更新。
 - 部署状态不更新：检查 `WORKFLOW_FILE` 是否和 GitHub Actions workflow 文件名完全一致。

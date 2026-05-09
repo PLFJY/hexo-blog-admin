@@ -76,11 +76,12 @@ export function CustomizeSaveStatusPanel({ status }: { status: CustomizeSaveStat
   )
 }
 
-export function BackToCustomizeButton() {
+export function BackToCustomizeButton({ adapterId }: { adapterId?: string }) {
   const navigate = useNavigate()
   const { t } = useTranslation()
+  const target = adapterId === 'common' ? '/hexo-settings' : '/theme-settings'
   return (
-    <Button appearance="subtle" icon={<ArrowLeftRegular />} onClick={() => navigate('/customize')}>
+    <Button appearance="subtle" icon={<ArrowLeftRegular />} onClick={() => navigate(target)}>
       {t('actions.back')}
     </Button>
   )

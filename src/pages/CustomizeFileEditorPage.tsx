@@ -78,7 +78,7 @@ export function CustomizeFileEditorPage() {
     <section className={styles.page}>
       <header className={styles.header}>
         <div>
-          <BackToCustomizeButton />
+          <BackToCustomizeButton adapterId={state.file.file.adapterId} />
         </div>
         <Title1>{state.file.file.label}</Title1>
         <Body1>{state.file.file.path}</Body1>

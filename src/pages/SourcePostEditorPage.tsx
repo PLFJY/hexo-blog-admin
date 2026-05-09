@@ -18,9 +18,9 @@ import { deleteEditorSnapshot, readEditorSnapshot, writeEditorSnapshot } from '.
 import { resolveMarkdownResourceUrl } from '../lib/markdownResource'
 import type { PublicConfigResponse } from '../shared/apiTypes'
 import type { DraftAsset, DraftAssetListResponse } from '../shared/assetTypes'
-import type { DraftRecord } from '../shared/draftTypes'
+import type { DraftRecord, PublishDraftResponse } from '../shared/draftTypes'
 import { extractFrontMatterTitle } from '../shared/frontMatter'
-import type { PostContentResponse } from '../shared/postTypes'
+import type { PostAssetIndexResponse, PostContentResponse } from '../shared/postTypes'
 import type { PostAsset } from '../shared/postTypes'
 import { usePageStyles } from './pageStyles'
 
@@ -106,6 +106,7 @@ type State =
       baseMarkdown: string
       baseRevision?: string
       assets: DraftAsset[]
+      sourceAssets: PostAsset[]
       publicConfig?: PublicConfigResponse
       insertRequest?: { id: number; text: string }
       message?: string
@@ -113,6 +114,7 @@ type State =
       assetObjectUrls: Record<string, string>
       changingId?: boolean
       committing?: boolean
+      publishingSavedDraft?: boolean
       conflict?: {
         legacy?: boolean
         cloudMarkdown: string
@@ -143,8 +145,9 @@ export function SourcePostEditorPage() {
       getJson<PostContentResponse>(`/posts/content?relativeId=${encodeURIComponent(relativeId)}`),
       getJson<PublicConfigResponse>('/config/public'),
       getJson<DraftAssetListResponse>(`/assets?draftId=${encodeURIComponent(relativeId)}&relativeId=${encodeURIComponent(relativeId)}`).catch(() => ({ manifest: { assets: [] } })),
+      getJson<PostAssetIndexResponse>(`/posts/assets?relativeId=${encodeURIComponent(relativeId)}`).catch(() => ({ relativeId, assets: [] })),
     ])
-      .then(([post, publicConfig, assetResponse]) => {
+      .then(([post, publicConfig, assetResponse, sourceAssetResponse]) => {
         const snapshotScope = `source:${relativeId}`
         const decision = decideEditorConflict({ cloudMarkdown: post.markdown, snapshot: readEditorSnapshot(snapshotScope) })
         let markdown = post.markdown
@@ -170,6 +173,7 @@ export function SourcePostEditorPage() {
           baseMarkdown: post.markdown,
           baseRevision: post.sha,
           assets: assetResponse.manifest.assets,
+          sourceAssets: sourceAssetResponse.assets,
           publicConfig,
           assetObjectUrls: {},
           message,
@@ -248,7 +252,7 @@ export function SourcePostEditorPage() {
     setState((current) => (current.status === 'ready' ? { ...current, markdown: current.markdown.split(oldPath).join(newPath) } : current))
   const renameSourceAsset = (asset: PostAsset, filename: string) => {
     setState({ ...state, committing: true, message: t('assets.submittingRename') })
-    void sendJson<{ commitSha: string; markdown: string }>('/posts/asset/rename', 'POST', {
+    void sendJson<{ commitSha: string; markdown: string; asset: PostAsset }>('/posts/asset/rename', 'POST', {
       relativeId: state.post.post.relativeId,
       repoPath: asset.repoPath,
       filename,
@@ -258,6 +262,7 @@ export function SourcePostEditorPage() {
         setState({
           ...state,
           markdown: response.markdown,
+          sourceAssets: state.sourceAssets.map((item) => (item.repoPath === asset.repoPath ? response.asset : item)),
           committing: false,
           message: t('assets.renameCommitSuccess', { commitSha: response.commitSha }),
         }),
@@ -276,6 +281,7 @@ export function SourcePostEditorPage() {
         setState({
           ...state,
           markdown: response.markdown,
+          sourceAssets: state.sourceAssets.filter((item) => item.repoPath !== asset.repoPath),
           committing: false,
           message: t('assets.deleteCommitSuccess', { commitSha: response.commitSha }),
         }),
@@ -293,6 +299,28 @@ export function SourcePostEditorPage() {
         setState({ ...state, savedDraft: draft, message: t('drafts.saved'), assets: state.assets.map((asset) => ({ ...asset, draftId: draft.id })) })
       })
       .catch((error: unknown) => setState({ ...state, message: error instanceof Error ? error.message : 'Unknown error' }))
+  }
+  const publishSavedDraft = () => {
+    if (!state.savedDraft || state.publishingSavedDraft) return
+    setState({ ...state, publishingSavedDraft: true, message: undefined })
+    void sendJson<PublishDraftResponse>('/drafts/publish', 'POST', { draftId: state.savedDraft.id })
+      .then((response) => {
+        deleteEditorSnapshot(`source:${relativeId}`)
+        setState({
+          ...state,
+          savedDraft: undefined,
+          publishingSavedDraft: false,
+          assets: [],
+          message: `${t('drafts.published')}: ${response.commitSha}`,
+        })
+      })
+      .catch((error: unknown) =>
+        setState({
+          ...state,
+          publishingSavedDraft: false,
+          message: error instanceof Error ? error.message : 'Unknown error',
+        }),
+      )
   }
   const deletePost = () => {
     void sendJson<{ commitSha: string }>('/posts/delete', 'POST', { relativeId: state.post.post.relativeId })
@@ -348,6 +376,9 @@ export function SourcePostEditorPage() {
           draft={state.savedDraft}
           onOpenDrafts={() => navigate('/drafts')}
           onContinueDraft={() => navigate(`/drafts/edit?draftId=${encodeURIComponent(state.savedDraft?.id ?? '')}`)}
+          onPublishDraft={publishSavedDraft}
+          publishing={state.publishingSavedDraft}
+          message={state.message}
         />
       ) : null}
       {!state.savedDraft && state.message ? (
@@ -376,7 +407,7 @@ export function SourcePostEditorPage() {
           relativeId={state.post.post.relativeId}
           draftId={state.post.post.relativeId}
           assets={state.assets}
-          sourceAssets={state.post.post.assets ?? []}
+          sourceAssets={state.sourceAssets}
           onAssetsChange={(assets) => setState((current) => (current.status === 'ready' ? { ...current, assets } : current))}
           onInsertMarkdown={insertMarkdown}
           onMarkdownPathReplace={replaceMarkdownPath}
@@ -408,10 +439,16 @@ function DraftSavedOverlay({
   draft,
   onOpenDrafts,
   onContinueDraft,
+  onPublishDraft,
+  publishing,
+  message,
 }: {
   draft: DraftRecord
   onOpenDrafts: () => void
   onContinueDraft: () => void
+  onPublishDraft: () => void
+  publishing?: boolean
+  message?: string
 }) {
   const styles = useSourceEditorStyles()
   const { t } = useTranslation()
@@ -434,9 +471,13 @@ function DraftSavedOverlay({
             <Body1>{t('posts.draftSavedDescription')}</Body1>
           </div>
           <Text>{t('posts.draftSavedId', { id: draft.relativeId })}</Text>
+          {message ? <Text>{message}</Text> : null}
           <div className={styles.decisionActions}>
-            <Button onClick={onOpenDrafts}>{t('posts.goToDrafts')}</Button>
-            <Button appearance="primary" onClick={onContinueDraft}>{t('posts.continueDraft')}</Button>
+            <Button onClick={onOpenDrafts} disabled={publishing}>{t('posts.goToDrafts')}</Button>
+            <Button onClick={onContinueDraft} disabled={publishing}>{t('posts.continueDraft')}</Button>
+            <Button appearance="primary" onClick={onPublishDraft} disabled={publishing}>
+              {publishing ? t('actions.publishing') : t('posts.publishSavedDraft')}
+            </Button>
           </div>
         </section>
       </div>

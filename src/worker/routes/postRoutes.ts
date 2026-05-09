@@ -5,6 +5,7 @@ import { setFrontMatterBoolean } from '../../shared/frontMatter'
 import { getGitHubFile, getGitHubFileBase64 } from '../services/github/githubContent'
 import { createBatchCommit } from '../services/github/githubGitCommit'
 import { getAdminIndex } from '../services/indexer/adminIndex'
+import { getPostAssetIndex, getPostSourceAssets } from '../services/indexer/postAssetIndex'
 import { requireConfig } from '../utils/config'
 import { assertSafeImageFilename, assertSafeRelativeId, assertSafeRepoPath } from '../utils/pathSafety'
 import { json } from '../utils/response'
@@ -65,6 +66,15 @@ export async function handlePostAssetBlob(env: WorkerEnv, request: Request): Pro
   })
 }
 
+export async function handlePostAssets(env: WorkerEnv, request: Request): Promise<Response> {
+  const relativeIdParam = new URL(request.url).searchParams.get('relativeId')
+  if (!relativeIdParam) return json({ error: 'BAD_REQUEST', message: 'relativeId is required' }, { status: 400 })
+  const relativeId = assertSafeRelativeId(relativeIdParam)
+  const response = await getPostAssetIndex(env, relativeId)
+  if (!response) return json({ error: 'NOT_FOUND', message: 'Post not found' }, { status: 404 })
+  return json(response)
+}
+
 const replaceAll = (value: string, from: string, to: string) => value.split(from).join(to)
 
 const removeMarkdownImageReferences = (markdown: string, markdownPath: string) => {
@@ -87,11 +97,12 @@ export async function handleRenamePostAsset(env: WorkerEnv, request: Request): P
   const index = await getAdminIndex(env)
   const post = index.posts.find((item) => item.relativeId === relativeId)
   if (!post) return json({ error: 'NOT_FOUND', message: 'Post not found' }, { status: 404 })
-  const asset = post.assets?.find((item) => item.repoPath === oldRepoPath)
+  const sourceAssets = await getPostSourceAssets(env, relativeId, index)
+  const asset = sourceAssets.find((item) => item.repoPath === oldRepoPath)
   if (!asset) return json({ error: 'NOT_FOUND', message: 'Asset not found in admin-index' }, { status: 404 })
 
   const paths = buildPostAssetPaths({ postsDir: config.POSTS_DIR, relativeId, filename })
-  const duplicate = post.assets?.some((item) => item.repoPath !== oldRepoPath && (item.repoPath === paths.finalRepoPath || item.markdownPath === paths.markdownPath))
+  const duplicate = sourceAssets.some((item) => item.repoPath !== oldRepoPath && (item.repoPath === paths.finalRepoPath || item.markdownPath === paths.markdownPath))
   if (duplicate) return json({ error: 'CONFLICT', message: 'Asset filename already exists' }, { status: 409 })
 
   const image = await getGitHubFileBase64(env, oldRepoPath)
@@ -130,10 +141,13 @@ export async function handleDeletePostAsset(env: WorkerEnv, request: Request): P
   const index = await getAdminIndex(env)
   const post = index.posts.find((item) => item.relativeId === relativeId)
   if (!post) return json({ error: 'NOT_FOUND', message: 'Post not found' }, { status: 404 })
-  const markdown = removeMarkdownImageReferences(body.markdown ?? (await getGitHubFile(env, post.path).then((file) => file.content)), body.markdownPath)
+  const sourceAssets = await getPostSourceAssets(env, relativeId, index)
+  const asset = sourceAssets.find((item) => item.repoPath === repoPath || item.markdownPath === body.markdownPath)
+  if (!asset) return json({ error: 'NOT_FOUND', message: 'Asset not found in admin-index' }, { status: 404 })
+  const markdown = removeMarkdownImageReferences(body.markdown ?? (await getGitHubFile(env, post.path).then((file) => file.content)), asset.markdownPath)
   const commit = await createBatchCommit(env, {
     branch: config.GITHUB_BRANCH,
-    message: `Delete asset ${body.markdownPath}`,
+    message: `Delete asset ${asset.markdownPath}`,
     files: [{ path: post.path, encoding: 'utf-8', content: markdown }],
     deletions: [repoPath],
   })
@@ -152,13 +166,14 @@ export async function handleRenamePost(env: WorkerEnv, request: Request): Promis
   const index = await getAdminIndex(env)
   const post = index.posts.find((item) => item.relativeId === relativeId)
   if (!post) return json({ error: 'NOT_FOUND', message: 'Post not found' }, { status: 404 })
+  const sourceAssets = await getPostSourceAssets(env, relativeId, index)
 
   const oldPaths = buildPostPaths({ postsDir: config.POSTS_DIR, relativeId })
   const newPaths = buildPostPaths({ postsDir: config.POSTS_DIR, relativeId: newRelativeId })
   const currentMarkdown = body.markdown ?? (await getGitHubFile(env, post.path || oldPaths.postPath).then((file) => file.content))
   const markdown = replaceAll(currentMarkdown, `${oldPaths.postSlug}/`, `${newPaths.postSlug}/`)
   const assetFiles = await Promise.all(
-    (post.assets ?? []).map(async (asset) => {
+    sourceAssets.map(async (asset) => {
       const filename = assertSafeImageFilename(asset.filename)
       const image = await getGitHubFileBase64(env, assertSafeRepoPath(env, asset.repoPath))
       const paths = buildPostAssetPaths({ postsDir: config.POSTS_DIR, relativeId: newRelativeId, filename })
@@ -172,7 +187,7 @@ export async function handleRenamePost(env: WorkerEnv, request: Request): Promis
       { path: newPaths.postPath, encoding: 'utf-8', content: markdown },
       ...assetFiles,
     ],
-    deletions: [post.path || oldPaths.postPath, ...(post.assets ?? []).map((asset) => asset.repoPath)],
+    deletions: [post.path || oldPaths.postPath, ...sourceAssets.map((asset) => assertSafeRepoPath(env, asset.repoPath))],
   })
 
   return json({ commitSha: commit.commitSha, relativeId: newRelativeId, markdown })
@@ -187,8 +202,9 @@ export async function handleDeletePost(env: WorkerEnv, request: Request): Promis
   const index = await getAdminIndex(env)
   const post = index.posts.find((item) => item.relativeId === relativeId)
   if (!post) return json({ error: 'NOT_FOUND', message: 'Post not found' }, { status: 404 })
+  const sourceAssets = await getPostSourceAssets(env, relativeId, index)
   const paths = buildPostPaths({ postsDir: config.POSTS_DIR, relativeId })
-  const deletions = [post.path || paths.postPath, ...(post.assets ?? []).map((asset) => assertSafeRepoPath(env, asset.repoPath))]
+  const deletions = [post.path || paths.postPath, ...sourceAssets.map((asset) => assertSafeRepoPath(env, asset.repoPath))]
   const commit = await createBatchCommit(env, {
     branch: config.GITHUB_BRANCH,
     message: `Delete post ${relativeId}`,

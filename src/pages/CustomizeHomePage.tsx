@@ -19,6 +19,7 @@ import { useNavigate } from 'react-router'
 import { ErrorState } from '../components/ErrorState'
 import { LoadingState } from '../components/LoadingState'
 import { getJson } from '../lib/apiClient'
+import { getCachedAdminIndex, setCachedAdminIndex } from '../lib/indexCache'
 import type { PostTreeResponse } from '../shared/postTypes'
 import type { CustomizeAdapterSummary, CustomizeFileDescriptor, CustomizeManifestResponse, CustomizePanelDescriptor, CustomizePanelGroup } from '../shared/customizeTypes'
 import { usePageStyles } from './pageStyles'
@@ -86,8 +87,10 @@ const useStyles = makeStyles({
 
 type State =
   | { status: 'loading' }
-  | { status: 'ready'; manifest: CustomizeManifestResponse }
+  | { status: 'ready'; manifest: CustomizeManifestResponse; message?: string; syncing?: boolean }
   | { status: 'error'; message: string }
+
+type SettingsScope = 'hexo' | 'theme'
 
 const adapterLabels: Record<string, string> = {
   common: 'Hexo Common',
@@ -111,10 +114,10 @@ const panelSummaries: Record<string, Omit<CustomizePanelDescriptor, 'id'>> = {
   },
   'redefine-basic': {
     adapterId: 'redefine',
-    title: '站点 / Redefine 基础信息',
-    description: '维护 Hexo 站点信息和 Redefine info 区域，可手动保持二者一致。',
+    title: 'Redefine 基础信息',
+    description: '维护 Redefine 主题配置中的 info 区域。',
     group: 'basic',
-    fileIds: ['site-config', 'redefine-config'],
+    fileIds: ['redefine-config'],
   },
   'redefine-visual': {
     adapterId: 'redefine',
@@ -209,7 +212,15 @@ const groupLabels: Record<CustomizePanelGroup, string> = {
   advanced: 'customize.groups.advanced',
 }
 
-export function CustomizeHomePage() {
+const matchesScope = (adapterId: string, scope: SettingsScope) => scope === 'hexo' ? adapterId === 'common' : adapterId !== 'common'
+
+function themeDisplayName(manifest: CustomizeManifestResponse) {
+  const themeName = manifest.detectedTheme ?? manifest.site.themeName
+  if (!themeName) return undefined
+  return themeName.toLowerCase() === 'redefine' ? 'Redefine' : themeName
+}
+
+export function CustomizeHomePage({ scope }: { scope: SettingsScope }) {
   const styles = usePageStyles()
   const localStyles = useStyles()
   const navigate = useNavigate()
@@ -217,51 +228,57 @@ export function CustomizeHomePage() {
   const [state, setState] = useState<State>({ status: 'loading' })
 
   const load = () => {
-    setState({ status: 'loading' })
-    void getJson<PostTreeResponse>('/index')
-      .then((index) => setState({ status: 'ready', manifest: indexToCustomizeManifest(index) }))
-      .catch((error: unknown) => setState({ status: 'error', message: error instanceof Error ? error.message : 'Unknown error' }))
-  }
+    const cached = getCachedAdminIndex()
+    if (cached) {
+      setState({ status: 'ready', manifest: indexToCustomizeManifest(cached), syncing: true })
+    } else {
+      setState({ status: 'loading' })
+    }
 
-  useEffect(() => {
-    let active = true
     void getJson<PostTreeResponse>('/index')
       .then((index) => {
-        if (active) setState({ status: 'ready', manifest: indexToCustomizeManifest(index) })
+        setCachedAdminIndex(index)
+        setState({ status: 'ready', manifest: indexToCustomizeManifest(index), syncing: false })
       })
       .catch((error: unknown) => {
-        if (active) setState({ status: 'error', message: error instanceof Error ? error.message : 'Unknown error' })
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        setState((current) => (current.status === 'ready' ? { ...current, syncing: false, message } : { status: 'error', message }))
       })
-    return () => {
-      active = false
-    }
-  }, [])
+  }
+
+  useEffect(load, [])
 
   const groupedPanels = useMemo(() => {
     if (state.status !== 'ready') return []
     const groups = new Map<CustomizePanelGroup, typeof state.manifest.panels>()
-    for (const panel of state.manifest.panels) {
+    for (const panel of state.manifest.panels.filter((panel) => matchesScope(panel.adapterId, scope))) {
       groups.set(panel.group, [...(groups.get(panel.group) ?? []), panel])
     }
     return (['basic', 'visual', 'navigation', 'pages', 'data', 'advanced'] as CustomizePanelGroup[])
       .map((group) => ({ group, panels: groups.get(group) ?? [] }))
       .filter((group) => group.panels.length > 0)
-  }, [state])
+  }, [scope, state])
 
   if (state.status === 'loading') return <LoadingState />
   if (state.status === 'error') return <ErrorState message={state.message} onRetry={load} />
 
   const manifest = state.manifest
+  const files = manifest.files.filter((file) => matchesScope(file.adapterId, scope))
+  const adapters = manifest.enabledAdapters.filter((adapter) => matchesScope(adapter.id, scope))
+  const themeName = themeDisplayName(manifest)
+  const pageTitle = scope === 'hexo' ? t('customize.hexoTitle') : themeName ? t('customize.themeTitleNamed', { theme: themeName }) : t('customize.themeTitle')
+  const pageDescription = scope === 'hexo' ? t('customize.hexoDescription') : t('customize.themeDescription')
 
   return (
     <section className={styles.page}>
       <header className={styles.header}>
-        <Title1>{t('customize.title')}</Title1>
-        <Body1 className={localStyles.subtitle}>{t('customize.description')}</Body1>
+        <Title1>{pageTitle}</Title1>
+        <Body1 className={localStyles.subtitle}>{pageDescription}</Body1>
       </header>
 
       <section className={styles.card}>
         <Title3>{t('customize.currentSite')}</Title3>
+        {state.message ? <Text>{state.message}</Text> : null}
         <div className={localStyles.summaryGrid}>
           <div className={localStyles.summaryItem}>
             <Text size={200}>{t('customize.summary.title')}</Text>
@@ -291,7 +308,7 @@ export function CustomizeHomePage() {
           </div>
         </div>
         <div className={styles.row}>
-          {manifest.enabledAdapters.map((adapter) => (
+          {adapters.map((adapter) => (
             <Badge key={adapter.id} appearance="filled" color={adapter.id === 'common' ? 'informative' : 'brand'}>
               {adapter.label}
             </Badge>
@@ -316,7 +333,7 @@ export function CustomizeHomePage() {
                     <Button
                       appearance="primary"
                       icon={<OpenRegular />}
-                      onClick={() => navigate(`/customize/panel/${encodeURIComponent(panel.id)}`)}
+                      onClick={() => navigate(`/${scope === 'hexo' ? 'hexo-settings' : 'theme-settings'}/panel/${encodeURIComponent(panel.id)}`)}
                     >
                       {t('customize.openPanel')}
                     </Button>
@@ -334,7 +351,7 @@ export function CustomizeHomePage() {
           <Body1 className={localStyles.subtitle}>{t('customize.rawEditorDescription')}</Body1>
         </div>
         <ul className={localStyles.fileList}>
-          {manifest.files.map((file) => (
+          {files.map((file) => (
             <li className={localStyles.fileItem} key={file.id}>
               <div>
                 <Text weight="semibold">{file.label}</Text>
@@ -345,16 +362,18 @@ export function CustomizeHomePage() {
                 <Badge appearance="outline" color={file.exists ? 'success' : 'warning'}>
                   {file.exists ? t('customize.fileExists') : t('customize.fileCreatable')}
                 </Badge>
-                <Button icon={<CodeRegular />} onClick={() => navigate(`/customize/file/${encodeURIComponent(file.id)}`)}>
+                <Button icon={<CodeRegular />} onClick={() => navigate(`/${scope === 'hexo' ? 'hexo-settings' : 'theme-settings'}/file/${encodeURIComponent(file.id)}`)}>
                   {t('actions.edit')}
                 </Button>
               </div>
             </li>
           ))}
         </ul>
-        <Button icon={<DocumentEditRegular />} onClick={() => navigate('/customize/file/site-config')}>
+        {scope === 'hexo' ? (
+        <Button icon={<DocumentEditRegular />} onClick={() => navigate('/hexo-settings/file/site-config')}>
           {t('customize.editHexoConfig')}
         </Button>
+        ) : null}
       </section>
     </section>
   )

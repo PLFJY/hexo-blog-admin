@@ -1,28 +1,31 @@
-# Customize 主题 Adapter 开发指南
+# 主题设置 Adapter 开发指南
 
 简体中文 | [English](customize-adapter-development.en.md)
 
-本文档面向想为 `hexo-blog-admin` 的 Customize / 定制中心新增 Hexo 主题支持的开发者。Customize 的目标不是做通用 SaaS CMS，而是把博客维护者日常会改、适合网页后台编辑的配置和页面内容做成可维护的面板。
+本文档面向想为 `hexo-blog-admin` 新增主题设置支持的开发者。设置体系的目标不是做通用 SaaS CMS，而是把博客维护者日常会改、适合网页后台编辑的配置和页面内容做成可维护的面板。
 
 ## 设计目标
 
-Customize 使用 adapter 机制拆分通用 Hexo 能力和主题专属能力：
+设置体系使用 adapter 机制拆分通用 Hexo 能力和主题专属能力：
 
 - `common` adapter 永远启用，负责 Hexo 通用内容，例如 `_config.yml` 和 About 页面。
-- 主题 adapter 按 `admin-index.json` v2 的 `customize.detectedTheme` 启用，例如 `detectedTheme: redefine` 会启用 `redefine` adapter。
+- 通用 Hexo 能力在前端显示为“Hexo 设置”，主题能力显示为“Redefine 设置”这类按主题命名的入口。
+- 主题 adapter 按 `admin-index.json` v3 的 `customize.detectedTheme` 启用，例如 `detectedTheme: redefine` 会启用 `redefine` adapter。
 - 新主题只需要新增自己的 adapter 并注册，不需要改 Worker 路由、保存流程或部署追踪流程。
-- `admin-index.json` 只保存站点和 adapter 能力摘要，不保存配置文件正文。
+- 每个主题 adapter 的代码应放在 `src/customize/<theme-name>/` 独立目录中，例如 Redefine 位于 `src/customize/redefine/`。
+- `admin-index.json` v3 只保存 `site` / `customize` 摘要和文章轻索引，不保存配置文件正文。
+- 文章图片索引不属于设置 adapter；它由 per-post asset shard 管理。
 
 保存链路统一由 Worker 负责：
 
-1. Customize 首页优先读取 `/api/index` 中的 `site` / `customize` 摘要，展示当前主题、可用 adapter、面板和文件存在状态。
+1. “Hexo 设置”和主题设置页优先读取 `/api/index` 中的 `site` / `customize` 摘要，展示当前主题、可用 adapter、面板和文件存在状态。
 2. 结构化面板读取 `/api/customize/panel?id=...`。
 3. Raw 文件读取 `/api/customize/file?id=...`。
 4. 保存时 Worker 通过 GitHub Git Data API 写入博客源站仓库。
 5. 前端拿到 `commitSha` 后轮询 GitHub Actions 部署状态。
-6. 部署成功后调用 `/api/index/sync-online` 刷新 admin-index 缓存。
+6. 部署成功后调用 `/api/index/sync-online` 重新读取线上 admin-index，并更新浏览器本地缓存。
 
-这意味着 Customize 首页不应该为了展示能力摘要实时扫描 GitHub 仓库。GitHub 源文件读取只发生在进入具体面板或 Raw File Editor 时。
+这意味着设置首页不应该为了展示能力摘要实时扫描 GitHub 仓库。GitHub 源文件读取只发生在进入具体面板或 Raw File Editor 时。
 
 ## 相关目录
 
@@ -38,10 +41,10 @@ src/shared/customizeTypes.ts
   前后端共享的 manifest、panel、file、保存状态和结构化数据类型
 
 src/worker/routes/customizeRoutes.ts
-  Customize API 路由处理
+  设置 API 路由处理
 
 src/pages/Customize*.tsx
-  定制中心首页、结构化面板、Raw file editor
+  Hexo 设置、主题设置、结构化面板、Raw file editor
 ```
 
 ## Adapter 需要声明什么
@@ -93,7 +96,7 @@ const butterflyConfigFile = {
 
 ## 面板描述符
 
-面板描述符决定 Customize 首页如何展示功能入口。
+面板描述符决定 Hexo 设置或主题设置页如何展示功能入口。
 
 ```ts
 const panels = [
@@ -262,7 +265,9 @@ if (panelId === 'butterfly-visual') {
 
 5. 更新博客侧 admin-index 生成脚本摘要。
 
-`tools/generate-admin-index.mjs` 会输出 `site` 和 `customize` 摘要。新增正式 adapter 后，也要把对应的 adapter id、panel id、editable file id/path/type/exists 摘要加进去。注意 admin-index 只放摘要，不放配置全文；具体文件内容仍由 `/api/customize/panel` 或 `/api/customize/file` 从 GitHub 源文件读取。
+`tools/generate-admin-index.mjs` 会输出 v3 轻索引、`site` 和 `customize` 摘要。新增正式 adapter 后，如果需要在 Hexo 设置或主题设置页显示面板，也要把对应的 adapter id、panel id、editable file id/path/type/exists 摘要加进去。注意 admin-index 只放摘要，不放配置全文；具体文件内容仍由 `/api/customize/panel` 或 `/api/customize/file` 从 GitHub 源文件读取。
+
+文章图片索引由 `public/admin-index/post-assets/<relativeId>.json` 这类 per-post asset shard 管理，不要把它建模到设置 adapter 能力里。
 
 ## 什么时候做结构化面板
 
@@ -337,7 +342,7 @@ type MarkdownPageData = {
 - 每个 panel 的 PUT 能生成 GitHub commit。
 - Raw File Editor 能读写 adapter 声明文件。
 - 保存后前端能按 `commitSha` 追踪部署。
-- 部署成功后能同步 admin-index。
+- 部署成功后能重新读取线上 admin-index，并更新浏览器本地缓存。
 - `pnpm typecheck` 通过。
 - `pnpm build` 通过。
 
@@ -347,4 +352,4 @@ type MarkdownPageData = {
 node tools/generate-admin-index.mjs
 ```
 
-确认 `public/admin-index.json` 中包含新的 `site` / `customize` 摘要。
+确认 `public/admin-index.json` 中包含新的 `site` / `customize` 摘要，并且 `public/admin-index/post-assets/` 下仍正常生成文章图片 shard。

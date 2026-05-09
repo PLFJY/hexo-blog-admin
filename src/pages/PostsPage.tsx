@@ -1,6 +1,6 @@
 import { Body1, Button, Popover, PopoverSurface, PopoverTrigger, Spinner, Text, Title1, Title3, makeStyles, tokens } from '@fluentui/react-components'
 import { ArrowSyncRegular, DeleteRegular, DocumentEditRegular, FolderRegular, EyeOffRegular, EyeRegular } from '@fluentui/react-icons'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router'
 import { EmptyState } from '../components/EmptyState'
@@ -145,6 +145,7 @@ type PostsState =
 
 type TreeProps = {
   nodes: PostTreeNode[]
+  postsById: Map<string, PostFile>
   onOpen: (post: PostFile) => void
   onDelete: (post: PostFile) => void
   onTogglePublished: (post: PostFile, published: boolean) => void
@@ -155,7 +156,7 @@ type TreeProps = {
 
 const isPostPublished = (post: PostFile) => (typeof post.published === 'boolean' ? post.published : post.metadata?.published !== false)
 
-function PostTree({ nodes, onOpen, onDelete, onTogglePublished, openingRelativeId, deletingRelativeId, togglingRelativeId }: TreeProps) {
+function PostTree({ nodes, postsById, onOpen, onDelete, onTogglePublished, openingRelativeId, deletingRelativeId, togglingRelativeId }: TreeProps) {
   const localStyles = usePostStyles()
   if (nodes.length === 0) return null
   return (
@@ -169,21 +170,24 @@ function PostTree({ nodes, onOpen, onDelete, onTogglePublished, openingRelativeI
               {node.sortPublishedAt ? <Text size={200}>{node.sortPublishedAt}</Text> : null}
             </div>
             <div className={localStyles.childGrid}>
-              <PostTree nodes={node.children ?? []} onOpen={onOpen} onDelete={onDelete} onTogglePublished={onTogglePublished} openingRelativeId={openingRelativeId} deletingRelativeId={deletingRelativeId} togglingRelativeId={togglingRelativeId} />
+              <PostTree nodes={node.children ?? []} postsById={postsById} onOpen={onOpen} onDelete={onDelete} onTogglePublished={onTogglePublished} openingRelativeId={openingRelativeId} deletingRelativeId={deletingRelativeId} togglingRelativeId={togglingRelativeId} />
             </div>
           </section>
-        ) : node.post ? (
+        ) : (() => {
+          const post = (node.postRef ? postsById.get(node.postRef) : undefined) ?? node.post
+          return post ? (
           <PostCard
             key={node.id}
-            post={node.post}
+            post={post}
             onOpen={onOpen}
             onDelete={onDelete}
             onTogglePublished={onTogglePublished}
-            opening={openingRelativeId === node.post.relativeId}
-            deleting={deletingRelativeId === node.post.relativeId}
-            toggling={togglingRelativeId === node.post.relativeId}
+            opening={openingRelativeId === post.relativeId}
+            deleting={deletingRelativeId === post.relativeId}
+            toggling={togglingRelativeId === post.relativeId}
           />
-        ) : null,
+          ) : null
+        })(),
       )}
     </div>
   )
@@ -236,6 +240,10 @@ export function PostsPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const [state, setState] = useState<PostsState>({ status: 'loading' })
+  const postsById = useMemo(
+    () => new Map((state.status === 'ready' ? state.index.posts : []).map((post) => [post.relativeId, post])),
+    [state],
+  )
 
   const load = () => {
     const cached = getCachedAdminIndex()
@@ -282,7 +290,7 @@ export function PostsPage() {
     nodes.map((node) =>
       node.type === 'folder'
         ? { ...node, children: patchPostPublished(node.children ?? [], relativeId, published) }
-        : node.post?.relativeId === relativeId
+        : (node.postRef === relativeId || node.post?.relativeId === relativeId) && node.post
           ? { ...node, post: { ...node.post, published, metadata: { ...node.post.metadata, published } } }
           : node,
     )
@@ -339,6 +347,7 @@ export function PostsPage() {
           {state.message ? <section className={localStyles.folder}><Text>{state.message}</Text></section> : null}
           <PostTree
             nodes={state.index.tree}
+            postsById={postsById}
             onOpen={openPost}
             onDelete={deletePost}
             onTogglePublished={togglePostPublished}

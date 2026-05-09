@@ -18,6 +18,7 @@ import {
   handleDeletePostAsset,
   handleDeletePost,
   handlePostAssetBlob,
+  handlePostAssets,
   handlePostContent,
   handlePostsTree,
   handleRenamePost,
@@ -120,6 +121,7 @@ async function handleApiRequest(request: Request, env: WorkerEnv, pathname: stri
   if (pathname === '/api/customize/panel' && request.method === 'PUT') return handleSaveCustomizePanel(env, request)
   if (pathname === '/api/posts/tree') return handlePostsTree(env)
   if (pathname === '/api/posts/content') return handlePostContent(env, request)
+  if (pathname === '/api/posts/assets') return handlePostAssets(env, request)
   if (pathname === '/api/posts/asset/blob') return handlePostAssetBlob(env, request)
   if (pathname === '/api/posts/asset/rename') return handleRenamePostAsset(env, request)
   if (pathname === '/api/posts/asset/delete') return handleDeletePostAsset(env, request)
