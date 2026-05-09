@@ -96,6 +96,14 @@ BLOG_ADMIN_DB
 BLOG_ASSET_CACHE
 ```
 
+可选普通变量：
+
+```txt
+BLOG_ASSET_PUBLIC_URL=https://blog-admin-cache.plfjy.top
+```
+
+`BLOG_ASSET_PUBLIC_URL` 用于从 R2 key 动态生成草稿暂存图片公开 URL。配置后 `/api/assets`、`/api/assets/cache`、上传和改名响应中的 `DraftAsset.publicUrl` 会指向该公开域名；不配置时前端继续使用 `/api/assets/blob` fallback。对应的 R2 bucket/custom domain 需要能公开访问 `draft-assets/*` 对象，该值不要写死在源码里。
+
 `wrangler.jsonc` 设置了 `keep_vars: true`，避免部署覆盖 Dashboard 中维护的变量和 Secret。D1 schema 会在请求 `/api/setup/status` 或进入已配置 API 后由 Worker 自动执行 `CREATE TABLE IF NOT EXISTS` 初始化。
 
 ## 数据模型
@@ -160,6 +168,7 @@ KV 保存：
 
 - 源站图片来自 `admin-index.json` 的 `post.assets`。
 - 暂存图片来自 `/api/assets`，blob 在 R2，metadata 在 D1。
+- 如果 Worker 配置了 `BLOG_ASSET_PUBLIC_URL`，暂存图片会带 `publicUrl`，预览和缩略图优先使用公开 R2 URL；未配置时回退到 `/api/assets/blob`。
 - 上传大图时，浏览器端可先转 WebP 并压缩。
 - 上传、粘贴、剪贴板读取共用同一套 incoming image flow。
 - 重命名暂存图片会同步 D1 metadata，并回调编辑器替换 Markdown 路径。
@@ -363,4 +372,3 @@ GitHub API 封装在 `src/worker/services/github/`：
 - 草稿图片上传失败：检查 D1/R2 binding，确认 `BLOG_ASSET_CACHE` 可写。
 - 发布失败：检查 GitHub token 是否有 contents write 权限，目标分支是否允许 fast-forward 更新。
 - 部署状态不更新：检查 `WORKFLOW_FILE` 是否和 GitHub Actions workflow 文件名完全一致。
-

@@ -269,6 +269,7 @@ const setupGroups: SetupGroup[] = [
 ]
 
 const bindingItems = ['BLOG_ADMIN_KV', 'BLOG_ADMIN_DB', 'BLOG_ASSET_CACHE'] as const
+const optionalDataVariables = ['BLOG_ASSET_PUBLIC_URL'] as const
 
 function setupInstructionKey(item: string) {
   if (item === 'BLOG_ADMIN_KV') return 'setup.instructions.kv'
@@ -285,6 +286,7 @@ function setupValuePlaceholder(item: string) {
   if (item === 'GITHUB_BRANCH') return 'main'
   if (item === 'POSTS_DIR') return 'source/_posts'
   if (item === 'BLOG_PUBLIC_URL') return 'https://your-blog-domain'
+  if (item === 'BLOG_ASSET_PUBLIC_URL') return 'https://your-r2-public-domain'
   if (item === 'ADMIN_INDEX_PATH') return '/admin-index.json'
   if (item === 'WORKFLOW_FILE') return 'Build Pages.yml'
   if (item === 'ADMIN_USERNAME') return 'admin'
@@ -449,6 +451,27 @@ export function SetupRequiredPage({ setup, onRefresh, embedded }: SetupRequiredP
                     <Text>{t(setupInstructionKey('BLOG_ADMIN_DB_SCHEMA'), { item: 'BLOG_ADMIN_DB_SCHEMA' })}</Text>
                   </section>
                 ) : null}
+                {optionalDataVariables.map((item) => {
+                  const configured = Boolean(setup.config[item]?.trim())
+                  const snippet = `${item}=${setupValuePlaceholder(item)}`
+                  return (
+                    <section key={item} className={mergeClasses(localStyles.bindingCard, configured && localStyles.bindingCardReady)}>
+                      <div className={localStyles.bindingNameRow}>
+                        <Text weight="semibold">
+                          <code>{item}</code>
+                        </Text>
+                        <Button appearance="subtle" icon={<CopyRegular />} aria-label={t('setup.copyName', { item })} onClick={() => copyText(item)} />
+                      </div>
+                      <StatusBadge status={configured ? 'success' : 'warning'}>
+                        {configured ? t('setup.optionalConfigured') : t('setup.optionalFallback')}
+                      </StatusBadge>
+                      <Text>{t('setup.instructions.assetPublicUrl', { item })}</Text>
+                      <pre className={styles.codeBlock}>
+                        <code>{snippet}</code>
+                      </pre>
+                    </section>
+                  )
+                })}
               </div>
             </section>
           ) : null}

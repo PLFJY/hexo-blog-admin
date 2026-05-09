@@ -39,6 +39,7 @@ export function publicConfig(env: WorkerEnv) {
     GITHUB_BRANCH: env.GITHUB_BRANCH ?? '',
     POSTS_DIR: env.POSTS_DIR ?? '',
     BLOG_PUBLIC_URL: env.BLOG_PUBLIC_URL,
+    BLOG_ASSET_PUBLIC_URL: env.BLOG_ASSET_PUBLIC_URL,
     ADMIN_INDEX_PATH: env.ADMIN_INDEX_PATH ?? '',
     WORKFLOW_FILE: env.WORKFLOW_FILE ?? '',
   }

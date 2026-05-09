@@ -215,6 +215,8 @@ export const resources = {
         copyBlockTitle: '复制这一页配置',
         bindingReady: '已绑定',
         bindingMissing: '未绑定',
+        optionalConfigured: '已启用',
+        optionalFallback: '可选 fallback',
         howToFix: '请在 Cloudflare Dashboard 设置 Worker Variables and Secrets，并绑定 BLOG_ADMIN_KV、BLOG_ADMIN_DB 和 BLOG_ASSET_CACHE。缺任何一项都会阻止进入后台；Secret 值不会显示在页面上。',
         automaticInit: 'Worker 会在检测到 BLOG_ADMIN_DB 已绑定后自动初始化 D1 表结构；Cloudflare 资源创建、binding 和 secrets 仍需要在 Dashboard 或 Wrangler 中完成。',
         dashboardInit: '这些项目需要在 Cloudflare Dashboard 的 Worker Variables and Secrets 中配置。保存后回到后台刷新状态。',
@@ -243,6 +245,7 @@ export const resources = {
           d1: '创建 D1 database，并在 Worker Bindings 中绑定为 BLOG_ADMIN_DB。',
           d1Schema: 'D1 已绑定但表结构初始化失败。检查 Worker 日志和 D1 权限，然后刷新本页重试。',
           r2: '创建 R2 bucket，并在 Worker Bindings 中绑定为 BLOG_ASSET_CACHE。',
+          assetPublicUrl: '可选：在 Worker Variables 中设置 {{item}}，让草稿暂存图片预览直接使用公开 R2/custom domain URL；不设置时继续使用 /api/assets/blob fallback。',
         },
       },
       actions: {
@@ -539,6 +542,8 @@ export const resources = {
         copyBlockTitle: 'Copy this step config',
         bindingReady: 'Bound',
         bindingMissing: 'Not bound',
+        optionalConfigured: 'Enabled',
+        optionalFallback: 'Optional fallback',
         howToFix: 'Set Worker Variables and Secrets in the Cloudflare Dashboard, then bind BLOG_ADMIN_KV, BLOG_ADMIN_DB, and BLOG_ASSET_CACHE. Missing any required item blocks the admin UI. Secret values are never shown here.',
         automaticInit: 'The Worker automatically initializes D1 tables after BLOG_ADMIN_DB is bound. Cloudflare resource creation, bindings, and secrets still need to be configured in the Dashboard or through Wrangler.',
         dashboardInit: 'Configure these items in Cloudflare Dashboard under Worker Variables and Secrets. After saving, return here and refresh the status.',
@@ -567,6 +572,7 @@ export const resources = {
           d1: 'Create a D1 database and bind it to the Worker as BLOG_ADMIN_DB.',
           d1Schema: 'D1 is bound, but schema initialization failed. Check Worker logs and D1 permissions, then refresh this page.',
           r2: 'Create an R2 bucket and bind it to the Worker as BLOG_ASSET_CACHE.',
+          assetPublicUrl: 'Optional: set {{item}} in Worker Variables so draft temp image previews use the public R2/custom domain URL directly. When unset, /api/assets/blob remains the fallback.',
         },
       },
       actions: {

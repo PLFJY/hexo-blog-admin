@@ -73,11 +73,16 @@ export function ArticleMarkdownWorkspace({
       onAssetObjectUrlsChangeRef.current({})
       return undefined
     }
+    const assetsNeedingObjectUrls = assets.filter((asset) => !asset.publicUrl)
+    if (assetsNeedingObjectUrls.length === 0) {
+      onAssetObjectUrlsChangeRef.current({})
+      return undefined
+    }
 
     let disposed = false
     const objectUrls: Record<string, string> = {}
     void Promise.all(
-      assets.map(async (asset) => {
+      assetsNeedingObjectUrls.map(async (asset) => {
         const response = await fetch(buildApiUrl(`/assets/blob?key=${encodeURIComponent(asset.key)}`), {
           credentials: 'include',
         })

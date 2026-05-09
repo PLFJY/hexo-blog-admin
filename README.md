@@ -119,6 +119,14 @@ WORKFLOW_FILE=Build Pages.yml
 
 这些变量没有 fallback，也没有默认值。缺少任意一项时，后台会显示 SetupRequiredPage 并阻止进入主界面。
 
+可选变量：
+
+```txt
+BLOG_ASSET_PUBLIC_URL=https://blog-admin-cache.plfjy.top
+```
+
+`BLOG_ASSET_PUBLIC_URL` 用于给草稿暂存图片生成公开 R2 访问 URL，让 Markdown 预览和图片仓缩略图绕过 Worker 图片代理。不配置时仍保持原有 `/api/assets/blob` fallback 行为。该 URL 对应的 R2 bucket/custom domain 应能公开访问 `draft-assets/*` 对象；不要把这个域名写死在源码里。
+
 `ADMIN_USERNAME`、`ADMIN_PASSWORD` 和 `GITHUB_TOKEN` 是 secret，不会显示在配置状态里。`ADMIN_USERNAME` 对应内置管理员账号；登录后台后可以在设置页新增普通账号，普通账号密码会以加盐哈希保存到 KV。
 
 当前兼容日期固定为 `2026-04-30`，这是已安装本地 Miniflare 运行时支持的最新日期；升级 Cloudflare 工具链后可以按需调高。
@@ -158,6 +166,8 @@ pnpm wrangler d1 migrations apply hexo-blog-admin
 ```bash
 pnpm wrangler r2 bucket create hexo-blog-admin-cache
 ```
+
+如果你给这个 R2 bucket 配置了公开 custom domain，可以在 Worker Variables 里额外设置 `BLOG_ASSET_PUBLIC_URL`，让草稿图片预览直接使用公开 URL；不设置也可以继续通过 Worker 的 `/api/assets/blob` 读取。
 
 绑定名称如下：
 

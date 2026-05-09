@@ -117,6 +117,14 @@ Variable meanings:
 
 These variables have no fallback and no default value. If any required item is missing, the app shows SetupRequiredPage and blocks the main admin UI.
 
+Optional variable:
+
+```txt
+BLOG_ASSET_PUBLIC_URL=https://your-r2-public-domain
+```
+
+`BLOG_ASSET_PUBLIC_URL` generates public R2 URLs for temporary draft images so Markdown previews and image warehouse thumbnails can bypass the Worker image proxy. When unset, the app keeps using the existing `/api/assets/blob` fallback. The matching R2 bucket/custom domain must be able to publicly serve `draft-assets/*` objects; do not hard-code this domain in source.
+
 `ADMIN_USERNAME`, `ADMIN_PASSWORD`, and `GITHUB_TOKEN` are secrets and are not shown in the setup status. `ADMIN_USERNAME` is the built-in admin account. After logging in, add regular accounts from Settings; regular account passwords are stored in KV as salted hashes.
 
 The compatibility date is pinned to `2026-04-30`, the latest date supported by the installed local Miniflare runtime; bump it after upgrading Cloudflare tooling if needed.
@@ -156,6 +164,8 @@ Create an R2 bucket for temporary draft assets. The bucket name can be anything,
 ```bash
 pnpm wrangler r2 bucket create hexo-blog-admin-cache
 ```
+
+If this R2 bucket has a public custom domain, you can additionally set `BLOG_ASSET_PUBLIC_URL` in Worker Variables so draft image previews use public URLs directly. Leaving it unset keeps the Worker `/api/assets/blob` fallback.
 
 Bind them as:
 

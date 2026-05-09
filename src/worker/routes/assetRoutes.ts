@@ -1,5 +1,5 @@
 import type { WorkerEnv } from '../env'
-import type { DeleteAssetCacheRequest } from '../../shared/assetTypes'
+import type { AssetCacheGroup, DeleteAssetCacheRequest, DraftAssetManifest } from '../../shared/assetTypes'
 import {
   getDraftAsset,
   getDraftAssetManifest,
@@ -9,6 +9,7 @@ import {
   listDraftAssetManifests,
   deleteDraftAssets,
 } from '../services/d1/d1DraftAssets'
+import { withDraftAssetManifestPublicUrls, withDraftAssetMutationPublicUrls } from '../services/assets/publicDraftAssetUrl'
 import { requireConfig } from '../utils/config'
 import { json } from '../utils/response'
 
@@ -33,6 +34,15 @@ const base64ToArrayBuffer = (base64: string) => {
   return bytes.buffer
 }
 
+const manifestToAssetCacheGroup = (manifest: DraftAssetManifest): AssetCacheGroup => ({
+  draftId: manifest.draftId,
+  relativeId: manifest.relativeId,
+  assets: manifest.assets,
+  count: manifest.assets.length,
+  totalSize: manifest.assets.reduce((sum, asset) => sum + (asset.size || 0), 0),
+  updatedAt: manifest.updatedAt,
+})
+
 export async function handleAssets(env: WorkerEnv, request: Request): Promise<Response> {
   const url = new URL(request.url)
   const draftId = url.searchParams.get('draftId')
@@ -40,19 +50,13 @@ export async function handleAssets(env: WorkerEnv, request: Request): Promise<Re
 
   if (request.method === 'GET') {
     if (!draftId) {
-      const manifests = await listDraftAssetManifests(env)
+      const manifests = (await listDraftAssetManifests(env)).map((manifest) => withDraftAssetManifestPublicUrls(env, manifest))
       return json({
-        groups: manifests.map((manifest) => ({
-          draftId: manifest.draftId,
-          relativeId: manifest.relativeId,
-          assets: manifest.assets,
-          count: manifest.assets.length,
-          totalSize: manifest.assets.reduce((sum, asset) => sum + (asset.size || 0), 0),
-          updatedAt: manifest.updatedAt,
-        })),
+        groups: manifests.map(manifestToAssetCacheGroup),
       })
     }
-    return json({ manifest: await getDraftAssetManifest(env, draftId, relativeId) })
+    const manifest = await getDraftAssetManifest(env, draftId, relativeId)
+    return json({ manifest: withDraftAssetManifestPublicUrls(env, manifest) })
   }
 
   if (request.method === 'POST') {
@@ -63,13 +67,16 @@ export async function handleAssets(env: WorkerEnv, request: Request): Promise<Re
       }
 
       return json(
-        await putDraftAsset(env, {
-          postsDir: requireConfig(env).POSTS_DIR,
-          relativeId: body.relativeId,
-          filename: body.filename,
-          contentType: body.contentType ?? 'application/octet-stream',
-          body: base64ToArrayBuffer(body.contentBase64),
-        }),
+        withDraftAssetMutationPublicUrls(
+          env,
+          await putDraftAsset(env, {
+            postsDir: requireConfig(env).POSTS_DIR,
+            relativeId: body.relativeId,
+            filename: body.filename,
+            contentType: body.contentType ?? 'application/octet-stream',
+            body: base64ToArrayBuffer(body.contentBase64),
+          }),
+        ),
         { status: 201 },
       )
     }
@@ -84,13 +91,16 @@ export async function handleAssets(env: WorkerEnv, request: Request): Promise<Re
       }
 
       return json(
-        await putDraftAsset(env, {
-          postsDir: requireConfig(env).POSTS_DIR,
-          relativeId: postRelativeId,
-          filename,
-          contentType: request.headers.get('content-type') ?? 'application/octet-stream',
-          body: await request.arrayBuffer(),
-        }),
+        withDraftAssetMutationPublicUrls(
+          env,
+          await putDraftAsset(env, {
+            postsDir: requireConfig(env).POSTS_DIR,
+            relativeId: postRelativeId,
+            filename,
+            contentType: request.headers.get('content-type') ?? 'application/octet-stream',
+            body: await request.arrayBuffer(),
+          }),
+        ),
         { status: 201 },
       )
     }
@@ -103,13 +113,16 @@ export async function handleAssets(env: WorkerEnv, request: Request): Promise<Re
     }
 
     return json(
-      await putDraftAsset(env, {
-        postsDir: requireConfig(env).POSTS_DIR,
-        relativeId: postRelativeId,
-        filename: file.name,
-        contentType: file.type,
-        body: await file.arrayBuffer(),
-      }),
+      withDraftAssetMutationPublicUrls(
+        env,
+        await putDraftAsset(env, {
+          postsDir: requireConfig(env).POSTS_DIR,
+          relativeId: postRelativeId,
+          filename: file.name,
+          contentType: file.type,
+          body: await file.arrayBuffer(),
+        }),
+      ),
       { status: 201 },
     )
   }
@@ -127,21 +140,14 @@ export async function handleAssetRename(env: WorkerEnv, request: Request): Promi
   if (request.method !== 'POST') return json({ error: 'METHOD_NOT_ALLOWED' }, { status: 405 })
   const body = (await request.json()) as RenameAssetRequest
   if (!body.key || !body.filename) return json({ error: 'BAD_REQUEST', message: 'key and filename are required' }, { status: 400 })
-  return json(await renameDraftAsset(env, body.key, body.filename, requireConfig(env).POSTS_DIR))
+  return json(withDraftAssetMutationPublicUrls(env, await renameDraftAsset(env, body.key, body.filename, requireConfig(env).POSTS_DIR)))
 }
 
 export async function handleAssetCache(env: WorkerEnv, request: Request): Promise<Response> {
   if (request.method === 'GET') {
-    const manifests = await listDraftAssetManifests(env)
+    const manifests = (await listDraftAssetManifests(env)).map((manifest) => withDraftAssetManifestPublicUrls(env, manifest))
     return json({
-      groups: manifests.map((manifest) => ({
-        draftId: manifest.draftId,
-        relativeId: manifest.relativeId,
-        assets: manifest.assets,
-        count: manifest.assets.length,
-        totalSize: manifest.assets.reduce((sum, asset) => sum + (asset.size || 0), 0),
-        updatedAt: manifest.updatedAt,
-      })),
+      groups: manifests.map(manifestToAssetCacheGroup),
     })
   }
   if (request.method === 'DELETE') {

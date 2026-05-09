@@ -8,6 +8,7 @@ export type DraftAsset = {
   createdAt: string
   markdownPath: string
   finalRepoPath: string
+  publicUrl?: string
 }
 
 export type DraftAssetManifest = {

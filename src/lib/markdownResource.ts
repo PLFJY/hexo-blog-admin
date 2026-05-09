@@ -29,7 +29,7 @@ export function resolveMarkdownResourceUrl({
 }: ResolveMarkdownResourceOptions) {
   const trimmed = src.trim()
   const cached = assets.find((asset) => asset.markdownPath === trimmed)
-  if (cached) return assetObjectUrls[cached.key] ?? buildApiUrl(`/assets/blob?key=${encodeURIComponent(cached.key)}`)
+  if (cached) return cached.publicUrl ?? assetObjectUrls[cached.key] ?? buildApiUrl(`/assets/blob?key=${encodeURIComponent(cached.key)}`)
   if (isSpecialUrl(trimmed)) return trimmed
   if (!publicConfig?.BLOG_PUBLIC_URL || !relativeId) return trimmed
 

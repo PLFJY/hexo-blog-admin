@@ -399,7 +399,7 @@ export const MarkdownAssetPanel = forwardRef<MarkdownAssetPanelHandle, MarkdownA
     if (asset.kind === 'source') {
       return asset.publicUrl || buildApiUrl(`/posts/asset/blob?repoPath=${encodeURIComponent(asset.repoPath)}`)
     }
-    return buildApiUrl(`/assets/blob?key=${encodeURIComponent(asset.key)}`)
+    return asset.publicUrl ?? buildApiUrl(`/assets/blob?key=${encodeURIComponent(asset.key)}`)
   }
 
   const copyPath = (path: string) => {
