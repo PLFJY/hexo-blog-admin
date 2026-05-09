@@ -59,6 +59,7 @@ export function PressRevealPasswordInput(props: PressRevealPasswordInputProps) {
           onPointerUp={hide}
           size="small"
           title={t('auth.holdToShowPassword')}
+          type="button"
         />
       }
     />

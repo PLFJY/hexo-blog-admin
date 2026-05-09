@@ -3,6 +3,8 @@ import { createContext, useContext } from 'react'
 export type AdminBackgroundContextValue = {
   backgroundUrl: string
   setBackgroundUrl: (backgroundUrl: string) => void
+  assetPublicUrlDebug: boolean
+  setAssetPublicUrlDebug: (enabled: boolean) => void
 }
 
 export const AdminBackgroundContext = createContext<AdminBackgroundContextValue | undefined>(undefined)

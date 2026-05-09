@@ -1,4 +1,4 @@
-import { Button, Body1, Field, Input, Popover, PopoverSurface, PopoverTrigger, Text, Title1, Title3, makeStyles, tokens } from '@fluentui/react-components'
+import { Button, Body1, Field, Input, Popover, PopoverSurface, PopoverTrigger, Switch, Text, Title1, Title3, makeStyles, tokens } from '@fluentui/react-components'
 import { ArrowClockwiseRegular, DeleteRegular } from '@fluentui/react-icons'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -52,7 +52,7 @@ const githubFallback = (error: unknown): GitHubRepoStatus | SetupIncompleteError
 export function SettingsPage() {
   const styles = usePageStyles()
   const { t } = useTranslation()
-  const { setBackgroundUrl } = useAdminBackground()
+  const { setAssetPublicUrlDebug, setBackgroundUrl } = useAdminBackground()
   const [state, setState] = useState<SettingsState>({ status: 'loading' })
 
   const load = () => {
@@ -89,6 +89,7 @@ export function SettingsPage() {
   const updateUiSettings = (request: UpdateAdminUiSettingsRequest) =>
     sendJson<AdminUiSettingsResponse>('/settings/ui', 'PUT', request).then((uiSettings) => {
       setBackgroundUrl(uiSettings.backgroundUrl)
+      setAssetPublicUrlDebug(uiSettings.assetPublicUrlDebug)
       setState({ ...state, uiSettings })
       return uiSettings
     })
@@ -144,15 +145,17 @@ function AppearanceSettings({ uiSettings, onUpdate }: AppearanceSettingsProps) {
   const localStyles = useSettingsStyles()
   const { t } = useTranslation()
   const [backgroundUrl, setBackgroundUrl] = useState(uiSettings.backgroundUrl)
+  const [assetPublicUrlDebug, setAssetPublicUrlDebug] = useState(uiSettings.assetPublicUrlDebug)
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [message, setMessage] = useState('')
 
   const save = () => {
     setStatus('saving')
     setMessage('')
-    void onUpdate({ backgroundUrl })
+    void onUpdate({ backgroundUrl, assetPublicUrlDebug })
       .then((settings) => {
         setBackgroundUrl(settings.backgroundUrl)
+        setAssetPublicUrlDebug(settings.assetPublicUrlDebug)
         setStatus('saved')
       })
       .catch((error: unknown) => {
@@ -166,6 +169,13 @@ function AppearanceSettings({ uiSettings, onUpdate }: AppearanceSettingsProps) {
       <Title3>{t('settings.appearanceTitle')}</Title3>
       <Field label={t('settings.backgroundUrlLabel')} hint={t('settings.backgroundUrlHint')}>
         <Input value={backgroundUrl} placeholder="https://example.com/background.jpg" onChange={(_, data) => setBackgroundUrl(data.value)} />
+      </Field>
+      <Field label={t('settings.assetPublicUrlDebugLabel')}>
+        <Switch
+          checked={assetPublicUrlDebug}
+          label={assetPublicUrlDebug ? t('actions.enabled') : t('actions.disabled')}
+          onChange={(_, data) => setAssetPublicUrlDebug(data.checked)}
+        />
       </Field>
       <div className={localStyles.formActions}>
         <Button appearance="primary" onClick={save} disabled={status === 'saving'}>

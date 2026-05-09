@@ -7,6 +7,7 @@ import { getSetupStatus } from '../utils/setup'
 import { clearSessionCookie } from '../utils/auth'
 
 const ADMIN_BACKGROUND_URL_KEY = 'adminBackgroundUrl'
+const ASSET_PUBLIC_URL_DEBUG_KEY = 'assetPublicUrlDebug'
 
 export async function handleSetupStatus(env: WorkerEnv, request: Request): Promise<Response> {
   const setup = await getSetupStatus(env)
@@ -39,21 +40,28 @@ function normalizeBackgroundUrl(value: unknown): string {
 
 export async function handleAdminUiSettings(env: WorkerEnv): Promise<Response> {
   const backgroundUrl = (await getConfigValue(env, ADMIN_BACKGROUND_URL_KEY)) ?? ''
-  return json({ backgroundUrl } satisfies AdminUiSettingsResponse)
+  const assetPublicUrlDebug = (await getConfigValue(env, ASSET_PUBLIC_URL_DEBUG_KEY)) === 'true'
+  return json({ backgroundUrl, assetPublicUrlDebug } satisfies AdminUiSettingsResponse)
 }
 
 export async function handleUpdateAdminUiSettings(env: WorkerEnv, request: Request): Promise<Response> {
   const payload = (await request.json()) as Partial<UpdateAdminUiSettingsRequest>
   let backgroundUrl: string
   try {
-    backgroundUrl = normalizeBackgroundUrl(payload.backgroundUrl)
+    backgroundUrl = payload.backgroundUrl === undefined
+      ? (await getConfigValue(env, ADMIN_BACKGROUND_URL_KEY)) ?? ''
+      : normalizeBackgroundUrl(payload.backgroundUrl)
   } catch (error) {
     return json(
       { error: 'INVALID_BACKGROUND_URL', message: error instanceof Error ? error.message : 'Invalid backgroundUrl' },
       { status: 400 },
     )
   }
+  const assetPublicUrlDebug = typeof payload.assetPublicUrlDebug === 'boolean'
+    ? payload.assetPublicUrlDebug
+    : (await getConfigValue(env, ASSET_PUBLIC_URL_DEBUG_KEY)) === 'true'
 
   await setConfigValue(env, ADMIN_BACKGROUND_URL_KEY, backgroundUrl)
-  return json({ backgroundUrl } satisfies AdminUiSettingsResponse)
+  await setConfigValue(env, ASSET_PUBLIC_URL_DEBUG_KEY, assetPublicUrlDebug ? 'true' : '')
+  return json({ backgroundUrl, assetPublicUrlDebug } satisfies AdminUiSettingsResponse)
 }

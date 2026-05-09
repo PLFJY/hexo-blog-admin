@@ -193,6 +193,7 @@ export const resources = {
         appearanceTitle: '外观',
         backgroundUrlLabel: '后台背景 URL',
         backgroundUrlHint: '留空则使用默认背景。保存后会写入 KV，并按当前浅色/深色主题叠加白色或深色遮罩。',
+        assetPublicUrlDebugLabel: '调试模式',
         saved: '已保存',
       },
       setup: {
@@ -277,6 +278,8 @@ export const resources = {
         systemTheme: '跟随系统',
         lightTheme: '切换到浅色模式',
         darkTheme: '切换到深色模式',
+        enabled: '已开启',
+        disabled: '已关闭',
       },
       states: { loading: '正在加载', error: '请求失败', empty: '暂无数据' },
       notFound: {
@@ -520,6 +523,7 @@ export const resources = {
         appearanceTitle: 'Appearance',
         backgroundUrlLabel: 'Admin background URL',
         backgroundUrlHint: 'Leave empty to use the default background. Saving writes to KV and applies a light or dark overlay based on the current theme.',
+        assetPublicUrlDebugLabel: 'Debug mode',
         saved: 'Saved',
       },
       setup: {
@@ -604,6 +608,8 @@ export const resources = {
         systemTheme: 'Use system theme',
         lightTheme: 'Switch to light theme',
         darkTheme: 'Switch to dark theme',
+        enabled: 'Enabled',
+        disabled: 'Disabled',
       },
       states: { loading: 'Loading', error: 'Request failed', empty: 'No data' },
       notFound: {

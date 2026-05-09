@@ -3,6 +3,7 @@ import { ArrowLeftRegular, DeleteRegular, RocketRegular, SaveRegular } from '@fl
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearchParams } from 'react-router'
+import { useAdminBackground } from '../app/AdminBackgroundContext'
 import { ArticleMarkdownWorkspace } from '../components/ArticleMarkdownWorkspace'
 import { EditorConflictResolverDialog } from '../components/EditorConflictResolverDialog'
 import { ErrorState } from '../components/ErrorState'
@@ -142,6 +143,7 @@ export function DraftEditorPage() {
   const styles = usePageStyles()
   const localStyles = useStyles()
   const { t } = useTranslation()
+  const { assetPublicUrlDebug } = useAdminBackground()
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const draftId = params.get('draftId') ?? ''
@@ -221,8 +223,10 @@ export function DraftEditorPage() {
         publicConfig: state.publicConfig,
         assets: state.assets,
         assetObjectUrls: state.assetObjectUrls,
+        debugPublicUrl: assetPublicUrlDebug,
       })
   }, [
+    assetPublicUrlDebug,
     state.status === 'ready' ? state.draft.relativeId : '',
     state.status === 'ready' ? state.publicConfig : undefined,
     state.status === 'ready' ? state.assets : undefined,

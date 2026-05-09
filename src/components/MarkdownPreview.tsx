@@ -10,6 +10,7 @@ import { makeStyles, tokens } from '@fluentui/react-components'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import 'katex/dist/katex.min.css'
 import { extractFrontMatterTitle, stripFrontMatter } from '../shared/frontMatter'
+import type { ResolvedMarkdownResourceUrl } from '../lib/markdownResource'
 import type { PreviewSyncPosition } from './MarkdownEditor'
 
 const useStyles = makeStyles({
@@ -100,6 +101,31 @@ const useStyles = makeStyles({
       maxWidth: '100%',
       borderRadius: tokens.borderRadiusMedium,
     },
+    '& .hba-public-url-image': {
+      position: 'relative',
+      display: 'inline-block',
+      maxWidth: '100%',
+      lineHeight: 0,
+    },
+    '& .hba-public-url-image img': {
+      display: 'block',
+      outline: `2px solid ${tokens.colorBrandBackground}`,
+      outlineOffset: '2px',
+    },
+    '& .hba-public-url-image__badge': {
+      position: 'absolute',
+      top: tokens.spacingVerticalXS,
+      right: tokens.spacingHorizontalXS,
+      padding: '2px 6px',
+      borderRadius: tokens.borderRadiusSmall,
+      color: tokens.colorNeutralForegroundOnBrand,
+      backgroundColor: tokens.colorBrandBackground,
+      fontSize: '11px',
+      lineHeight: '14px',
+      fontWeight: tokens.fontWeightSemibold,
+      pointerEvents: 'none',
+      boxShadow: tokens.shadow4,
+    },
     '& mark': {
       padding: '0 3px',
       borderRadius: tokens.borderRadiusSmall,
@@ -116,11 +142,18 @@ const useStyles = makeStyles({
 
 type MarkdownPreviewProps = {
   markdown: string
-  resolveResourceUrl?: (src: string) => string
+  resolveResourceUrl?: (src: string) => ResolvedMarkdownResourceUrl
   syncPosition?: PreviewSyncPosition
 }
 
-function createMarkdownRenderer(resolveResourceUrl?: (src: string) => string) {
+const normalizeResolvedResourceUrl = (resolved: ResolvedMarkdownResourceUrl | undefined, fallback: string) => {
+  if (!resolved) return { url: fallback, publicAsset: false }
+  return typeof resolved === 'string'
+    ? { url: resolved, publicAsset: false, fallbackUrl: undefined }
+    : { url: resolved.url, publicAsset: Boolean(resolved.publicAsset), fallbackUrl: resolved.fallbackUrl }
+}
+
+function createMarkdownRenderer(resolveResourceUrl?: (src: string) => ResolvedMarkdownResourceUrl) {
   const md = new MarkdownIt({
     html: true,
     linkify: true,
@@ -139,15 +172,24 @@ function createMarkdownRenderer(resolveResourceUrl?: (src: string) => string) {
   md.renderer.rules.image = (tokens, index, options, env, self) => {
     const token = tokens[index]
     const src = token.attrGet('src')
-    if (src) token.attrSet('src', resolveResourceUrl?.(src) ?? src)
-    return defaultImageRenderer ? defaultImageRenderer(tokens, index, options, env, self) : self.renderToken(tokens, index, options)
+    let publicAsset = false
+    if (src) {
+      const resolved = normalizeResolvedResourceUrl(resolveResourceUrl?.(src), src)
+      token.attrSet('src', resolved.url)
+      if (resolved.fallbackUrl && resolved.fallbackUrl !== resolved.url) token.attrSet('data-public-url-fallback', resolved.fallbackUrl)
+      publicAsset = resolved.publicAsset
+    }
+    const imageHtml = defaultImageRenderer ? defaultImageRenderer(tokens, index, options, env, self) : self.renderToken(tokens, index, options)
+    return publicAsset
+      ? `<span class="hba-public-url-image">${imageHtml}<span class="hba-public-url-image__badge">PUBLIC</span></span>`
+      : imageHtml
   }
 
   const defaultLinkOpenRenderer = md.renderer.rules.link_open
   md.renderer.rules.link_open = (tokens, index, options, env, self) => {
     const token = tokens[index]
     const href = token.attrGet('href')
-    if (href) token.attrSet('href', resolveResourceUrl?.(href) ?? href)
+    if (href) token.attrSet('href', normalizeResolvedResourceUrl(resolveResourceUrl?.(href), href).url)
     token.attrSet('target', '_blank')
     token.attrSet('rel', 'noreferrer')
     return defaultLinkOpenRenderer ? defaultLinkOpenRenderer(tokens, index, options, env, self) : self.renderToken(tokens, index, options)
@@ -226,8 +268,23 @@ export function MarkdownPreview({ markdown, resolveResourceUrl, syncPosition }: 
     const element = rootRef.current
     if (!element) return undefined
 
+    const fallbackPublicImage = (event: Event) => {
+      const image = event.target
+      if (!(image instanceof HTMLImageElement)) return
+      const fallbackUrl = image.dataset.publicUrlFallback
+      if (!fallbackUrl || image.src === new URL(fallbackUrl, window.location.href).href) return
+
+      delete image.dataset.publicUrlFallback
+      image.src = fallbackUrl
+      const wrapper = image.closest('.hba-public-url-image')
+      wrapper?.classList.remove('hba-public-url-image')
+      wrapper?.querySelector('.hba-public-url-image__badge')?.remove()
+      scheduleSyncScroll()
+    }
+
     const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(scheduleSyncScroll)
     for (const child of Array.from(element.children)) observer?.observe(child)
+    element.addEventListener('error', fallbackPublicImage, true)
 
     const images = Array.from(element.querySelectorAll('img'))
     for (const image of images) {
@@ -238,6 +295,7 @@ export function MarkdownPreview({ markdown, resolveResourceUrl, syncPosition }: 
 
     return () => {
       observer?.disconnect()
+      element.removeEventListener('error', fallbackPublicImage, true)
       for (const image of images) {
         image.removeEventListener('load', scheduleSyncScroll)
         image.removeEventListener('error', scheduleSyncScroll)

@@ -160,6 +160,11 @@ export function LoginPage({ onLoggedIn }: LoginPageProps) {
                 <PressRevealPasswordInput
                   value={password}
                   onChange={(_, data) => setPassword(data.value)}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter') return
+                    event.preventDefault()
+                    login()
+                  }}
                   autoComplete="current-password"
                 />
               </Field>

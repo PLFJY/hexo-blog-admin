@@ -19,6 +19,7 @@ import {
 import { CopyRegular, DeleteRegular, ImageAddRegular, OpenRegular, RenameRegular, ResizeImageRegular } from '@fluentui/react-icons'
 import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useAdminBackground } from '../app/AdminBackgroundContext'
 import { buildApiUrl, getJson, sendJson } from '../lib/apiClient'
 import { readImagesFromClipboard } from '../lib/clipboardImages'
 import { formatBytes } from '../lib/formatBytes'
@@ -76,6 +77,30 @@ const useStyles = makeStyles({
     objectFit: 'cover',
     borderRadius: tokens.borderRadiusSmall,
     backgroundColor: tokens.colorNeutralBackground3,
+  },
+  previewFrame: {
+    position: 'relative',
+    display: 'block',
+    width: '72px',
+    height: '48px',
+  },
+  publicUrlPreview: {
+    outline: `2px solid ${tokens.colorBrandBackground}`,
+    outlineOffset: '2px',
+  },
+  publicUrlBadge: {
+    position: 'absolute',
+    top: '3px',
+    right: '3px',
+    padding: '1px 5px',
+    borderRadius: tokens.borderRadiusSmall,
+    color: tokens.colorNeutralForegroundOnBrand,
+    backgroundColor: tokens.colorBrandBackground,
+    fontSize: '10px',
+    lineHeight: '13px',
+    fontWeight: tokens.fontWeightSemibold,
+    pointerEvents: 'none',
+    boxShadow: tokens.shadow4,
   },
   meta: {
     display: 'grid',
@@ -183,10 +208,12 @@ export const MarkdownAssetPanel = forwardRef<MarkdownAssetPanelHandle, MarkdownA
   const inputRef = useRef<HTMLInputElement>(null)
   const compressionDecisionRef = useRef<((decision: CompressionDecision) => void) | null>(null)
   const { t } = useTranslation()
+  const { assetPublicUrlDebug } = useAdminBackground()
   const [message, setMessage] = useState<{ kind: 'success' | 'error' | 'info'; text: string } | null>(null)
   const [busyKey, setBusyKey] = useState<string | null>(null)
   const [sourceRenameAsset, setSourceRenameAsset] = useState<ImageWarehouseSourceAsset | null>(null)
   const [compressionDialog, setCompressionDialog] = useState<{ file: File; busy?: boolean; busyLabel?: string } | null>(null)
+  const [publicPreviewFallbackKeys, setPublicPreviewFallbackKeys] = useState<Set<string>>(() => new Set())
 
   const warehouseAssets: Array<ImageWarehouseSourceAsset | (DraftAsset & { kind: 'temp' })> = [
     ...sourceAssets.map((asset) => ({ ...asset, kind: 'source' as const })),
@@ -395,11 +422,18 @@ export const MarkdownAssetPanel = forwardRef<MarkdownAssetPanelHandle, MarkdownA
       .finally(() => setBusyKey(null))
   }
 
-  const previewUrl = (asset: ImageWarehouseSourceAsset | (DraftAsset & { kind: 'temp' })) => {
+  const assetKey = (asset: ImageWarehouseSourceAsset | (DraftAsset & { kind: 'temp' })) => asset.kind === 'source' ? asset.repoPath : asset.key
+
+  const fallbackPreviewUrl = (asset: ImageWarehouseSourceAsset | (DraftAsset & { kind: 'temp' })) => {
     if (asset.kind === 'source') {
-      return asset.publicUrl || buildApiUrl(`/posts/asset/blob?repoPath=${encodeURIComponent(asset.repoPath)}`)
+      return buildApiUrl(`/posts/asset/blob?repoPath=${encodeURIComponent(asset.repoPath)}`)
     }
-    return asset.publicUrl ?? buildApiUrl(`/assets/blob?key=${encodeURIComponent(asset.key)}`)
+    return buildApiUrl(`/assets/blob?key=${encodeURIComponent(asset.key)}`)
+  }
+
+  const previewUrl = (asset: ImageWarehouseSourceAsset | (DraftAsset & { kind: 'temp' })) => {
+    if (publicPreviewFallbackKeys.has(assetKey(asset))) return fallbackPreviewUrl(asset)
+    return asset.publicUrl ?? fallbackPreviewUrl(asset)
   }
 
   const copyPath = (path: string) => {
@@ -446,42 +480,61 @@ export const MarkdownAssetPanel = forwardRef<MarkdownAssetPanelHandle, MarkdownA
         </div>
       ) : null}
       <ul className={styles.assetList}>
-        {warehouseAssets.map((asset) => (
-          <li className={styles.assetItem} key={asset.kind === 'source' ? asset.repoPath : asset.key}>
-            <img className={styles.preview} src={previewUrl(asset)} alt={asset.filename} loading="lazy" />
-            <span className={styles.meta}>
-              <span>
-                <Badge appearance="tint" color={asset.kind === 'source' ? 'brand' : 'success'}>{asset.kind === 'source' ? t('assets.source') : t('assets.temp')}</Badge>
+        {warehouseAssets.map((asset) => {
+          const key = assetKey(asset)
+          const usingPublicUrl = Boolean(asset.publicUrl && !publicPreviewFallbackKeys.has(key))
+          return (
+            <li className={styles.assetItem} key={key}>
+              <span className={styles.previewFrame}>
+                <img
+                  className={mergeClasses(styles.preview, assetPublicUrlDebug && usingPublicUrl && styles.publicUrlPreview)}
+                  src={previewUrl(asset)}
+                  alt={asset.filename}
+                  loading="lazy"
+                  onError={() => {
+                    if (!asset.publicUrl) return
+                    setPublicPreviewFallbackKeys((current) => {
+                      if (current.has(key)) return current
+                      return new Set(current).add(key)
+                    })
+                  }}
+                />
+                {assetPublicUrlDebug && usingPublicUrl ? <span className={styles.publicUrlBadge}>PUBLIC</span> : null}
               </span>
-              <Text weight="semibold" truncate>{asset.filename}</Text>
-              <Text size={200} truncate>{asset.markdownPath}</Text>
-              <Text size={200}>{formatBytes(asset.size)}</Text>
-            </span>
-            <span className={styles.actions}>
-              <Button appearance="subtle" icon={<CopyRegular />} onClick={() => copyPath(asset.markdownPath)}>{t('actions.copy')}</Button>
-              <Button appearance="subtle" icon={<ImageAddRegular />} onClick={() => onInsertMarkdown(`![${asset.filename}](${asset.markdownPath})`)}>{t('actions.insert')}</Button>
-              <Button appearance="subtle" icon={<OpenRegular />} onClick={() => openPreview(asset)}>{t('assets.preview')}</Button>
-              {asset.kind === 'source' ? (
-                <Button appearance="subtle" icon={<RenameRegular />} onClick={() => setSourceRenameAsset(asset)}>{t('actions.rename')}</Button>
-              ) : (
-                <>
-                  <Button appearance="subtle" icon={<ResizeImageRegular />} disabled={busyKey === asset.key} onClick={() => void compressTemp(asset)}>{t('assets.compressCache')}</Button>
-                  <RenameAssetPopover
-                    initialFilename={asset.filename}
-                    busy={busyKey === asset.key}
-                    source={asset.kind}
-                    onConfirm={(filename) => renameTemp(asset, filename)}
-                  />
-                </>
-              )}
-              {asset.kind === 'temp' ? (
-                <DeleteAssetPopover busy={busyKey === asset.key} onConfirm={() => removeTemp(asset)} />
-              ) : (
-                <DeleteAssetPopover busy={false} onConfirm={() => onSourceAssetDelete?.(asset)} />
-              )}
-            </span>
-          </li>
-        ))}
+              <span className={styles.meta}>
+                <span>
+                  <Badge appearance="tint" color={asset.kind === 'source' ? 'brand' : 'success'}>{asset.kind === 'source' ? t('assets.source') : t('assets.temp')}</Badge>
+                </span>
+                <Text weight="semibold" truncate>{asset.filename}</Text>
+                <Text size={200} truncate>{asset.markdownPath}</Text>
+                <Text size={200}>{formatBytes(asset.size)}</Text>
+              </span>
+              <span className={styles.actions}>
+                <Button appearance="subtle" icon={<CopyRegular />} onClick={() => copyPath(asset.markdownPath)}>{t('actions.copy')}</Button>
+                <Button appearance="subtle" icon={<ImageAddRegular />} onClick={() => onInsertMarkdown(`![${asset.filename}](${asset.markdownPath})`)}>{t('actions.insert')}</Button>
+                <Button appearance="subtle" icon={<OpenRegular />} onClick={() => openPreview(asset)}>{t('assets.preview')}</Button>
+                {asset.kind === 'source' ? (
+                  <Button appearance="subtle" icon={<RenameRegular />} onClick={() => setSourceRenameAsset(asset)}>{t('actions.rename')}</Button>
+                ) : (
+                  <>
+                    <Button appearance="subtle" icon={<ResizeImageRegular />} disabled={busyKey === asset.key} onClick={() => void compressTemp(asset)}>{t('assets.compressCache')}</Button>
+                    <RenameAssetPopover
+                      initialFilename={asset.filename}
+                      busy={busyKey === asset.key}
+                      source={asset.kind}
+                      onConfirm={(filename) => renameTemp(asset, filename)}
+                    />
+                  </>
+                )}
+                {asset.kind === 'temp' ? (
+                  <DeleteAssetPopover busy={busyKey === asset.key} onConfirm={() => removeTemp(asset)} />
+                ) : (
+                  <DeleteAssetPopover busy={false} onConfirm={() => onSourceAssetDelete?.(asset)} />
+                )}
+              </span>
+            </li>
+          )
+        })}
       </ul>
       {sourceRenameAsset ? (
         <SourceAssetRenameDialog

@@ -9,15 +9,20 @@ function cssUrl(url: string) {
 
 export function AdminBackgroundProvider({ children }: { children: ReactNode }) {
   const [backgroundUrl, setBackgroundUrl] = useState('')
+  const [assetPublicUrlDebug, setAssetPublicUrlDebug] = useState(false)
 
   useEffect(() => {
     let active = true
     void getJson<AdminUiSettingsResponse>('/settings/ui')
       .then((settings) => {
-        if (active) setBackgroundUrl(settings.backgroundUrl)
+        if (!active) return
+        setBackgroundUrl(settings.backgroundUrl)
+        setAssetPublicUrlDebug(settings.assetPublicUrlDebug)
       })
       .catch(() => {
-        if (active) setBackgroundUrl('')
+        if (!active) return
+        setBackgroundUrl('')
+        setAssetPublicUrlDebug(false)
       })
 
     return () => {
@@ -46,8 +51,8 @@ export function AdminBackgroundProvider({ children }: { children: ReactNode }) {
   }, [backgroundUrl])
 
   const value = useMemo<AdminBackgroundContextValue>(
-    () => ({ backgroundUrl, setBackgroundUrl }),
-    [backgroundUrl],
+    () => ({ backgroundUrl, setBackgroundUrl, assetPublicUrlDebug, setAssetPublicUrlDebug }),
+    [assetPublicUrlDebug, backgroundUrl],
   )
 
   return <AdminBackgroundContext.Provider value={value}>{children}</AdminBackgroundContext.Provider>

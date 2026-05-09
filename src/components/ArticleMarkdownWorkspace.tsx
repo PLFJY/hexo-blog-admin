@@ -4,6 +4,7 @@ import { MarkdownEditor } from './MarkdownEditor'
 import type { PreviewSyncPosition } from './MarkdownEditor'
 import { MarkdownPreview } from './MarkdownPreview'
 import { buildApiUrl } from '../lib/apiClient'
+import type { ResolvedMarkdownResourceUrl } from '../lib/markdownResource'
 import type { DraftAsset } from '../shared/assetTypes'
 
 const useStyles = makeStyles({
@@ -39,7 +40,7 @@ const useStyles = makeStyles({
 type ArticleMarkdownWorkspaceProps = {
   markdown: string
   onChange: (markdown: string) => void
-  resolveResourceUrl?: (src: string) => string
+  resolveResourceUrl?: (src: string) => ResolvedMarkdownResourceUrl
   assets?: DraftAsset[]
   onAssetObjectUrlsChange?: (urls: Record<string, string>) => void
   insertRequest?: { id: number; text: string }

@@ -23,10 +23,12 @@ export type PublicConfigResponse = SetupStatus['config']
 
 export type AdminUiSettingsResponse = {
   backgroundUrl: string
+  assetPublicUrlDebug: boolean
 }
 
 export type UpdateAdminUiSettingsRequest = {
   backgroundUrl: string
+  assetPublicUrlDebug: boolean
 }
 
 export type GitHubRepoStatus = {

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearchParams } from 'react-router'
+import { useAdminBackground } from '../app/AdminBackgroundContext'
 import { useAppTheme } from '../app/ThemeProvider'
 import { ArticleMarkdownWorkspace } from '../components/ArticleMarkdownWorkspace'
 import { EditorConflictResolverDialog } from '../components/EditorConflictResolverDialog'
@@ -125,6 +126,7 @@ export function SourcePostEditorPage() {
   const styles = usePageStyles()
   const localStyles = useSourceEditorStyles()
   const { t } = useTranslation()
+  const { assetPublicUrlDebug } = useAdminBackground()
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const relativeId = params.get('relativeId') ?? ''
@@ -204,8 +206,10 @@ export function SourcePostEditorPage() {
         publicConfig: state.publicConfig,
         assets: state.assets,
         assetObjectUrls: state.assetObjectUrls,
+        debugPublicUrl: assetPublicUrlDebug,
       })
   }, [
+    assetPublicUrlDebug,
     state.status === 'ready' ? state.post.post.relativeId : '',
     state.status === 'ready' ? state.publicConfig : undefined,
     state.status === 'ready' ? state.assets : undefined,
