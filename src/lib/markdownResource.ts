@@ -10,12 +10,14 @@ type ResolveMarkdownResourceOptions = {
   assetObjectUrls?: Record<string, string>
 }
 
-const isSpecialUrl = (src: string) =>
-  /^(https?:)?\/\//.test(src) || /^(mailto|tel|data):/i.test(src) || src.startsWith('#')
+const isSpecialUrl = (src: string) => {
+  const lower = src.toLowerCase()
+  return src.startsWith('http://') || src.startsWith('https://') || src.startsWith('//') || lower.startsWith('mailto:') || lower.startsWith('tel:') || lower.startsWith('data:') || src.startsWith('#')
+}
 
 function articleFolderPublicBase(publicUrl: string, relativeId: string) {
   const base = publicUrl.replace(/\/+$/g, '')
-  const normalizedId = relativeId.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+  const normalizedId = relativeId.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '').replace(/\/+/g, '/')
   const folderPath = normalizedId.split('/').slice(0, -1).join('/')
   return `${base}/${folderPath ? `${folderPath}/` : ''}`
 }
@@ -29,7 +31,7 @@ export function resolveMarkdownResourceUrl({
 }: ResolveMarkdownResourceOptions) {
   const trimmed = src.trim()
   const cached = assets.find((asset) => asset.markdownPath === trimmed)
-  if (cached) return assetObjectUrls[cached.key] ?? buildApiUrl(`/assets/blob?key=${encodeURIComponent(cached.key)}`)
+  if (cached) return cached.publicUrl ?? assetObjectUrls[cached.key] ?? buildApiUrl(`/assets/blob?key=${encodeURIComponent(cached.key)}`)
   if (isSpecialUrl(trimmed)) return trimmed
   if (!publicConfig?.BLOG_PUBLIC_URL || !relativeId) return trimmed
 
