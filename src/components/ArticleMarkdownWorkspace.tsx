@@ -69,7 +69,9 @@ export function ArticleMarkdownWorkspace({
     if (!onAssetObjectUrlsChangeRef.current) {
       return undefined
     }
-    if (assets.length === 0) {
+
+    const assetsNeedingObjectUrls = assets.filter((asset) => !asset.publicUrl)
+    if (assetsNeedingObjectUrls.length === 0) {
       onAssetObjectUrlsChangeRef.current({})
       return undefined
     }
@@ -77,7 +79,7 @@ export function ArticleMarkdownWorkspace({
     let disposed = false
     const objectUrls: Record<string, string> = {}
     void Promise.all(
-      assets.map(async (asset) => {
+      assetsNeedingObjectUrls.map(async (asset) => {
         const response = await fetch(buildApiUrl(`/assets/blob?key=${encodeURIComponent(asset.key)}`), {
           credentials: 'include',
         })
