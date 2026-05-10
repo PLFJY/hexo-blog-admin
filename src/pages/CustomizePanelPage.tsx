@@ -1,13 +1,17 @@
 import {
+  AlphaSlider,
   Body1,
   Button,
   Checkbox,
+  ColorArea,
   ColorPicker,
+  ColorSlider,
   Field,
   Input,
   Popover,
   PopoverSurface,
   PopoverTrigger,
+  SpinButton,
   Text,
   Textarea,
   Title1,
@@ -97,35 +101,66 @@ const useStyles = makeStyles({
     alignItems: 'center',
   },
   colorPicker: {
-    width: '220px',
-    maxWidth: '70vw',
+    width: '280px',
+    maxWidth: 'calc(100vw - 56px)',
+    boxSizing: 'border-box',
+    display: 'grid',
+    gap: tokens.spacingVerticalS,
   },
   colorPopover: {
-    padding: tokens.spacingVerticalM,
+    paddingTop: '16px',
+    paddingRight: '16px',
+    paddingBottom: tokens.spacingVerticalM,
+    paddingLeft: '16px',
+    maxWidth: 'calc(100vw - 32px)',
+    boxSizing: 'border-box',
   },
-  swatchButton: {
-    width: '28px',
-    height: '28px',
+  colorArea: {
+    width: '100%',
+    minWidth: '0 !important',
+    minHeight: '0 !important',
+    aspectRatio: '1',
+  },
+  colorSlider: {
+    width: '100%',
+    minWidth: '0 !important',
+  },
+  colorSwatch: {
+    display: 'block',
+    width: '20px',
+    height: '20px',
     flexShrink: 0,
-    position: 'relative',
     overflow: 'hidden',
     padding: 0,
+    borderRadius: tokens.borderRadiusSmall,
+    border: `1px solid ${tokens.colorNeutralStroke1}`,
+    backgroundImage: 'linear-gradient(45deg, #ddd 25%, transparent 25%), linear-gradient(-45deg, #ddd 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ddd 75%), linear-gradient(-45deg, transparent 75%, #ddd 75%)',
+    backgroundSize: '10px 10px',
+    backgroundPosition: '0 0, 0 5px, 5px -5px, -5px 0',
+  },
+  colorChannels: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(4, minmax(48px, 1fr))',
+    gap: tokens.spacingHorizontalS,
+    alignItems: 'end',
+    '@media (max-width: 520px)': {
+      gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+    },
+  },
+  colorPreviewBlock: {
+    width: '44px',
+    height: '44px',
     borderRadius: tokens.borderRadiusMedium,
     border: `1px solid ${tokens.colorNeutralStroke1}`,
     backgroundImage: 'linear-gradient(45deg, #ddd 25%, transparent 25%), linear-gradient(-45deg, #ddd 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ddd 75%), linear-gradient(-45deg, transparent 75%, #ddd 75%)',
     backgroundSize: '10px 10px',
     backgroundPosition: '0 0, 0 5px, 5px -5px, -5px 0',
-    cursor: 'pointer',
-    ':focus-visible': {
-      outline: `2px solid ${tokens.colorStrokeFocus2}`,
-      outlineOffset: '2px',
-    },
+    overflow: 'hidden',
   },
-  colorPreview: {
-    display: 'flex',
-    gap: tokens.spacingHorizontalS,
-    alignItems: 'center',
-    minWidth: 0,
+  colorPreviewFill: {
+    display: 'block',
+    width: '100%',
+    height: '100%',
   },
   imagePreview: {
     width: '100%',
@@ -450,36 +485,83 @@ function UrlField({
 
 function ColorField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
   const styles = useStyles()
-  const { t } = useTranslation()
-  const pickerValue = normalizeHexColor(value) ?? '#000000'
+  const normalizedColor = normalizeHexColor(value)
+  const pickerValue = normalizedColor ?? '#000000'
+  const pickerColor = hexToHsv(pickerValue)
+  const rgbColor = hexToRgb(pickerValue)
+  const previewColor = hsvToHex(pickerColor)
+  const updateRgbChannel = (channel: keyof Omit<RgbColor, 'a'>, nextValue: number | null | undefined) => {
+    onChange(rgbToHex({ ...rgbColor, [channel]: clamp255(nextValue ?? 0), a: pickerColor.a }))
+  }
   return (
     <Field label={label}>
-      <div className={styles.inputPreviewStack}>
-        <Input value={value ?? ''} onChange={(_, field) => onChange(field.value)} />
-        <div className={styles.colorPreview}>
-          <Popover positioning="below-start">
-            <PopoverTrigger disableButtonEnhancement>
-              <button
-                type="button"
-                className={styles.swatchButton}
-                style={{ backgroundColor: value || 'transparent' }}
-                title={t('customize.pickColor')}
-                aria-label={t('customize.pickColor')}
+      <Popover positioning="below-start">
+        <PopoverTrigger disableButtonEnhancement>
+          <Input
+            value={value ?? ''}
+            onChange={(_, field) => onChange(field.value)}
+            contentAfter={(
+              <span
+                aria-hidden
+                className={styles.colorSwatch}
+                style={{ backgroundColor: normalizedColor ?? 'transparent' }}
               />
-            </PopoverTrigger>
-            <PopoverSurface className={styles.colorPopover}>
-              <ColorPicker
-                className={styles.colorPicker}
-                color={hexToHsv(pickerValue)}
-                onColorChange={(_, data) => onChange(hsvToHex(data.color))}
-              />
-            </PopoverSurface>
-          </Popover>
-          <Text size={200} className={styles.previewText}>
-            {normalizeHexColor(value) ? t('customize.colorPreview') : t('customize.freeformColor')}
-          </Text>
-        </div>
-      </div>
+            )}
+          />
+        </PopoverTrigger>
+        <PopoverSurface className={styles.colorPopover}>
+          <div className={styles.colorPicker}>
+            <ColorPicker
+              color={pickerColor}
+              onColorChange={(_, data) => onChange(hsvToHex(data.color))}
+            >
+              <ColorArea className={styles.colorArea} />
+              <ColorSlider className={styles.colorSlider} />
+              <AlphaSlider className={styles.colorSlider} />
+            </ColorPicker>
+            <div className={styles.colorChannels}>
+              <Field label="Red">
+                <SpinButton
+                  min={0}
+                  max={255}
+                  value={rgbColor.r}
+                  onChange={(_, data) => updateRgbChannel('r', data.value)}
+                />
+              </Field>
+              <Field label="Green">
+                <SpinButton
+                  min={0}
+                  max={255}
+                  value={rgbColor.g}
+                  onChange={(_, data) => updateRgbChannel('g', data.value)}
+                />
+              </Field>
+              <Field label="Blue">
+                <SpinButton
+                  min={0}
+                  max={255}
+                  value={rgbColor.b}
+                  onChange={(_, data) => updateRgbChannel('b', data.value)}
+                />
+              </Field>
+              <Field label="Alpha">
+                <SpinButton
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  precision={2}
+                  value={pickerColor.a ?? 1}
+                  displayValue={formatAlpha(pickerColor.a ?? 1)}
+                  onChange={(_, data) => onChange(hsvToHex({ ...pickerColor, a: clamp01(data.value ?? 1) }))}
+                />
+              </Field>
+            </div>
+            <div className={styles.colorPreviewBlock} aria-hidden>
+              <span className={styles.colorPreviewFill} style={{ backgroundColor: previewColor }} />
+            </div>
+          </div>
+        </PopoverSurface>
+      </Popover>
     </Field>
   )
 }
@@ -966,7 +1048,11 @@ function frontMatterValue(value: unknown) {
 
 function normalizeHexColor(value: string | undefined) {
   const trimmed = value?.trim() ?? ''
+  if (/^#[0-9a-f]{8}$/i.test(trimmed)) return trimmed
   if (/^#[0-9a-f]{6}$/i.test(trimmed)) return trimmed
+  if (/^#[0-9a-f]{4}$/i.test(trimmed)) {
+    return `#${trimmed.slice(1).split('').map((char) => `${char}${char}`).join('')}`
+  }
   if (/^#[0-9a-f]{3}$/i.test(trimmed)) {
     return `#${trimmed.slice(1).split('').map((char) => `${char}${char}`).join('')}`
   }
@@ -980,11 +1066,19 @@ type HsvColor = {
   a?: number
 }
 
+type RgbColor = {
+  r: number
+  g: number
+  b: number
+  a?: number
+}
+
 function hexToHsv(hex: string): HsvColor {
   const normalized = normalizeHexColor(hex) ?? '#000000'
   const red = Number.parseInt(normalized.slice(1, 3), 16) / 255
   const green = Number.parseInt(normalized.slice(3, 5), 16) / 255
   const blue = Number.parseInt(normalized.slice(5, 7), 16) / 255
+  const alpha = normalized.length === 9 ? Number.parseInt(normalized.slice(7, 9), 16) / 255 : 1
   const max = Math.max(red, green, blue)
   const min = Math.min(red, green, blue)
   const delta = max - min
@@ -1000,6 +1094,7 @@ function hexToHsv(hex: string): HsvColor {
     h: hue < 0 ? hue + 360 : hue,
     s: max === 0 ? 0 : delta / max,
     v: max,
+    a: alpha,
   }
 }
 
@@ -1017,14 +1112,45 @@ function hsvToHex(color: HsvColor) {
           : hue < 240 ? [0, x, chroma]
             : hue < 300 ? [x, 0, chroma]
               : [chroma, 0, x]
-  return `#${[red, green, blue]
-    .map((channel) => Math.round((channel + match) * 255).toString(16).padStart(2, '0'))
+  const alpha = clamp01(color.a ?? 1)
+  const channels = [red, green, blue].map((channel) => Math.round((channel + match) * 255))
+  if (alpha < 1) channels.push(Math.round(alpha * 255))
+  return `#${channels
+    .map((channel) => channel.toString(16).padStart(2, '0'))
+    .join('')}`
+}
+
+function hexToRgb(hex: string): RgbColor {
+  const normalized = normalizeHexColor(hex) ?? '#000000'
+  return {
+    r: Number.parseInt(normalized.slice(1, 3), 16),
+    g: Number.parseInt(normalized.slice(3, 5), 16),
+    b: Number.parseInt(normalized.slice(5, 7), 16),
+  }
+}
+
+function rgbToHex(color: RgbColor) {
+  const channels = [color.r, color.g, color.b].map((channel) => clamp255(channel))
+  const alpha = clamp01(color.a ?? 1)
+  if (alpha < 1) channels.push(Math.round(alpha * 255))
+  return `#${channels
+    .map((channel) => clamp255(channel).toString(16).padStart(2, '0'))
     .join('')}`
 }
 
 function clamp01(value: number) {
   if (!Number.isFinite(value)) return 0
   return Math.min(1, Math.max(0, value))
+}
+
+function clamp255(value: number) {
+  if (!Number.isFinite(value)) return 0
+  return Math.min(255, Math.max(0, Math.round(value)))
+}
+
+function formatAlpha(value: number) {
+  const alpha = clamp01(value)
+  return Number.isInteger(alpha) ? String(alpha) : alpha.toFixed(2)
 }
 
 function detectIconSet(value: string | undefined) {

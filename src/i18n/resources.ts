@@ -219,8 +219,6 @@ export const resources = {
         openPreview: '打开预览',
         imagePreview: '图片预览',
         pickColor: '选择颜色',
-        colorPreview: '颜色预览',
-        freeformColor: '自由颜色值，选择器仅支持 Hex',
         detectedIconSet: '识别图标集',
         iconSets: {
           empty: '未设置',
@@ -711,8 +709,6 @@ export const resources = {
         openPreview: 'Open preview',
         imagePreview: 'Image preview',
         pickColor: 'Pick color',
-        colorPreview: 'Color preview',
-        freeformColor: 'Free-form color value. The picker supports Hex only.',
         detectedIconSet: 'Detected icon set',
         iconSets: {
           empty: 'Not set',
