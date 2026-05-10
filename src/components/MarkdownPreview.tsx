@@ -7,14 +7,14 @@ import markdownItMark from 'markdown-it-mark'
 import markdownItSub from 'markdown-it-sub'
 import markdownItSup from 'markdown-it-sup'
 import { makeStyles, tokens } from '@fluentui/react-components'
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import 'katex/dist/katex.min.css'
 import { extractFrontMatterTitle, stripFrontMatter } from '../shared/frontMatter'
 import type { ResolvedMarkdownResourceUrl } from '../lib/markdownResource'
-import type { PreviewSyncPosition } from './MarkdownEditor'
 
 const useStyles = makeStyles({
   root: {
+    position: 'relative',
     height: '560px',
     minWidth: 0,
     width: '100%',
@@ -31,6 +31,9 @@ const useStyles = makeStyles({
       marginTop: 0,
     },
     '& > :last-child': {
+      marginBottom: 0,
+    },
+    '& > :nth-last-child(2)': {
       marginBottom: 0,
     },
     '& h1': {
@@ -137,13 +140,22 @@ const useStyles = makeStyles({
       overflowY: 'hidden',
       padding: `${tokens.spacingVerticalS} 0`,
     },
+    '& .hba-source-line-sentinel': {
+      display: 'block',
+      height: 0,
+      margin: 0,
+      padding: 0,
+      overflow: 'hidden',
+      pointerEvents: 'none',
+    },
   },
 })
 
 type MarkdownPreviewProps = {
   markdown: string
   resolveResourceUrl?: (src: string) => ResolvedMarkdownResourceUrl
-  syncPosition?: PreviewSyncPosition
+  onPreviewRootReady?: (element: HTMLDivElement | null) => void
+  onPreviewContentChange?: () => void
 }
 
 const normalizeResolvedResourceUrl = (resolved: ResolvedMarkdownResourceUrl | undefined, fallback: string) => {
@@ -200,8 +212,10 @@ function createMarkdownRenderer(resolveResourceUrl?: (src: string) => ResolvedMa
     // Store source line numbers on block tokens so editor cursor movement can scroll the preview.
     for (const token of state.tokens) {
       if (!token.map || token.nesting === -1) continue
-      const sourceLine = lineForRenderedLine?.(token.map[0] + 1) ?? token.map[0] + 1
-      token.attrSet('data-source-line', String(sourceLine))
+      const startLine = lineForRenderedLine?.(token.map[0] + 1) ?? token.map[0] + 1
+      const endLine = lineForRenderedLine?.(token.map[1]) ?? token.map[1]
+      token.attrSet('data-source-line', String(startLine))
+      token.attrSet('data-source-end-line', String(Math.max(startLine, endLine)))
     }
   })
 
@@ -217,56 +231,53 @@ const bodyStartLine = (markdown: string) => {
   return normalized.slice(0, normalized[afterFenceStart] === '\n' ? afterFenceStart + 1 : afterFenceStart).split('\n').length
 }
 
-export function MarkdownPreview({ markdown, resolveResourceUrl, syncPosition }: MarkdownPreviewProps) {
+const sourceLineCount = (markdown: string) => Math.max(1, markdown.replace(/\r\n/g, '\n').split('\n').length)
+
+export function MarkdownPreview({
+  markdown,
+  resolveResourceUrl,
+  onPreviewRootReady,
+  onPreviewContentChange,
+}: MarkdownPreviewProps) {
   const styles = useStyles()
   const rootRef = useRef<HTMLDivElement>(null)
-  const syncPositionRef = useRef(syncPosition)
-  const frameRef = useRef<number | undefined>(undefined)
+  const onPreviewRootReadyRef = useRef(onPreviewRootReady)
+  const onPreviewContentChangeRef = useRef(onPreviewContentChange)
   const renderer = useMemo(() => createMarkdownRenderer(resolveResourceUrl), [resolveResourceUrl])
   const html = useMemo(() => {
     const title = extractFrontMatterTitle(markdown)
     const body = stripFrontMatter(markdown)
     const titleLineCount = title ? 2 : 0
     const startLine = bodyStartLine(markdown)
-    return renderer.render(`${title ? `# ${title}\n\n` : ''}${body}`, {
+    const rendered = renderer.render(`${title ? `# ${title}\n\n` : ''}${body}`, {
       lineForRenderedLine: (line: number) => (title && line <= titleLineCount ? 1 : line - titleLineCount + startLine - 1),
     })
+    const lineCount = sourceLineCount(markdown)
+    return `${rendered}<div data-source-line="${lineCount}" data-source-end-line="${lineCount}" class="hba-source-line-sentinel"></div>`
   }, [markdown, renderer])
 
-  const syncScroll = useCallback(() => {
-    const position = syncPositionRef.current
-    if (!position || !rootRef.current) return
-    const element = rootRef.current
-    const maxScrollTop = element.scrollHeight - element.clientHeight
-
-    if (position.source === 'cursor') {
-      const targets = Array.from(element.querySelectorAll<HTMLElement>('[data-source-line]'))
-      const target = targets.reduce<HTMLElement | undefined>((matched, candidate) => {
-        const sourceLine = Number(candidate.dataset.sourceLine)
-        return Number.isFinite(sourceLine) && sourceLine <= position.line ? candidate : matched
-      }, undefined)
-      if (target) {
-        element.scrollTop = Math.max(0, target.offsetTop - element.offsetTop - element.clientHeight * 0.18)
-        return
-      }
-    }
-
-    element.scrollTop = maxScrollTop > 0 ? maxScrollTop * position.ratio : 0
-  }, [])
-
-  const scheduleSyncScroll = useCallback(() => {
-    window.cancelAnimationFrame(frameRef.current ?? 0)
-    frameRef.current = window.requestAnimationFrame(syncScroll)
-  }, [syncScroll])
+  useEffect(() => {
+    onPreviewRootReadyRef.current = onPreviewRootReady
+  }, [onPreviewRootReady])
 
   useEffect(() => {
-    syncPositionRef.current = syncPosition
-    scheduleSyncScroll()
-  }, [scheduleSyncScroll, syncPosition, html])
+    onPreviewContentChangeRef.current = onPreviewContentChange
+  }, [onPreviewContentChange])
+
+  useEffect(() => {
+    onPreviewRootReadyRef.current?.(rootRef.current)
+    return () => onPreviewRootReadyRef.current?.(null)
+  }, [])
+
+  useEffect(() => {
+    onPreviewContentChangeRef.current?.()
+  }, [html])
 
   useEffect(() => {
     const element = rootRef.current
     if (!element) return undefined
+
+    const invalidateAfterImageChange = () => onPreviewContentChangeRef.current?.()
 
     const fallbackPublicImage = (event: Event) => {
       const image = event.target
@@ -279,33 +290,29 @@ export function MarkdownPreview({ markdown, resolveResourceUrl, syncPosition }: 
       const wrapper = image.closest('.hba-public-url-image')
       wrapper?.classList.remove('hba-public-url-image')
       wrapper?.querySelector('.hba-public-url-image__badge')?.remove()
-      scheduleSyncScroll()
+      onPreviewContentChangeRef.current?.()
     }
 
-    const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(scheduleSyncScroll)
-    for (const child of Array.from(element.children)) observer?.observe(child)
+    const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(invalidateAfterImageChange)
+    observer?.observe(element)
     element.addEventListener('error', fallbackPublicImage, true)
 
     const images = Array.from(element.querySelectorAll('img'))
     for (const image of images) {
-      image.addEventListener('load', scheduleSyncScroll)
-      image.addEventListener('error', scheduleSyncScroll)
-      if (image.complete) scheduleSyncScroll()
+      image.addEventListener('load', invalidateAfterImageChange)
+      image.addEventListener('error', invalidateAfterImageChange)
+      if (image.complete) onPreviewContentChangeRef.current?.()
     }
 
     return () => {
       observer?.disconnect()
       element.removeEventListener('error', fallbackPublicImage, true)
       for (const image of images) {
-        image.removeEventListener('load', scheduleSyncScroll)
-        image.removeEventListener('error', scheduleSyncScroll)
+        image.removeEventListener('load', invalidateAfterImageChange)
+        image.removeEventListener('error', invalidateAfterImageChange)
       }
     }
-  }, [html, scheduleSyncScroll])
-
-  useEffect(() => {
-    return () => window.cancelAnimationFrame(frameRef.current ?? 0)
-  }, [])
+  }, [html])
 
   return <div className={styles.root} ref={rootRef} dangerouslySetInnerHTML={{ __html: html }} />
 }
