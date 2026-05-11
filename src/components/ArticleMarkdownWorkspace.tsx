@@ -680,9 +680,10 @@ export function ArticleMarkdownWorkspace({
 
     const handleEditorScroll = () => {
       if (suppressEditorScrollRef.current) return
-      if (pointerAreaRef.current !== 'editor') return
+      if (pointerAreaRef.current !== null && pointerAreaRef.current !== 'editor') return
       if (activeScrollSourceRef.current !== null && activeScrollSourceRef.current !== 'editor') return
 
+      pointerAreaRef.current = 'editor'
       markActiveSource('editor')
       scheduleEditorToPreviewSync()
     }
@@ -698,9 +699,10 @@ export function ArticleMarkdownWorkspace({
 
     const handlePreviewScroll = () => {
       if (suppressPreviewScrollRef.current) return
-      if (pointerAreaRef.current !== 'preview') return
+      if (pointerAreaRef.current !== null && pointerAreaRef.current !== 'preview') return
       if (activeScrollSourceRef.current !== null && activeScrollSourceRef.current !== 'preview') return
 
+      pointerAreaRef.current = 'preview'
       markActiveSource('preview')
       schedulePreviewToEditorSync()
     }
@@ -773,6 +775,8 @@ export function ArticleMarkdownWorkspace({
         className={styles.column}
         onPointerEnter={handleEditorPointerEnter}
         onPointerLeave={handleEditorPointerLeave}
+        onPointerDown={handleEditorPointerEnter}
+        onTouchStart={handleEditorPointerEnter}
       >
         <MarkdownEditor
           value={markdown}
@@ -788,6 +792,8 @@ export function ArticleMarkdownWorkspace({
         className={mergeClasses(styles.column, styles.previewColumn)}
         onPointerEnter={handlePreviewPointerEnter}
         onPointerLeave={handlePreviewPointerLeave}
+        onPointerDown={handlePreviewPointerEnter}
+        onTouchStart={handlePreviewPointerEnter}
       >
         <MarkdownPreview
           markdown={markdown}
