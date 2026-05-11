@@ -198,6 +198,14 @@ const useStyles = makeStyles({
   previewText: {
     overflowWrap: 'anywhere',
   },
+  booleanField: {
+    alignSelf: 'end',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifySelf: 'start',
+    minHeight: '32px',
+    lineHeight: tokens.lineHeightBase300,
+  },
   dangerButton: {
     color: tokens.colorPaletteRedForeground1,
   },
@@ -626,7 +634,8 @@ function NumberField({
 }
 
 function BooleanField({ label, value, onChange }: { label: string; value: boolean; onChange: (value: boolean) => void }) {
-  return <Checkbox label={label} checked={Boolean(value)} onChange={(_, field) => onChange(Boolean(field.checked))} />
+  const styles = useStyles()
+  return <Checkbox className={styles.booleanField} label={label} checked={Boolean(value)} onChange={(_, field) => onChange(Boolean(field.checked))} />
 }
 
 function SiteBasicsEditor({ data, onChange }: { data: SiteBasicsData; onChange: (data: SiteBasicsData) => void }) {
