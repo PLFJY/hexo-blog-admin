@@ -125,21 +125,6 @@ const useStyles = makeStyles({
     '& .cm-content': {
       padding: `${tokens.spacingVerticalM} 0`,
     },
-    '@media (max-width: 960px)': {
-      height: 'auto',
-      minHeight: '360px',
-      overflow: 'visible',
-      '& .cm-editor': {
-        height: 'auto',
-        minHeight: '360px',
-        overflow: 'visible',
-      },
-      '& .cm-scroller': {
-        height: 'auto',
-        minHeight: '360px',
-        overflow: 'visible',
-      },
-    },
   },
 })
 
@@ -669,6 +654,7 @@ export function MarkdownEditor({
       <CodeMirror
         className={styles.root}
         value={localValue}
+        height="560px"
         theme={resolvedMode}
         extensions={[
           markdown(),
