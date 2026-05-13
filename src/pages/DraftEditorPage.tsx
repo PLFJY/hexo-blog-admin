@@ -509,6 +509,7 @@ export function DraftEditorPage() {
             onPasteImages={(files) => void assetPanelRef.current?.handleIncomingImageFiles(files, 'paste')}
             onSaveShortcut={save}
             onMermaidRenderErrorsChange={setMermaidErrors}
+            documentKey={state.draft.id || draftId || state.baseRelativeId}
           />
         </Field>
       </section>

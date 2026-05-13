@@ -144,6 +144,7 @@ type ArticleMarkdownWorkspaceProps = {
   onPasteImages?: (files: File[]) => void
   onSaveShortcut?: () => void
   onMermaidRenderErrorsChange?: (errors: MermaidRenderError[]) => void
+  documentKey?: string
 }
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
@@ -389,6 +390,7 @@ export function ArticleMarkdownWorkspace({
   onPasteImages,
   onSaveShortcut,
   onMermaidRenderErrorsChange,
+  documentKey,
 }: ArticleMarkdownWorkspaceProps) {
   const styles = useStyles()
   const [editorView, setEditorView] = useState<EditorView | null>(null)
@@ -934,6 +936,7 @@ export function ArticleMarkdownWorkspace({
           onInsertConsumed={onInsertConsumed}
           onPasteImages={onPasteImages}
           onSaveShortcut={onSaveShortcut}
+          documentKey={documentKey}
         />
       </div>
       <div

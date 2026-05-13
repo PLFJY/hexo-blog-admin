@@ -140,6 +140,7 @@ type MarkdownEditorProps = {
   insertRequest?: { id: number; text: string }
   onInsertConsumed?: (id: number) => void
   onPasteImages?: (files: File[]) => void
+  documentKey?: string
 }
 
 type FormatAction = 'bold' | 'italic' | 'link' | 'underline' | 'highlight' | 'inlineCode' | 'codeBlock' | 'quote' | 'strikethrough' | 'color'
@@ -261,6 +262,7 @@ export function MarkdownEditor({
   insertRequest,
   onInsertConsumed,
   onPasteImages,
+  documentKey,
 }: MarkdownEditorProps) {
   const styles = useStyles()
   const { t } = useTranslation()
@@ -271,6 +273,11 @@ export function MarkdownEditor({
   const [draftTextColor, setDraftTextColor] = useState(defaultTextColor)
   const [colorPopoverOpen, setColorPopoverOpen] = useState(false)
   const localValueRef = useRef(value)
+  const editorViewRef = useRef<EditorView | null>(null)
+  const hasLocalEditRef = useRef(false)
+  const lastEmittedValueRef = useRef(value)
+  const lastAcceptedExternalValueRef = useRef(value)
+  const documentKeyRef = useRef(documentKey)
   const onChangeRef = useRef(onChange)
   const composingRef = useRef(false)
   const compositionFrameRef = useRef<number | undefined>(undefined)
@@ -322,15 +329,46 @@ export function MarkdownEditor({
     return () => observer.disconnect()
   }, [])
 
+  const isEditorFocused = useCallback(() => {
+    const view = editorViewRef.current
+    return Boolean(view && (view.hasFocus || view.dom.contains(document.activeElement)))
+  }, [])
+
   useEffect(() => {
-    if (composingRef.current || value === localValueRef.current) return
+    if (documentKeyRef.current === documentKey) return
+
+    documentKeyRef.current = documentKey
+    hasLocalEditRef.current = false
+    lastAcceptedExternalValueRef.current = value
+    lastEmittedValueRef.current = value
     localValueRef.current = value
     setLocalValue(value)
-  }, [value])
+  }, [documentKey, value])
+
+  useEffect(() => {
+    if (value === localValueRef.current) {
+      lastAcceptedExternalValueRef.current = value
+
+      if (value === lastEmittedValueRef.current) {
+        hasLocalEditRef.current = false
+      }
+
+      return
+    }
+
+    if (composingRef.current || isEditorFocused() || hasLocalEditRef.current) {
+      return
+    }
+
+    lastAcceptedExternalValueRef.current = value
+    localValueRef.current = value
+    setLocalValue(value)
+  }, [isEditorFocused, value])
 
   useEffect(() => {
     return () => {
       window.cancelAnimationFrame(compositionFrameRef.current ?? 0)
+      editorViewRef.current = null
       onEditorViewChangeRef.current?.(null)
     }
   }, [])
@@ -341,6 +379,8 @@ export function MarkdownEditor({
 
   const emitChange = useCallback((nextValue: string) => {
     localValueRef.current = nextValue
+    lastEmittedValueRef.current = nextValue
+    hasLocalEditRef.current = true
     setLocalValue(nextValue)
     onChangeRef.current(nextValue)
   }, [])
@@ -624,16 +664,17 @@ export function MarkdownEditor({
   }
 
   useEffect(() => {
-    if (!editorView || !insertRequest) return undefined
-    const selection = editorView.state.selection.main
-    editorView.dispatch({
+    const view = editorViewRef.current
+    if (!view || !insertRequest) return undefined
+    const selection = view.state.selection.main
+    view.dispatch({
       changes: { from: selection.from, to: selection.to, insert: insertRequest.text },
       selection: { anchor: selection.from + insertRequest.text.length },
       scrollIntoView: true,
     })
-    editorView.focus()
+    view.focus()
     const frame = window.requestAnimationFrame(() => {
-      emitChange(editorView.state.doc.toString())
+      emitChange(view.state.doc.toString())
       onInsertConsumed?.(insertRequest.id)
     })
     return () => window.cancelAnimationFrame(frame)
@@ -648,8 +689,17 @@ export function MarkdownEditor({
     const handleCompositionEnd = () => {
       composingRef.current = false
       compositionFrameRef.current = window.requestAnimationFrame(() => {
-        onContentEditRef.current?.(editorView.state.doc.lineAt(editorView.state.selection.main.head).number)
-        emitChange(editorView.state.doc.toString())
+        const view = editorViewRef.current
+        if (!view) return
+
+        const nextValue = view.state.doc.toString()
+        localValueRef.current = nextValue
+        lastEmittedValueRef.current = nextValue
+        hasLocalEditRef.current = true
+        setLocalValue(nextValue)
+
+        onContentEditRef.current?.(view.state.doc.lineAt(view.state.selection.main.head).number)
+        onChangeRef.current(nextValue)
       })
     }
     editorView.dom.addEventListener('compositionstart', handleCompositionStart)
@@ -679,6 +729,8 @@ export function MarkdownEditor({
 
   const handleChange = (nextValue: string, update: ViewUpdate) => {
     localValueRef.current = nextValue
+    lastEmittedValueRef.current = nextValue
+    hasLocalEditRef.current = true
     setLocalValue(nextValue)
     if (!composingRef.current) {
       const line = update.state.doc.lineAt(update.state.selection.main.head).number
@@ -762,6 +814,7 @@ export function MarkdownEditor({
         extensions={editorExtensions}
         onChange={handleChange}
         onCreateEditor={(view) => {
+          editorViewRef.current = view
           setEditorView(view)
           onEditorViewChangeRef.current?.(view)
         }}

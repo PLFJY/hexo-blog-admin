@@ -456,6 +456,7 @@ export function SourcePostEditorPage() {
             onPasteImages={(files) => void assetPanelRef.current?.handleIncomingImageFiles(files, 'paste')}
             onSaveShortcut={saveAsDraft}
             onMermaidRenderErrorsChange={setMermaidErrors}
+            documentKey={state.post.post.relativeId}
           />
         </Field>
       </section>
