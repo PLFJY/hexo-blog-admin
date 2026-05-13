@@ -1,4 +1,5 @@
 import { markdown } from '@codemirror/lang-markdown'
+import { deleteLine, redo, undo } from '@codemirror/commands'
 import CodeMirror from '@uiw/react-codemirror'
 import { EditorView, keymap, type ViewUpdate } from '@uiw/react-codemirror'
 import {
@@ -133,6 +134,8 @@ type MarkdownEditorProps = {
   onChange: (value: string) => void
   onPreviewSyncPositionChange?: (position: PreviewSyncPosition) => void
   onEditorViewChange?: (view: EditorView | null) => void
+  onToolbarHeightChange?: (height: number) => void
+  onContentEdit?: (line?: number) => void
   insertRequest?: { id: number; text: string }
   onInsertConsumed?: (id: number) => void
   onPasteImages?: (files: File[]) => void
@@ -251,6 +254,8 @@ export function MarkdownEditor({
   onChange,
   onPreviewSyncPositionChange,
   onEditorViewChange,
+  onToolbarHeightChange,
+  onContentEdit,
   insertRequest,
   onInsertConsumed,
   onPasteImages,
@@ -269,6 +274,9 @@ export function MarkdownEditor({
   const compositionFrameRef = useRef<number | undefined>(undefined)
   const onPreviewSyncPositionChangeRef = useRef(onPreviewSyncPositionChange)
   const onEditorViewChangeRef = useRef(onEditorViewChange)
+  const onToolbarHeightChangeRef = useRef(onToolbarHeightChange)
+  const onContentEditRef = useRef(onContentEdit)
+  const toolbarRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     onChangeRef.current = onChange
@@ -281,6 +289,31 @@ export function MarkdownEditor({
   useEffect(() => {
     onEditorViewChangeRef.current = onEditorViewChange
   }, [onEditorViewChange])
+
+  useEffect(() => {
+    onToolbarHeightChangeRef.current = onToolbarHeightChange
+  }, [onToolbarHeightChange])
+
+  useEffect(() => {
+    onContentEditRef.current = onContentEdit
+  }, [onContentEdit])
+
+  useEffect(() => {
+    const toolbar = toolbarRef.current
+    if (!toolbar) return undefined
+
+    const reportToolbarHeight = () => onToolbarHeightChangeRef.current?.(toolbar.getBoundingClientRect().height)
+    reportToolbarHeight()
+
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', reportToolbarHeight)
+      return () => window.removeEventListener('resize', reportToolbarHeight)
+    }
+
+    const observer = new ResizeObserver(reportToolbarHeight)
+    observer.observe(toolbar)
+    return () => observer.disconnect()
+  }, [])
 
   useEffect(() => {
     if (composingRef.current || value === localValueRef.current) return
@@ -306,6 +339,7 @@ export function MarkdownEditor({
   }, [])
 
   const dispatchCurrentValue = useCallback((view: EditorView) => {
+    onContentEditRef.current?.(view.state.doc.lineAt(view.state.selection.main.head).number)
     emitChange(view.state.doc.toString())
     view.focus()
   }, [emitChange])
@@ -458,6 +492,12 @@ export function MarkdownEditor({
     else if (action === 'quote') insertQuote(view)
   }, [insertCodeBlock, insertQuote, lastTextColor, wrapColorSelection, wrapSelection])
 
+  const runEditorCommand = useCallback((view: EditorView, command: (target: EditorView) => boolean) => {
+    const handled = command(view)
+    if (handled) view.focus()
+    return handled
+  }, [])
+
   const replaceSelection = useCallback((action: FormatAction, color?: string) => {
     if (!editorView) return
     replaceSelectionInView(editorView, action, color)
@@ -480,22 +520,35 @@ export function MarkdownEditor({
         { key: 'Mod-i', run: (view) => { replaceSelectionInView(view, 'italic'); return true } },
         { key: 'Mod-u', run: (view) => { replaceSelectionInView(view, 'underline'); return true } },
         { key: 'Mod-h', run: (view) => { replaceSelectionInView(view, 'highlight'); return true } },
-        { key: 'Mod-`', run: (view) => { replaceSelectionInView(view, 'inlineCode'); return true } },
+        { key: 'Mod-k', run: (view) => { replaceSelectionInView(view, 'link'); return true } },
+        { key: 'Mod-Shift-c', run: (view) => { replaceSelectionInView(view, 'inlineCode'); return true } },
         { key: 'Mod-e', run: (view) => { replaceSelectionInView(view, 'quote'); return true } },
         { key: 'Mod-d', run: (view) => { replaceSelectionInView(view, 'strikethrough'); return true } },
+        { key: 'Mod-y', run: (view) => runEditorCommand(view, deleteLine) },
+        { key: 'Mod-l', run: (view) => runEditorCommand(view, deleteLine) },
+        { key: 'Mod-z', run: (view) => runEditorCommand(view, undo) },
+        { key: 'Mod-Shift-z', run: (view) => runEditorCommand(view, redo) },
         { key: 'Shift-Enter', run: (view) => { insertBreak(view); return true } },
       ]),
-    [insertBreak, replaceSelectionInView],
+    [insertBreak, replaceSelectionInView, runEditorCommand],
   )
 
   useEffect(() => {
     if (!editorView) return undefined
     const handleKeyDown = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase()
-      const run = (action: FormatAction) => {
+      const editorHasFocus = editorView.hasFocus || editorView.dom.contains(document.activeElement)
+      if (!editorHasFocus) return
+
+      const runFormat = (action: FormatAction) => {
         event.preventDefault()
         event.stopPropagation()
         replaceSelectionInView(editorView, action)
+      }
+      const runCommand = (command: (target: EditorView) => boolean) => {
+        event.preventDefault()
+        event.stopPropagation()
+        runEditorCommand(editorView, command)
       }
 
       if (event.key === 'Enter' && event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey) {
@@ -506,23 +559,26 @@ export function MarkdownEditor({
       }
 
       if (!isShortcutModifierPressed(event) || event.altKey) return
-      if (key === 'b') run('bold')
-      else if (key === 'i') run('italic')
-      else if (key === 'u') run('underline')
-      else if (key === 'h') run('highlight')
-      else if (key === 'd') run('strikethrough')
-      else if (key === 'e') run('quote')
-      else if (event.key === '`' || event.code === 'Backquote') run('inlineCode')
+      if (key === 'z' && event.shiftKey) runCommand(redo)
+      else if (key === 'z' && !event.shiftKey) runCommand(undo)
+      else if ((key === 'y' || key === 'l') && !event.shiftKey) runCommand(deleteLine)
+      else if (key === 'b') runFormat('bold')
+      else if (key === 'i') runFormat('italic')
+      else if (key === 'u') runFormat('underline')
+      else if (key === 'h') runFormat('highlight')
+      else if (key === 'd') runFormat('strikethrough')
+      else if (key === 'e') runFormat('quote')
+      else if (key === 'k') runFormat('link')
+      else if (key === 'c' && event.shiftKey) runFormat('inlineCode')
     }
 
-    editorView.dom.addEventListener('keydown', handleKeyDown, { capture: true })
-    return () => editorView.dom.removeEventListener('keydown', handleKeyDown, { capture: true })
-  }, [editorView, insertBreak, replaceSelectionInView])
+    window.addEventListener('keydown', handleKeyDown, { capture: true })
+    return () => window.removeEventListener('keydown', handleKeyDown, { capture: true })
+  }, [editorView, insertBreak, replaceSelectionInView, runEditorCommand])
 
-  const runNativeHistory = (command: 'undo' | 'redo') => {
+  const runToolbarCommand = (command: (target: EditorView) => boolean) => {
     if (!editorView) return
-    editorView.focus()
-    document.execCommand(command)
+    runEditorCommand(editorView, command)
   }
 
   useEffect(() => {
@@ -550,6 +606,7 @@ export function MarkdownEditor({
     const handleCompositionEnd = () => {
       composingRef.current = false
       compositionFrameRef.current = window.requestAnimationFrame(() => {
+        onContentEditRef.current?.(editorView.state.doc.lineAt(editorView.state.selection.main.head).number)
         emitChange(editorView.state.doc.toString())
       })
     }
@@ -574,14 +631,17 @@ export function MarkdownEditor({
   }, [editorView, onPasteImages])
 
   const handleUpdate = (update: ViewUpdate) => {
-    if (!onPreviewSyncPositionChange || (!update.docChanged && !update.selectionSet)) return
+    if (!onPreviewSyncPositionChange || update.docChanged || !update.selectionSet) return
     emitPreviewSyncPosition(update.view, 'cursor')
   }
 
   const handleChange = (nextValue: string) => {
     localValueRef.current = nextValue
     setLocalValue(nextValue)
-    if (!composingRef.current) onChangeRef.current(nextValue)
+    if (!composingRef.current) {
+      onContentEditRef.current?.(editorView?.state.doc.lineAt(editorView.state.selection.main.head).number)
+      onChangeRef.current(nextValue)
+    }
   }
 
   const normalizedDraftTextColor = normalizeHexColor(draftTextColor)
@@ -590,17 +650,17 @@ export function MarkdownEditor({
 
   return (
     <div className={styles.shell}>
-      <div className={styles.toolbar}>
-        <ToolbarButton label={t('editor.undo')} icon={<ArrowUndoRegular />} onClick={() => runNativeHistory('undo')} />
-        <ToolbarButton label={t('editor.redo')} icon={<ArrowRedoRegular />} onClick={() => runNativeHistory('redo')} />
+      <div className={styles.toolbar} ref={toolbarRef}>
+        <ToolbarButton label={t('editor.undo')} shortcut={formatShortcut('Z')} icon={<ArrowUndoRegular />} onClick={() => runToolbarCommand(undo)} />
+        <ToolbarButton label={t('editor.redo')} shortcut={formatShortcut('Shift + Z')} icon={<ArrowRedoRegular />} onClick={() => runToolbarCommand(redo)} />
         <ToolbarButton label={t('editor.bold')} shortcut={formatShortcut('B')} icon={<TextBoldRegular />} onClick={() => replaceSelection('bold')} />
         <ToolbarButton label={t('editor.italic')} shortcut={formatShortcut('I')} icon={<TextItalicRegular />} onClick={() => replaceSelection('italic')} />
         <ToolbarButton label={t('editor.underline')} shortcut={formatShortcut('U')} icon={<TextUnderlineRegular />} onClick={() => replaceSelection('underline')} />
         <ToolbarButton label={t('editor.strikethrough')} shortcut={formatShortcut('D')} icon={<TextStrikethroughRegular />} onClick={() => replaceSelection('strikethrough')} />
-        <ToolbarButton label={t('editor.inlineCode')} shortcut={formatShortcut('`')} icon={<CodeRegular />} onClick={() => replaceSelection('inlineCode')} />
+        <ToolbarButton label={t('editor.inlineCode')} shortcut={formatShortcut('Shift + C')} icon={<CodeRegular />} onClick={() => replaceSelection('inlineCode')} />
         <ToolbarButton label={t('editor.codeBlock')} icon={<CodeBlockRegular />} onClick={() => replaceSelection('codeBlock')} />
         <ToolbarButton label={t('editor.quote')} shortcut={formatShortcut('E')} icon={<TextQuoteRegular />} onClick={() => replaceSelection('quote')} />
-        <ToolbarButton label={t('editor.link')} icon={<LinkRegular />} onClick={() => replaceSelection('link')} />
+        <ToolbarButton label={t('editor.link')} shortcut={formatShortcut('K')} icon={<LinkRegular />} onClick={() => replaceSelection('link')} />
         <ToolbarButton label={t('editor.highlight')} shortcut={formatShortcut('H')} icon={<HighlightRegular />} onClick={() => replaceSelection('highlight')} />
         <div className={styles.splitButtonGroup}>
           <ToolbarButton label={t('editor.textColor')} icon={<span className={styles.textColorGlyph}>A</span>} indicatorColor={lastTextColor} onClick={() => applyTextColor(lastTextColor)} />

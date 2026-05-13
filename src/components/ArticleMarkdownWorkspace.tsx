@@ -1,8 +1,8 @@
 import { makeStyles, mergeClasses, tokens } from '@fluentui/react-components'
 import { EditorView } from '@uiw/react-codemirror'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { MarkdownEditor } from './MarkdownEditor'
-import type { PreviewSyncPosition } from './MarkdownEditor'
 import { MarkdownPreview } from './MarkdownPreview'
 import { buildApiUrl } from '../lib/apiClient'
 import type { ResolvedMarkdownResourceUrl } from '../lib/markdownResource'
@@ -33,7 +33,7 @@ const useStyles = makeStyles({
     flexDirection: 'column',
   },
   previewColumn: {
-    paddingTop: `calc(32px + ${tokens.spacingVerticalXS})`,
+    paddingTop: `calc(var(--hba-editor-toolbar-height, 32px) + ${tokens.spacingVerticalXS})`,
     [`@media ${SINGLE_COLUMN_MEDIA_QUERY}`]: {
       paddingTop: 0,
     },
@@ -86,9 +86,9 @@ const SYNC_TUNING = {
   editorScrollAnchorYOffset: 16,
 
   /**
-   * 光标定位时，让目标行出现在预览区高度的哪个位置。
+   * 编辑内容后，让目标行出现在预览区高度的哪个位置。
    */
-  cursorRevealRatio: 0.18,
+  editRevealRatio: 0.28,
 
   /**
    * editor -> preview 的语义同步权重。
@@ -259,6 +259,39 @@ const mapPreviewYToSourceLine = (previewY: number, lineMap: PreviewLineMap) => {
   return Math.round(lineStart + progress * (lineEnd - lineStart))
 }
 
+const getPreviewYForSourceLine = (previewRoot: HTMLElement, line: number) => {
+  const anchors = Array.from(previewRoot.querySelectorAll<HTMLElement>('[data-source-line]'))
+    .map((element) => {
+      const startLine = Number(element.dataset.sourceLine)
+      const endLine = Number(element.dataset.sourceEndLine)
+      return {
+        element,
+        startLine,
+        endLine: Number.isFinite(endLine) ? endLine : startLine,
+      }
+    })
+    .filter((anchor) => Number.isFinite(anchor.startLine) && anchor.startLine >= 1)
+    .sort((a, b) => a.startLine - b.startLine)
+
+  if (anchors.length === 0) return undefined
+
+  const containing = anchors.find((anchor) => anchor.startLine <= line && anchor.endLine >= line)
+  if (containing) {
+    const startY = getPreviewY(previewRoot, containing.element)
+    if (!Number.isFinite(startY)) return undefined
+
+    if (containing.endLine <= containing.startLine) return startY
+
+    const progress = clamp((line - containing.startLine) / (containing.endLine - containing.startLine), 0, 1)
+    return startY + containing.element.offsetHeight * progress
+  }
+
+  const next = anchors.find((anchor) => anchor.startLine > line)
+  const fallback = next ?? anchors[anchors.length - 1]
+  const y = getPreviewY(previewRoot, fallback.element)
+  return Number.isFinite(y) ? y : undefined
+}
+
 const getEditorTopVisibleLine = (view: EditorView) => {
   const rect = view.scrollDOM.getBoundingClientRect()
   const anchorYInViewport = SYNC_TUNING.editorScrollAnchorYOffset
@@ -308,6 +341,7 @@ export function ArticleMarkdownWorkspace({
   const styles = useStyles()
   const [editorView, setEditorView] = useState<EditorView | null>(null)
   const [previewRoot, setPreviewRoot] = useState<HTMLDivElement | null>(null)
+  const [editorToolbarHeight, setEditorToolbarHeight] = useState(32)
 
   const onAssetObjectUrlsChangeRef = useRef(onAssetObjectUrlsChange)
   const editorViewRef = useRef<EditorView | null>(null)
@@ -322,19 +356,17 @@ export function ArticleMarkdownWorkspace({
 
   const suppressEditorScrollRef = useRef(false)
   const suppressPreviewScrollRef = useRef(false)
+  const suppressPreviewScrollForContentEditRef = useRef(false)
   const editorSuppressTokenRef = useRef(0)
   const previewSuppressTokenRef = useRef(0)
 
   const scrollSourceReleaseTimerRef = useRef<number | undefined>(undefined)
   const editorToPreviewFrameRef = useRef<number | undefined>(undefined)
   const previewToEditorFrameRef = useRef<number | undefined>(undefined)
-  const cursorSyncFrameRef = useRef<number | undefined>(undefined)
   const previewSettleTimerRef = useRef<number | undefined>(undefined)
   const isSingleColumnLayoutRef = useRef(false)
-
-  const latestCursorLineRef = useRef(1)
-  const pendingCursorLineRef = useRef<number | undefined>(undefined)
-  const hasPendingCursorSyncRef = useRef(false)
+  const pendingContentEditSyncRef = useRef(false)
+  const pendingContentEditLineRef = useRef<number | undefined>(undefined)
 
   const rebuildScrollMap = useCallback(() => {
     const view = editorViewRef.current
@@ -444,49 +476,8 @@ export function ArticleMarkdownWorkspace({
     })
   }, [])
 
-  const syncPreviewToCursorLine = useCallback((line: number) => {
-    if (activeScrollSourceRef.current !== null) {
-      pendingCursorLineRef.current = line
-      hasPendingCursorSyncRef.current = true
-      return
-    }
-
-    const root = previewRootRef.current
-    const lineMap = getOrBuildScrollMap()
-    if (!root || !lineMap) {
-      pendingCursorLineRef.current = line
-      hasPendingCursorSyncRef.current = true
-      return
-    }
-
-    const previewY = mapSourceLineToPreviewY(line, lineMap)
-    if (previewY == null) return
-
-    const target = previewY - root.clientHeight * SYNC_TUNING.cursorRevealRatio
-    pendingCursorLineRef.current = undefined
-    hasPendingCursorSyncRef.current = false
-    setPreviewScrollTopProgrammatically(clamp(target, 0, lineMap.previewMaxScrollTop))
-  }, [getOrBuildScrollMap, setPreviewScrollTopProgrammatically])
-
-  const scheduleCursorSync = useCallback((line: number) => {
-    pendingCursorLineRef.current = line
-    hasPendingCursorSyncRef.current = true
-
-    if (cursorSyncFrameRef.current !== undefined) return
-
-    cursorSyncFrameRef.current = window.requestAnimationFrame(() => {
-      cursorSyncFrameRef.current = undefined
-      const pendingLine = pendingCursorLineRef.current
-      if (pendingLine !== undefined) syncPreviewToCursorLine(pendingLine)
-    })
-  }, [syncPreviewToCursorLine])
-
   const releaseActiveSource = useCallback(() => {
     activeScrollSourceRef.current = null
-
-    // 用户滚动结束后不要自动拉回光标行。
-    hasPendingCursorSyncRef.current = false
-    pendingCursorLineRef.current = undefined
 
     if (scrollMapDirtyRef.current && canRebuildScrollMapNow()) {
       scheduleScrollMapRebuild()
@@ -532,6 +523,18 @@ export function ArticleMarkdownWorkspace({
 
     setPreviewScrollTopProgrammatically(clamp(target, 0, lineMap.previewMaxScrollTop))
   }, [getOrBuildScrollMap, setPreviewScrollTopProgrammatically])
+
+  const syncPreviewToEditedLine = useCallback((line: number) => {
+    const root = previewRootRef.current
+    if (!root) return
+
+    const previewMaxScrollTop = Math.max(0, root.scrollHeight - root.clientHeight)
+    const previewY = getPreviewYForSourceLine(root, line)
+    if (previewY == null) return
+
+    const target = previewY - root.clientHeight * SYNC_TUNING.editRevealRatio
+    setPreviewScrollTopProgrammatically(clamp(target, 0, previewMaxScrollTop))
+  }, [setPreviewScrollTopProgrammatically])
 
   const settleEditorFromPreview = useCallback(() => {
     if (isSingleColumnLayoutRef.current) return
@@ -604,15 +607,50 @@ export function ArticleMarkdownWorkspace({
 
   const handlePreviewContentChange = useCallback(() => {
     invalidateScrollMap()
+    if (pendingContentEditSyncRef.current) {
+      pendingContentEditSyncRef.current = false
+      const line = pendingContentEditLineRef.current
+      pendingContentEditLineRef.current = undefined
+      if (line === undefined) scheduleEditorToPreviewSync()
+      else window.requestAnimationFrame(() => syncPreviewToEditedLine(line))
+    }
 
-    // 如果正在滚动，只标脏；不要在滚动链路里强行重算。
-    if (activeScrollSourceRef.current === 'editor') scheduleEditorToPreviewSync()
-    else if (activeScrollSourceRef.current === 'preview') schedulePreviewToEditorSync()
-  }, [invalidateScrollMap, scheduleEditorToPreviewSync, schedulePreviewToEditorSync])
+    if (suppressPreviewScrollForContentEditRef.current) {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          suppressPreviewScrollForContentEditRef.current = false
+        })
+      })
+    }
+  }, [invalidateScrollMap, scheduleEditorToPreviewSync, syncPreviewToEditedLine])
+
+  const cancelPreviewDrivenSync = useCallback(() => {
+    if (activeScrollSourceRef.current === 'preview') activeScrollSourceRef.current = null
+    if (pointerAreaRef.current === 'preview') pointerAreaRef.current = null
+    window.clearTimeout(scrollSourceReleaseTimerRef.current)
+    window.clearTimeout(previewSettleTimerRef.current)
+
+    if (previewToEditorFrameRef.current !== undefined) {
+      window.cancelAnimationFrame(previewToEditorFrameRef.current)
+      previewToEditorFrameRef.current = undefined
+    }
+  }, [])
+
+  const handleContentEdit = useCallback((line?: number) => {
+    cancelPreviewDrivenSync()
+    suppressPreviewScrollForContentEditRef.current = true
+    pendingContentEditSyncRef.current = true
+    pendingContentEditLineRef.current = line
+  }, [cancelPreviewDrivenSync])
 
   const handleEditorViewChange = useCallback((view: EditorView | null) => {
     editorViewRef.current = view
     setEditorView(view)
+    invalidateScrollMap()
+  }, [invalidateScrollMap])
+
+  const handleEditorToolbarHeightChange = useCallback((height: number) => {
+    setEditorToolbarHeight((current) => (Math.abs(current - height) < 1 ? current : height))
     invalidateScrollMap()
   }, [invalidateScrollMap])
 
@@ -621,12 +659,6 @@ export function ArticleMarkdownWorkspace({
     setPreviewRoot(root)
     invalidateScrollMap()
   }, [invalidateScrollMap])
-
-  const handlePreviewSyncPositionChange = useCallback((position: PreviewSyncPosition) => {
-    if (position.source !== 'cursor') return
-    latestCursorLineRef.current = position.line
-    scheduleCursorSync(position.line)
-  }, [scheduleCursorSync])
 
   useEffect(() => {
     onAssetObjectUrlsChangeRef.current = onAssetObjectUrlsChange
@@ -702,11 +734,6 @@ export function ArticleMarkdownWorkspace({
   }, [invalidateScrollMap, markdown])
 
   useEffect(() => {
-    if (!editorView || !previewRoot) return
-    scheduleCursorSync(latestCursorLineRef.current)
-  }, [editorView, previewRoot, scheduleCursorSync])
-
-  useEffect(() => {
     if (!editorView) return undefined
 
     const handleEditorScroll = () => {
@@ -730,6 +757,7 @@ export function ArticleMarkdownWorkspace({
 
     const handlePreviewScroll = () => {
       if (suppressPreviewScrollRef.current) return
+      if (suppressPreviewScrollForContentEditRef.current) return
       if (pointerAreaRef.current !== null && pointerAreaRef.current !== 'preview') return
       if (activeScrollSourceRef.current !== null && activeScrollSourceRef.current !== 'preview') return
 
@@ -774,7 +802,6 @@ export function ArticleMarkdownWorkspace({
 
       if (editorToPreviewFrameRef.current !== undefined) window.cancelAnimationFrame(editorToPreviewFrameRef.current)
       if (previewToEditorFrameRef.current !== undefined) window.cancelAnimationFrame(previewToEditorFrameRef.current)
-      if (cursorSyncFrameRef.current !== undefined) window.cancelAnimationFrame(cursorSyncFrameRef.current)
     }
   }, [])
 
@@ -801,7 +828,10 @@ export function ArticleMarkdownWorkspace({
   }, [scheduleScrollMapRebuild])
 
   return (
-    <div className={styles.root}>
+    <div
+      className={styles.root}
+      style={{ '--hba-editor-toolbar-height': `${editorToolbarHeight}px` } as CSSProperties}
+    >
       <div
         className={styles.column}
         onPointerEnter={handleEditorPointerEnter}
@@ -812,8 +842,9 @@ export function ArticleMarkdownWorkspace({
         <MarkdownEditor
           value={markdown}
           onChange={onChange}
-          onPreviewSyncPositionChange={handlePreviewSyncPositionChange}
           onEditorViewChange={handleEditorViewChange}
+          onToolbarHeightChange={handleEditorToolbarHeightChange}
+          onContentEdit={handleContentEdit}
           insertRequest={insertRequest}
           onInsertConsumed={onInsertConsumed}
           onPasteImages={onPasteImages}
