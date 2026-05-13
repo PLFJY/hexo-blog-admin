@@ -97,6 +97,7 @@ const useStyles = makeStyles({
 const emptyDraft = (): DraftRecord => ({
   id: '',
   relativeId: '',
+  sourceRelativeId: undefined,
   title: '',
   markdown: `---\ntitle: \ndate: ${new Date().toISOString()}\ntags:\n---\n\n`,
   updatedAt: new Date().toISOString(),
@@ -116,6 +117,12 @@ async function fetchSourceAssets(relativeId: string, postIndex: PostTreeResponse
   return await getJson<PostAssetIndexResponse>(`/posts/assets?relativeId=${encodeURIComponent(normalized)}`)
     .then((response) => response.assets)
     .catch(() => [])
+}
+
+async function fetchDraftAssets(draftId: string, relativeId: string): Promise<DraftAsset[]> {
+  if (!draftId) return []
+  const response = await getJson<DraftAssetListResponse>(`/assets?draftId=${encodeURIComponent(draftId)}&relativeId=${encodeURIComponent(relativeId)}`)
+  return response.manifest.assets
 }
 
 type State =
@@ -196,15 +203,13 @@ export function DraftEditorPage() {
           conflict = { cloudMarkdown: decision.cloudMarkdown, localMarkdown: decision.localMarkdown }
           message = t('conflict.conflictDetected')
         }
-        const assetResponse = nextDraft.id
-          ? await getJson<DraftAssetListResponse>(`/assets?draftId=${encodeURIComponent(nextDraft.id)}&relativeId=${encodeURIComponent(nextDraft.relativeId)}`)
-          : { manifest: { assets: [] as DraftAsset[] } }
+        const assets = await fetchDraftAssets(nextDraft.id, nextDraft.relativeId)
         const sourceAssets = await fetchSourceAssets(nextDraft.relativeId, postIndex)
         setState({
           status: 'ready',
           draft: nextDraft,
           drafts: draftList.drafts,
-          assets: assetResponse.manifest.assets,
+          assets,
           sourceAssets,
           publicConfig,
           postRelativeIds: postIndex.posts.map((post) => post.relativeId),
@@ -272,6 +277,12 @@ export function DraftEditorPage() {
 
   const updateDraft = (patch: Partial<DraftRecord>) =>
     setState((current) => (current.status === 'ready' ? { ...current, draft: { ...current.draft, ...patch } } : current))
+  const updateAssets = (assets: DraftAsset[]) =>
+    setState((current) => {
+      if (current.status !== 'ready') return current
+      const draftId = current.draft.id || assets.find((asset) => asset.draftId)?.draftId || ''
+      return { ...current, draft: draftId ? { ...current.draft, id: draftId } : current.draft, assets }
+    })
   const normalizedRelativeId = normalizeRelativeId(state.draft.relativeId)
   const duplicateDraft = state.drafts.some((draft) => draft.id !== state.draft.id && draft.relativeId === normalizedRelativeId)
   const duplicatePost = !state.draft.id && state.postRelativeIds.includes(normalizedRelativeId)
@@ -321,9 +332,10 @@ export function DraftEditorPage() {
     const path = state.draft.id ? `/drafts/${encodeURIComponent(state.draft.id)}` : '/drafts'
     setState({ ...state, saving: true })
     void sendJson<DraftRecord>(path, method, { ...state.draft, relativeId: normalizedRelativeId })
-      .then((draft) => {
+      .then(async (draft) => {
+        const assets = await fetchDraftAssets(draft.id, draft.relativeId)
         deleteEditorSnapshot(`draft:${draft.id}`)
-        setState({ ...state, draft, saving: false, message: t('drafts.saved'), assets: state.assets.map((asset) => ({ ...asset, draftId: draft.id })), baseMarkdown: draft.markdown, baseUpdatedAt: draft.updatedAt })
+        setState({ ...state, draft, saving: false, message: t('drafts.saved'), assets, baseMarkdown: draft.markdown, baseUpdatedAt: draft.updatedAt })
         if (!draftId) navigate(`/drafts/edit?draftId=${encodeURIComponent(draft.id)}`, { replace: true })
       })
       .catch((error: unknown) => setState({ ...state, saving: false, message: error instanceof Error ? error.message : 'Unknown error' }))
@@ -428,7 +440,8 @@ export function DraftEditorPage() {
           draftId={state.draft.id}
           assets={state.assets}
           sourceAssets={state.sourceAssets}
-          onAssetsChange={(assets) => setState((current) => (current.status === 'ready' ? { ...current, assets } : current))}
+          onAssetsChange={updateAssets}
+          onDraftIdChange={(id) => updateDraft({ id })}
           onInsertMarkdown={insertMarkdown}
           onMarkdownPathReplace={replaceMarkdownPath}
           onSourceAssetDelete={deleteSourceAssetFromDraft}

@@ -1,11 +1,15 @@
 import type { DraftListResponse, PublishDraftRequest, PublishDraftResponse, SaveDraftRequest } from '../../shared/draftTypes'
 import { ensureFrontMatterDate, extractFrontMatterTitle } from '../../shared/frontMatter'
 import type { WorkerEnv } from '../env'
-import { buildPostPaths } from '../../features/posts/postPathUtils'
+import { buildPostAssetPaths, buildPostPaths } from '../../features/posts/postPathUtils'
 import { getDraftAsset, getDraftAssetManifest, moveDraftAssetManifest } from '../services/d1/d1DraftAssets'
 import { createBatchCommit } from '../services/github/githubGitCommit'
+import { getGitHubFileBase64 } from '../services/github/githubContent'
+import { getAdminIndex } from '../services/indexer/adminIndex'
+import { getPostSourceAssets } from '../services/indexer/postAssetIndex'
 import { deleteDraft, getDraft, isValidRelativeId, listDrafts, saveDraft } from '../services/d1/d1Drafts'
 import { requireConfig } from '../utils/config'
+import { assertSafeImageFilename, assertSafeRepoPath } from '../utils/pathSafety'
 import { json } from '../utils/response'
 
 const replaceMarkdownAssetPrefix = (markdown: string, oldRelativeId: string, newRelativeId: string) => {
@@ -89,27 +93,55 @@ export async function handlePublishDraft(env: WorkerEnv, request: Request): Prom
     relativeId: draft.relativeId,
   })
   const markdown = ensureFrontMatterDate(draft.markdown)
+  const sourceRelativeId = draft.sourceRelativeId && isValidRelativeId(draft.sourceRelativeId) ? draft.sourceRelativeId : undefined
+  const sourceRename = Boolean(sourceRelativeId && sourceRelativeId !== draft.relativeId)
+  const index = sourceRelativeId ? await getAdminIndex(env) : undefined
+  const sourcePost = sourceRelativeId ? index?.posts.find((item) => item.relativeId === sourceRelativeId) : undefined
+  const sourceAssets = sourcePost && index ? await getPostSourceAssets(env, sourceRelativeId!, index) : []
+  const draftManifest = await getDraftAssetManifest(env, draft.id, draft.relativeId)
+  const draftAssetFiles = (await Promise.all(
+    draftManifest.assets.map(async (asset) => {
+      const object = await getDraftAsset(env, asset.key)
+      if (!object) return undefined
+      return {
+        path: asset.finalRepoPath,
+        encoding: 'base64' as const,
+        content: arrayBufferToBase64(await object.arrayBuffer()),
+      }
+    }),
+  )).filter((file): file is { path: string; encoding: 'base64'; content: string } => Boolean(file))
+  const draftAssetPaths = new Set(draftAssetFiles.map((file) => file.path))
+  const sourceAssetFiles = sourceRename
+    ? (await Promise.all(
+        sourceAssets.map(async (asset) => {
+          const filename = assertSafeImageFilename(asset.filename)
+          const assetPaths = buildPostAssetPaths({ postsDir: config.POSTS_DIR, relativeId: draft.relativeId, filename })
+          if (draftAssetPaths.has(assetPaths.finalRepoPath)) return undefined
+          const image = await getGitHubFileBase64(env, assertSafeRepoPath(env, asset.repoPath))
+          return {
+            path: assetPaths.finalRepoPath,
+            encoding: 'base64' as const,
+            content: image.contentBase64,
+          }
+        }),
+      )).filter((file): file is { path: string; encoding: 'base64'; content: string } => Boolean(file))
+    : []
+  const oldSourcePaths = sourceRename && sourcePost
+    ? [sourcePost.path || buildPostPaths({ postsDir: config.POSTS_DIR, relativeId: sourceRelativeId! }).postPath, ...sourceAssets.map((asset) => assertSafeRepoPath(env, asset.repoPath))]
+    : []
   const commit = await createBatchCommit(env, {
     branch: body.branch || config.GITHUB_BRANCH,
-    message: body.message || `Publish ${extractFrontMatterTitle(markdown) || draft.relativeId}`,
+    message: body.message || (sourceRename ? `Rename post ${sourceRelativeId} to ${draft.relativeId}` : `Publish ${extractFrontMatterTitle(markdown) || draft.relativeId}`),
     files: [
       {
         path: paths.postPath,
         encoding: 'utf-8',
         content: markdown,
       },
-      ...(await Promise.all(
-        (await getDraftAssetManifest(env, draft.id, draft.relativeId)).assets.map(async (asset) => {
-          const object = await getDraftAsset(env, asset.key)
-          if (!object) return undefined
-          return {
-            path: asset.finalRepoPath,
-            encoding: 'base64' as const,
-            content: arrayBufferToBase64(await object.arrayBuffer()),
-          }
-        }),
-      )).filter((file): file is { path: string; encoding: 'base64'; content: string } => Boolean(file)),
+      ...sourceAssetFiles,
+      ...draftAssetFiles,
     ],
+    deletions: oldSourcePaths,
   })
   await deleteDraft(env, draft.id)
 

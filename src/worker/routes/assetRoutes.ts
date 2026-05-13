@@ -14,6 +14,7 @@ import { requireConfig } from '../utils/config'
 import { json } from '../utils/response'
 
 type JsonAssetUploadRequest = {
+  draftId?: string
   relativeId?: string
   filename?: string
   contentType?: string
@@ -71,6 +72,7 @@ export async function handleAssets(env: WorkerEnv, request: Request): Promise<Re
           env,
           await putDraftAsset(env, {
             postsDir: requireConfig(env).POSTS_DIR,
+            draftId: body.draftId,
             relativeId: body.relativeId,
             filename: body.filename,
             contentType: body.contentType ?? 'application/octet-stream',
@@ -83,6 +85,7 @@ export async function handleAssets(env: WorkerEnv, request: Request): Promise<Re
 
     const headerFilename = request.headers.get('x-asset-filename')
     const headerRelativeId = request.headers.get('x-post-relative-id')
+    const headerDraftId = request.headers.get('x-draft-id')
     if (headerFilename && headerRelativeId) {
       const filename = decodeURIComponent(headerFilename)
       const postRelativeId = decodeURIComponent(headerRelativeId)
@@ -95,6 +98,7 @@ export async function handleAssets(env: WorkerEnv, request: Request): Promise<Re
           env,
           await putDraftAsset(env, {
             postsDir: requireConfig(env).POSTS_DIR,
+            draftId: headerDraftId ? decodeURIComponent(headerDraftId) : undefined,
             relativeId: postRelativeId,
             filename,
             contentType: request.headers.get('content-type') ?? 'application/octet-stream',
@@ -108,6 +112,7 @@ export async function handleAssets(env: WorkerEnv, request: Request): Promise<Re
     const formData = await request.formData()
     const file = formData.get('file')
     const postRelativeId = String(formData.get('relativeId') ?? '')
+    const postDraftId = String(formData.get('draftId') ?? '')
     if (!(file instanceof File) || !postRelativeId) {
       return json({ error: 'BAD_REQUEST', message: 'file and relativeId are required' }, { status: 400 })
     }
@@ -117,6 +122,7 @@ export async function handleAssets(env: WorkerEnv, request: Request): Promise<Re
         env,
         await putDraftAsset(env, {
           postsDir: requireConfig(env).POSTS_DIR,
+          draftId: postDraftId || undefined,
           relativeId: postRelativeId,
           filename: file.name,
           contentType: file.type,

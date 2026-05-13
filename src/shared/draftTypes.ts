@@ -1,6 +1,7 @@
 export type DraftRecord = {
   id: string
   relativeId: string
+  sourceRelativeId?: string
   title: string
   markdown: string
   createdAt?: string
@@ -13,6 +14,7 @@ export type DraftListResponse = {
 
 export type SaveDraftRequest = {
   relativeId: string
+  sourceRelativeId?: string
   title: string
   markdown: string
 }

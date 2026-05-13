@@ -2,11 +2,13 @@ import type { DraftRecord, SaveDraftRequest } from '../../../shared/draftTypes'
 import { extractFrontMatterTitle } from '../../../shared/frontMatter'
 import type { WorkerEnv } from '../../env'
 import { deleteDraftAssetManifest } from './d1DraftAssets'
+import { ensureD1Schema } from './d1Schema'
 import { createDraftId, isValidRelativeId, normalizeRelativeId, resolveDraftId, visibleDraftId } from './draftIds'
 
 type DraftRow = {
   id: string
   relative_id: string
+  source_relative_id?: string | null
   title: string
   markdown: string
   created_at: string
@@ -23,6 +25,7 @@ export { createDraftId, isValidRelativeId } from './draftIds'
 export const draftRowToRecord = (row: DraftRow): DraftRecord => ({
   id: visibleDraftId(row.id),
   relativeId: row.relative_id,
+  sourceRelativeId: row.source_relative_id ?? undefined,
   title: row.title,
   markdown: row.markdown,
   createdAt: row.created_at,
@@ -30,9 +33,10 @@ export const draftRowToRecord = (row: DraftRow): DraftRecord => ({
 })
 
 export async function listDrafts(env: WorkerEnv): Promise<DraftRecord[]> {
+  await ensureD1Schema(env)
   const result = await db(env)
     .prepare(
-      `SELECT id, relative_id, title, markdown, created_at, updated_at
+      `SELECT id, relative_id, source_relative_id, title, markdown, created_at, updated_at
        FROM drafts
        ORDER BY updated_at DESC`,
     )
@@ -42,9 +46,10 @@ export async function listDrafts(env: WorkerEnv): Promise<DraftRecord[]> {
 }
 
 export async function getDraft(env: WorkerEnv, id: string): Promise<DraftRecord | null> {
+  await ensureD1Schema(env)
   const row = await db(env)
     .prepare(
-      `SELECT id, relative_id, title, markdown, created_at, updated_at
+      `SELECT id, relative_id, source_relative_id, title, markdown, created_at, updated_at
        FROM drafts
        WHERE id = ?1`,
     )
@@ -55,29 +60,35 @@ export async function getDraft(env: WorkerEnv, id: string): Promise<DraftRecord 
 }
 
 export async function saveDraft(env: WorkerEnv, request: SaveDraftRequest, id?: string): Promise<DraftRecord> {
+  await ensureD1Schema(env)
   if (!isValidRelativeId(request.relativeId)) {
     throw new Error('Invalid relativeId')
+  }
+  if (request.sourceRelativeId && !isValidRelativeId(request.sourceRelativeId)) {
+    throw new Error('Invalid sourceRelativeId')
   }
 
   const now = new Date().toISOString()
   const draftId = id && resolveDraftId(id) ? resolveDraftId(id) : createDraftId(request.relativeId)
   const existing = await getDraft(env, draftId)
   const relativeId = normalizeRelativeId(request.relativeId)
+  const sourceRelativeId = request.sourceRelativeId ? normalizeRelativeId(request.sourceRelativeId) : existing?.sourceRelativeId
   const title = extractFrontMatterTitle(request.markdown)
   const createdAt = existing?.createdAt ?? now
 
   try {
     await db(env)
       .prepare(
-        `INSERT INTO drafts (id, relative_id, title, markdown, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+      `INSERT INTO drafts (id, relative_id, source_relative_id, title, markdown, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
          ON CONFLICT(id) DO UPDATE SET
            relative_id = excluded.relative_id,
+           source_relative_id = excluded.source_relative_id,
            title = excluded.title,
            markdown = excluded.markdown,
            updated_at = excluded.updated_at`,
       )
-      .bind(draftId, relativeId, title, request.markdown, createdAt, now)
+      .bind(draftId, relativeId, sourceRelativeId ?? null, title, request.markdown, createdAt, now)
       .run()
   } catch (error) {
     if (error instanceof Error && error.message.toLowerCase().includes('unique')) {
@@ -89,6 +100,7 @@ export async function saveDraft(env: WorkerEnv, request: SaveDraftRequest, id?: 
   return {
     id: draftId,
     relativeId,
+    sourceRelativeId,
     title,
     markdown: request.markdown,
     createdAt,

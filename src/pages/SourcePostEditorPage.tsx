@@ -291,6 +291,7 @@ export function SourcePostEditorPage() {
   const saveAsDraft = () => {
     void sendJson<DraftRecord>('/drafts', 'POST', {
       relativeId: state.post.post.relativeId,
+      sourceRelativeId: state.post.post.relativeId,
       title: extractFrontMatterTitle(state.markdown),
       markdown: state.markdown,
     })

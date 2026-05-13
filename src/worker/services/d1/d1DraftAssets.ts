@@ -2,7 +2,7 @@ import type { DraftAsset, DraftAssetManifest } from '../../../shared/assetTypes'
 import type { WorkerEnv } from '../../env'
 import { assertSafeImageFilename, assertSafeRelativeId } from '../../utils/pathSafety'
 import { buildPostAssetPaths } from '../assets/assetPath'
-import { createDraftId } from './draftIds'
+import { createDraftId, resolveDraftId } from './draftIds'
 import { ensureD1Schema } from './d1Schema'
 
 type DraftAssetRow = {
@@ -21,6 +21,7 @@ type DraftAssetRow = {
 
 type PutDraftAssetOptions = {
   postsDir: string
+  draftId?: string
   relativeId: string
   filename: string
   contentType: string
@@ -132,9 +133,10 @@ export async function listDraftAssetManifests(env: WorkerEnv): Promise<DraftAsse
 export async function putDraftAsset(env: WorkerEnv, options: PutDraftAssetOptions): Promise<{ asset: DraftAsset; manifest: DraftAssetManifest }> {
   await ensureD1Schema(env)
   const relativeId = assertSafeRelativeId(options.relativeId)
-  const draftId = createDraftId(relativeId)
+  const requestedDraftId = options.draftId ? resolveDraftId(options.draftId) : ''
+  const draftId = requestedDraftId ? assertSafeRelativeId(requestedDraftId) : createDraftId(relativeId)
   const filename = assertSafeImageFilename(options.filename)
-  const key = `draft-assets/${safeRelativePathSegment(relativeId)}/${draftId}/${crypto.randomUUID()}-${filename}`
+  const key = `draft-assets/${safeRelativePathSegment(draftId)}/${crypto.randomUUID()}-${filename}`
   const paths = buildPostAssetPaths({
     postsDir: options.postsDir,
     relativeId,
@@ -226,13 +228,8 @@ export async function renameDraftAsset(
   const oldRow = await getAssetRowByKey(env, key)
   if (!oldRow) throw new Error('Asset not found')
 
-  const object = await bucket(env).get(key)
-  if (!object) throw new Error('Asset object not found')
-
   const nextFilename = assertSafeImageFilename(filename)
   const relativeId = assertSafeRelativeId(oldRow.relative_id)
-  const randomPrefix = key.split('/').at(-1)?.split('-').at(0) || crypto.randomUUID()
-  const nextKey = `draft-assets/${safeRelativePathSegment(relativeId)}/${oldRow.draft_id}/${randomPrefix}-${nextFilename}`
   const paths = buildPostAssetPaths({ postsDir, relativeId, filename: nextFilename })
   const duplicate = await db(env)
     .prepare(
@@ -248,25 +245,21 @@ export async function renameDraftAsset(
   const now = nowIso()
   const nextAsset: DraftAsset = {
     ...draftAssetRowToAsset(oldRow),
-    key: nextKey,
     filename: nextFilename,
     markdownPath: paths.markdownPath,
     finalRepoPath: paths.finalRepoPath,
   }
 
-  await putObject(env, nextKey, await object.arrayBuffer(), nextAsset)
-  await bucket(env).delete(key)
   await db(env)
     .prepare(
       `UPDATE draft_assets
-       SET r2_key = ?1,
-           filename = ?2,
-           markdown_path = ?3,
-           final_repo_path = ?4,
-           updated_at = ?5
-       WHERE id = ?6`,
+       SET filename = ?1,
+           markdown_path = ?2,
+           final_repo_path = ?3,
+           updated_at = ?4
+       WHERE id = ?5`,
     )
-    .bind(nextKey, nextFilename, paths.markdownPath, paths.finalRepoPath, now, oldRow.id)
+    .bind(nextFilename, paths.markdownPath, paths.finalRepoPath, now, oldRow.id)
     .run()
 
   return { asset: nextAsset, manifest: await getDraftAssetManifest(env, oldRow.draft_id, relativeId) }
@@ -316,36 +309,21 @@ export async function moveDraftAssetManifest(env: WorkerEnv, options: MoveDraftA
   const manifest = await getDraftAssetManifest(env, options.draftId, relativeId)
   const now = nowIso()
 
-  // When relativeId changes, both Markdown paths and R2 object keys need to follow the new article slug.
+  // R2 keys are stable draft cache identifiers; relativeId changes only update D1 path mapping.
   await Promise.all(
     manifest.assets.map(async (asset) => {
-      const object = await env.BLOG_ASSET_CACHE?.get(asset.key)
       const filename = assertSafeImageFilename(asset.filename)
-      const nextKey = `draft-assets/${safeRelativePathSegment(relativeId)}/${options.draftId}/${crypto.randomUUID()}-${filename}`
       const paths = buildPostAssetPaths({ postsDir: options.postsDir, relativeId, filename })
-      const nextAsset: DraftAsset = {
-        ...asset,
-        key: nextKey,
-        draftId: options.draftId,
-        relativeId,
-        markdownPath: paths.markdownPath,
-        finalRepoPath: paths.finalRepoPath,
-      }
-      if (object) {
-        await putObject(env, nextKey, await object.arrayBuffer(), nextAsset)
-        await env.BLOG_ASSET_CACHE?.delete(asset.key)
-      }
       await db(env)
         .prepare(
           `UPDATE draft_assets
            SET relative_id = ?1,
-               r2_key = ?2,
-               markdown_path = ?3,
-               final_repo_path = ?4,
-               updated_at = ?5
-           WHERE r2_key = ?6`,
+               markdown_path = ?2,
+               final_repo_path = ?3,
+               updated_at = ?4
+           WHERE r2_key = ?5`,
         )
-        .bind(relativeId, nextKey, paths.markdownPath, paths.finalRepoPath, now, asset.key)
+        .bind(relativeId, paths.markdownPath, paths.finalRepoPath, now, asset.key)
         .run()
     }),
   )

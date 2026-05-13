@@ -176,6 +176,7 @@ type MarkdownAssetPanelProps = {
   assets: DraftAsset[]
   sourceAssets?: PostAsset[]
   onAssetsChange: (assets: DraftAsset[]) => void
+  onDraftIdChange?: (draftId: string) => void
   onInsertMarkdown: (markdown: string) => void
   onMarkdownPathReplace?: (oldPath: string, newPath: string) => void
   onSourceAssetRename?: (asset: PostAsset, filename: string) => void
@@ -197,6 +198,7 @@ export const MarkdownAssetPanel = forwardRef<MarkdownAssetPanelHandle, MarkdownA
   assets,
   sourceAssets = [],
   onAssetsChange,
+  onDraftIdChange,
   onInsertMarkdown,
   onMarkdownPathReplace,
   onSourceAssetRename,
@@ -248,17 +250,19 @@ export const MarkdownAssetPanel = forwardRef<MarkdownAssetPanelHandle, MarkdownA
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
+        draftId,
         relativeId,
         filename: file.name,
         contentType: file.type || 'application/octet-stream',
         contentBase64: arrayBufferToBase64(buffer),
       }),
     })
+    onDraftIdChange?.(response.asset.draftId)
     onAssetsChange(response.manifest.assets)
     await refresh(response.asset.draftId)
     if (options?.insertMarkdown !== false) onInsertMarkdown(`![${response.asset.filename}](${response.asset.markdownPath})`)
     return response.asset
-  }, [onAssetsChange, onInsertMarkdown, relativeId, t])
+  }, [draftId, onAssetsChange, onDraftIdChange, onInsertMarkdown, relativeId, t])
 
   const askCompressionDecision = useCallback((file: File) =>
     new Promise<CompressionDecision>((resolve) => {
