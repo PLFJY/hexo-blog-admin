@@ -340,15 +340,15 @@ export function MarkdownPreview({
   const onMermaidRenderErrorsChangeRef = useRef(onMermaidRenderErrorsChange)
   const lastMermaidRenderErrorsRef = useRef<MermaidRenderError[]>([])
   const mermaidRenderRunRef = useRef(0)
-  const mermaidRenderCacheRef = useRef(new Map<string, MermaidRenderCacheEntry>())
+  const mermaidRenderCache = useMemo(() => new Map<string, MermaidRenderCacheEntry>(), [])
   const mermaidTheme = resolvedMode === 'dark' ? 'dark' : 'default'
   const renderer = useMemo(
     () =>
       createMarkdownRenderer(resolveResourceUrl, (source) => {
         const cacheKey = getMermaidCacheKey(source, mermaidTheme)
-        return mermaidRenderCacheRef.current.get(cacheKey)?.svg
+        return mermaidRenderCache.get(cacheKey)?.svg
       }),
-    [resolveResourceUrl, mermaidTheme],
+    [mermaidRenderCache, resolveResourceUrl, mermaidTheme],
   )
   const html = useMemo(() => {
     const title = extractFrontMatterTitle(markdown)
@@ -406,7 +406,6 @@ export function MarkdownPreview({
     const renderRun = mermaidRenderRunRef.current + 1
     mermaidRenderRunRef.current = renderRun
     let cancelled = false
-    let frame: number | undefined
     let settleFrame: number | undefined
     const notifyPreviewContentChange = () => {
       settleFrame = window.requestAnimationFrame(() => {
@@ -440,7 +439,7 @@ export function MarkdownPreview({
 
         try {
           const cacheKey = getMermaidCacheKey(source, mermaidTheme)
-          const cached = mermaidRenderCacheRef.current.get(cacheKey)
+          const cached = mermaidRenderCache.get(cacheKey)
           if (cached) {
             block.dataset.mermaidSource = source
             block.innerHTML = cached.svg
@@ -452,13 +451,13 @@ export function MarkdownPreview({
           if (cancelled || mermaidRenderRunRef.current !== renderRun || !block.isConnected) return
           block.dataset.mermaidSource = source
           block.innerHTML = svg
-          mermaidRenderCacheRef.current.set(cacheKey, {
+          mermaidRenderCache.set(cacheKey, {
             svg,
             height: block.offsetHeight,
           })
-          if (mermaidRenderCacheRef.current.size > 50) {
-            const oldestKey = mermaidRenderCacheRef.current.keys().next().value
-            if (oldestKey) mermaidRenderCacheRef.current.delete(oldestKey)
+          if (mermaidRenderCache.size > 50) {
+            const oldestKey = mermaidRenderCache.keys().next().value
+            if (oldestKey) mermaidRenderCache.delete(oldestKey)
           }
           block.dataset.mermaidStatus = 'rendered'
           bindFunctions?.(block)
@@ -482,7 +481,7 @@ export function MarkdownPreview({
       if (!cancelled) notifyPreviewContentChange()
     }
 
-    frame = window.requestAnimationFrame(() => {
+    const frame = window.requestAnimationFrame(() => {
       void renderMermaidBlocks()
     })
     return () => {
@@ -490,7 +489,7 @@ export function MarkdownPreview({
       if (frame !== undefined) window.cancelAnimationFrame(frame)
       if (settleFrame !== undefined) window.cancelAnimationFrame(settleFrame)
     }
-  }, [html, mermaidTheme])
+  }, [html, mermaidRenderCache, mermaidTheme])
 
   useEffect(() => {
     const element = rootRef.current
