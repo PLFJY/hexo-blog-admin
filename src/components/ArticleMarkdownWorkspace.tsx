@@ -8,6 +8,8 @@ import { buildApiUrl } from '../lib/apiClient'
 import type { ResolvedMarkdownResourceUrl } from '../lib/markdownResource'
 import type { DraftAsset } from '../shared/assetTypes'
 
+const SINGLE_COLUMN_MEDIA_QUERY = '(max-width: 960px)'
+
 const useStyles = makeStyles({
   root: {
     display: 'grid',
@@ -19,7 +21,7 @@ const useStyles = makeStyles({
     maxWidth: '100%',
     boxSizing: 'border-box',
     overflow: 'hidden',
-    '@media (max-width: 960px)': {
+    [`@media ${SINGLE_COLUMN_MEDIA_QUERY}`]: {
       gridTemplateColumns: 'minmax(0, 1fr)',
     },
   },
@@ -32,7 +34,7 @@ const useStyles = makeStyles({
   },
   previewColumn: {
     paddingTop: `calc(32px + ${tokens.spacingVerticalXS})`,
-    '@media (max-width: 960px)': {
+    [`@media ${SINGLE_COLUMN_MEDIA_QUERY}`]: {
       paddingTop: 0,
     },
   },
@@ -328,6 +330,7 @@ export function ArticleMarkdownWorkspace({
   const previewToEditorFrameRef = useRef<number | undefined>(undefined)
   const cursorSyncFrameRef = useRef<number | undefined>(undefined)
   const previewSettleTimerRef = useRef<number | undefined>(undefined)
+  const isSingleColumnLayoutRef = useRef(false)
 
   const latestCursorLineRef = useRef(1)
   const pendingCursorLineRef = useRef<number | undefined>(undefined)
@@ -531,6 +534,8 @@ export function ArticleMarkdownWorkspace({
   }, [getOrBuildScrollMap, setPreviewScrollTopProgrammatically])
 
   const settleEditorFromPreview = useCallback(() => {
+    if (isSingleColumnLayoutRef.current) return
+
     const root = previewRootRef.current
     const view = editorViewRef.current
     if (!root || !view) return
@@ -569,11 +574,14 @@ export function ArticleMarkdownWorkspace({
     }
 
     window.clearTimeout(previewSettleTimerRef.current)
-    previewSettleTimerRef.current = window.setTimeout(() => {
-      if (activeScrollSourceRef.current === 'preview') {
-        settleEditorFromPreview()
-      }
-    }, SYNC_TUNING.previewToEditorSettleDelay)
+
+    if (!isSingleColumnLayoutRef.current) {
+      previewSettleTimerRef.current = window.setTimeout(() => {
+        if (activeScrollSourceRef.current === 'preview') {
+          settleEditorFromPreview()
+        }
+      }, SYNC_TUNING.previewToEditorSettleDelay)
+    }
   }, [setEditorScrollTopProgrammatically, settleEditorFromPreview])
 
   const scheduleEditorToPreviewSync = useCallback(() => {
@@ -623,6 +631,29 @@ export function ArticleMarkdownWorkspace({
   useEffect(() => {
     onAssetObjectUrlsChangeRef.current = onAssetObjectUrlsChange
   }, [onAssetObjectUrlsChange])
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia(SINGLE_COLUMN_MEDIA_QUERY)
+
+    const updateLayoutMode = () => {
+      isSingleColumnLayoutRef.current = mediaQuery.matches
+
+      if (mediaQuery.matches) {
+        // 切到单列时，取消已经排队的 settle，避免之后触发 scrollIntoView。
+        window.clearTimeout(previewSettleTimerRef.current)
+      }
+    }
+
+    updateLayoutMode()
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', updateLayoutMode)
+      return () => mediaQuery.removeEventListener('change', updateLayoutMode)
+    }
+
+    mediaQuery.addListener(updateLayoutMode)
+    return () => mediaQuery.removeListener(updateLayoutMode)
+  }, [])
 
   useEffect(() => {
     if (!onAssetObjectUrlsChangeRef.current) {
