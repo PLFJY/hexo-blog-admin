@@ -143,7 +143,17 @@ type MarkdownEditorProps = {
   documentKey?: string
 }
 
-type FormatAction = 'bold' | 'italic' | 'link' | 'underline' | 'highlight' | 'inlineCode' | 'codeBlock' | 'quote' | 'strikethrough' | 'color'
+type FormatAction =
+  | 'bold'
+  | 'italic'
+  | 'link'
+  | 'underline'
+  | 'highlight'
+  | 'inlineCode'
+  | 'codeBlock'
+  | 'quote'
+  | 'strikethrough'
+  | 'color'
 export type PreviewSyncPosition = {
   line: number
   source: 'scroll' | 'cursor'
@@ -156,7 +166,8 @@ const defaultTextColor = '#ff0000'
 const EDITOR_SCROLL_ANCHOR_Y_OFFSET = 16
 
 const isApplePlatform = () =>
-  typeof navigator !== 'undefined' && (/Mac|iPhone|iPad|iPod/.test(navigator.platform) || /Mac OS X/.test(navigator.userAgent))
+  typeof navigator !== 'undefined' &&
+  (/Mac|iPhone|iPad|iPod/.test(navigator.platform) || /Mac OS X/.test(navigator.userAgent))
 
 const formatShortcut = (key: string) => `${isApplePlatform() ? '⌘' : 'Ctrl'} + ${key}`
 const buildTooltip = (label: string, shortcut?: string) => (shortcut ? `${label} · ${shortcut}` : label)
@@ -211,17 +222,26 @@ function hsvToHex(color: HsvColor) {
   const saturation = clampRatio(color.s)
   const value = clampRatio(color.v)
   const chroma = value * saturation
-  const x = chroma * (1 - Math.abs((hue / 60) % 2 - 1))
+  const x = chroma * (1 - Math.abs(((hue / 60) % 2) - 1))
   const match = value - chroma
   const [red, green, blue] =
-    hue < 60 ? [chroma, x, 0]
-      : hue < 120 ? [x, chroma, 0]
-        : hue < 180 ? [0, chroma, x]
-          : hue < 240 ? [0, x, chroma]
-            : hue < 300 ? [x, 0, chroma]
+    hue < 60
+      ? [chroma, x, 0]
+      : hue < 120
+        ? [x, chroma, 0]
+        : hue < 180
+          ? [0, chroma, x]
+          : hue < 240
+            ? [0, x, chroma]
+            : hue < 300
+              ? [x, 0, chroma]
               : [chroma, 0, x]
   return `#${[red, green, blue]
-    .map((channel) => Math.round((channel + match) * 255).toString(16).padStart(2, '0'))
+    .map((channel) =>
+      Math.round((channel + match) * 255)
+        .toString(16)
+        .padStart(2, '0'),
+    )
     .join('')}`
 }
 
@@ -277,7 +297,9 @@ export function MarkdownEditor({
   const hasLocalEditRef = useRef(false)
   const lastEmittedValueRef = useRef(value)
   const lastAcceptedExternalValueRef = useRef(value)
+  const lastLocalEditAtRef = useRef(0)
   const documentKeyRef = useRef(documentKey)
+  const pendingDocumentResetRef = useRef<{ documentKey: string | undefined; value: string } | undefined>(undefined)
   const onChangeRef = useRef(onChange)
   const composingRef = useRef(false)
   const compositionFrameRef = useRef<number | undefined>(undefined)
@@ -334,16 +356,54 @@ export function MarkdownEditor({
     return Boolean(view && (view.hasFocus || view.dom.contains(document.activeElement)))
   }, [])
 
+  const markLocalValue = useCallback((nextValue: string) => {
+    localValueRef.current = nextValue
+    lastEmittedValueRef.current = nextValue
+    lastLocalEditAtRef.current = Date.now()
+    hasLocalEditRef.current = true
+    setLocalValue(nextValue)
+  }, [])
+
+  const acceptExternalValue = useCallback((nextValue: string) => {
+    lastAcceptedExternalValueRef.current = nextValue
+    lastEmittedValueRef.current = nextValue
+    localValueRef.current = nextValue
+    hasLocalEditRef.current = false
+    setLocalValue(nextValue)
+  }, [])
+
+  const shouldDeferExternalValue = useCallback(() => {
+    const recentlyEdited = Date.now() - lastLocalEditAtRef.current < 1500
+    return composingRef.current || isEditorFocused() || hasLocalEditRef.current || recentlyEdited
+  }, [isEditorFocused])
+
+  const shouldDeferDocumentReset = useCallback(() => {
+    return composingRef.current || isEditorFocused()
+  }, [isEditorFocused])
+
+  const flushPendingDocumentReset = useCallback(() => {
+    if (shouldDeferDocumentReset()) return
+
+    const pendingReset = pendingDocumentResetRef.current
+    if (!pendingReset) return
+
+    pendingDocumentResetRef.current = undefined
+    documentKeyRef.current = pendingReset.documentKey
+    acceptExternalValue(pendingReset.value)
+  }, [acceptExternalValue, shouldDeferDocumentReset])
+
   useEffect(() => {
     if (documentKeyRef.current === documentKey) return
 
+    if (shouldDeferDocumentReset()) {
+      pendingDocumentResetRef.current = { documentKey, value }
+      return
+    }
+
+    pendingDocumentResetRef.current = undefined
     documentKeyRef.current = documentKey
-    hasLocalEditRef.current = false
-    lastAcceptedExternalValueRef.current = value
-    lastEmittedValueRef.current = value
-    localValueRef.current = value
-    setLocalValue(value)
-  }, [documentKey, value])
+    acceptExternalValue(value)
+  }, [acceptExternalValue, documentKey, shouldDeferDocumentReset, value])
 
   useEffect(() => {
     if (value === localValueRef.current) {
@@ -356,14 +416,13 @@ export function MarkdownEditor({
       return
     }
 
-    if (composingRef.current || isEditorFocused() || hasLocalEditRef.current) {
-      return
-    }
+    // Same-document external values are allowed to catch up to the local editor,
+    // but they must not overwrite focused / dirty / IME input. This prevents an
+    // async stale parent value from rolling CodeMirror back to an old snapshot.
+    if (shouldDeferExternalValue()) return
 
-    lastAcceptedExternalValueRef.current = value
-    localValueRef.current = value
-    setLocalValue(value)
-  }, [isEditorFocused, value])
+    acceptExternalValue(value)
+  }, [acceptExternalValue, shouldDeferExternalValue, value])
 
   useEffect(() => {
     return () => {
@@ -373,49 +432,128 @@ export function MarkdownEditor({
     }
   }, [])
 
+  useEffect(() => {
+    if (!editorView) return undefined
+
+    const handleBlur = () => {
+      window.setTimeout(flushPendingDocumentReset, 0)
+    }
+
+    editorView.dom.addEventListener('blur', handleBlur, true)
+    return () => editorView.dom.removeEventListener('blur', handleBlur, true)
+  }, [editorView, flushPendingDocumentReset])
+
   const emitPreviewSyncPosition = useCallback((view: EditorView, source: PreviewSyncPosition['source']) => {
     onPreviewSyncPositionChangeRef.current?.(getPreviewPosition(view, source))
   }, [])
 
-  const emitChange = useCallback((nextValue: string) => {
-    localValueRef.current = nextValue
-    lastEmittedValueRef.current = nextValue
-    hasLocalEditRef.current = true
-    setLocalValue(nextValue)
-    onChangeRef.current(nextValue)
-  }, [])
+  const emitChange = useCallback(
+    (nextValue: string) => {
+      markLocalValue(nextValue)
+      onChangeRef.current(nextValue)
+    },
+    [markLocalValue],
+  )
 
-  const dispatchCurrentValue = useCallback((view: EditorView) => {
-    onContentEditRef.current?.(view.state.doc.lineAt(view.state.selection.main.head).number)
-    emitChange(view.state.doc.toString())
-    view.focus()
-  }, [emitChange])
+  const dispatchCurrentValue = useCallback(
+    (view: EditorView) => {
+      onContentEditRef.current?.(view.state.doc.lineAt(view.state.selection.main.head).number)
+      emitChange(view.state.doc.toString())
+      view.focus()
+    },
+    [emitChange],
+  )
 
-  const wrapSelection = useCallback((view: EditorView, before: string, after: string, fallback = 'text') => {
-    const selection = view.state.selection.main
-    const selected = view.state.doc.sliceString(selection.from, selection.to)
-    if (selected.startsWith(before) && selected.endsWith(after) && selected.length >= before.length + after.length) {
-      const insert = selected.slice(before.length, selected.length - after.length)
+  const wrapSelection = useCallback(
+    (view: EditorView, before: string, after: string, fallback = 'text') => {
+      const selection = view.state.selection.main
+      const selected = view.state.doc.sliceString(selection.from, selection.to)
+      if (selected.startsWith(before) && selected.endsWith(after) && selected.length >= before.length + after.length) {
+        const insert = selected.slice(before.length, selected.length - after.length)
+        view.dispatch({
+          changes: { from: selection.from, to: selection.to, insert },
+          selection: {
+            anchor: selection.from,
+            head: selection.from + insert.length,
+          },
+          scrollIntoView: true,
+        })
+        dispatchCurrentValue(view)
+        return
+      }
+      if (selected) {
+        const beforeFrom = selection.from - before.length
+        const afterTo = selection.to + after.length
+        const hasWrappedContext =
+          beforeFrom >= 0 &&
+          afterTo <= view.state.doc.length &&
+          view.state.doc.sliceString(beforeFrom, selection.from) === before &&
+          view.state.doc.sliceString(selection.to, afterTo) === after
+        if (hasWrappedContext) {
+          view.dispatch({
+            changes: [
+              { from: selection.to, to: afterTo, insert: '' },
+              { from: beforeFrom, to: selection.from, insert: '' },
+            ],
+            selection: {
+              anchor: beforeFrom,
+              head: beforeFrom + selected.length,
+            },
+            scrollIntoView: true,
+          })
+          dispatchCurrentValue(view)
+          return
+        }
+      }
+      const text = selected || fallback
+      const insert = `${before}${text}${after}`
+      const fallbackFrom = selection.from + before.length
+      const fallbackTo = fallbackFrom + fallback.length
       view.dispatch({
         changes: { from: selection.from, to: selection.to, insert },
-        selection: { anchor: selection.from, head: selection.from + insert.length },
+        selection: selected
+          ? { anchor: selection.from, head: selection.from + insert.length }
+          : { anchor: fallbackFrom, head: fallbackTo },
         scrollIntoView: true,
       })
       dispatchCurrentValue(view)
-      return
-    }
-    if (selected) {
-      const beforeFrom = selection.from - before.length
-      const afterTo = selection.to + after.length
-      const hasWrappedContext =
-        beforeFrom >= 0 &&
-        afterTo <= view.state.doc.length &&
-        view.state.doc.sliceString(beforeFrom, selection.from) === before &&
-        view.state.doc.sliceString(selection.to, afterTo) === after
-      if (hasWrappedContext) {
+    },
+    [dispatchCurrentValue],
+  )
+
+  const wrapColorSelection = useCallback(
+    (view: EditorView, color: string) => {
+      const selection = view.state.selection.main
+      const selected = view.state.doc.sliceString(selection.from, selection.to)
+      const exactColorSpan = selected.match(/^<span style="color: #[0-9a-f]{6}">([\s\S]*)<\/span>$/i)
+      if (exactColorSpan) {
+        const insert = exactColorSpan[1]
+        view.dispatch({
+          changes: { from: selection.from, to: selection.to, insert },
+          selection: {
+            anchor: selection.from,
+            head: selection.from + insert.length,
+          },
+          scrollIntoView: true,
+        })
+        dispatchCurrentValue(view)
+        return
+      }
+
+      const openingSpanPattern = /<span style="color: #[0-9a-f]{6}">$/i
+      const beforeStart = Math.max(0, selection.from - '<span style="color: #000000">'.length)
+      const beforeText = view.state.doc.sliceString(beforeStart, selection.from)
+      const openingMatch = beforeText.match(openingSpanPattern)
+      const afterText = view.state.doc.sliceString(selection.to, selection.to + '</span>'.length)
+      if (selected && openingMatch && afterText === '</span>') {
+        const beforeFrom = selection.from - openingMatch[0].length
         view.dispatch({
           changes: [
-            { from: selection.to, to: afterTo, insert: '' },
+            {
+              from: selection.to,
+              to: selection.to + '</span>'.length,
+              insert: '',
+            },
             { from: beforeFrom, to: selection.from, insert: '' },
           ],
           selection: { anchor: beforeFrom, head: beforeFrom + selected.length },
@@ -424,120 +562,94 @@ export function MarkdownEditor({
         dispatchCurrentValue(view)
         return
       }
-    }
-    const text = selected || fallback
-    const insert = `${before}${text}${after}`
-    const fallbackFrom = selection.from + before.length
-    const fallbackTo = fallbackFrom + fallback.length
-    view.dispatch({
-      changes: { from: selection.from, to: selection.to, insert },
-      selection: selected ? { anchor: selection.from, head: selection.from + insert.length } : { anchor: fallbackFrom, head: fallbackTo },
-      scrollIntoView: true,
-    })
-    dispatchCurrentValue(view)
-  }, [dispatchCurrentValue])
 
-  const wrapColorSelection = useCallback((view: EditorView, color: string) => {
-    const selection = view.state.selection.main
-    const selected = view.state.doc.sliceString(selection.from, selection.to)
-    const exactColorSpan = selected.match(/^<span style="color: #[0-9a-f]{6}">([\s\S]*)<\/span>$/i)
-    if (exactColorSpan) {
-      const insert = exactColorSpan[1]
+      wrapSelection(view, `<span style="color: ${color}">`, '</span>')
+    },
+    [dispatchCurrentValue, wrapSelection],
+  )
+
+  const insertCodeBlock = useCallback(
+    (view: EditorView) => {
+      const selection = view.state.selection.main
+      const selected = view.state.doc.sliceString(selection.from, selection.to)
+      const insert = selected ? `\`\`\`\n${selected}\n\`\`\`` : `\`\`\`\n\n\`\`\``
       view.dispatch({
         changes: { from: selection.from, to: selection.to, insert },
-        selection: { anchor: selection.from, head: selection.from + insert.length },
+        selection: { anchor: selection.from + 3 },
         scrollIntoView: true,
       })
       dispatchCurrentValue(view)
-      return
-    }
+    },
+    [dispatchCurrentValue],
+  )
 
-    const openingSpanPattern = /<span style="color: #[0-9a-f]{6}">$/i
-    const beforeStart = Math.max(0, selection.from - '<span style="color: #000000">'.length)
-    const beforeText = view.state.doc.sliceString(beforeStart, selection.from)
-    const openingMatch = beforeText.match(openingSpanPattern)
-    const afterText = view.state.doc.sliceString(selection.to, selection.to + '</span>'.length)
-    if (selected && openingMatch && afterText === '</span>') {
-      const beforeFrom = selection.from - openingMatch[0].length
+  const insertQuote = useCallback(
+    (view: EditorView) => {
+      const selection = view.state.selection.main
+      if (selection.empty) {
+        view.dispatch({
+          changes: { from: selection.from, to: selection.to, insert: '> ' },
+          selection: { anchor: selection.from + 2 },
+          scrollIntoView: true,
+        })
+        dispatchCurrentValue(view)
+        return
+      }
+
+      const doc = view.state.doc
+      const endPosition =
+        selection.to > selection.from && doc.lineAt(selection.to).from === selection.to
+          ? selection.to - 1
+          : selection.to
+      const startLine = doc.lineAt(selection.from)
+      const endLine = doc.lineAt(endPosition)
+      const lines = []
+      for (let lineNumber = startLine.number; lineNumber <= endLine.number; lineNumber += 1) {
+        const line = doc.line(lineNumber)
+        lines.push(line.text ? `> ${line.text}` : '>')
+      }
+      const insert = lines.join('\n')
       view.dispatch({
-        changes: [
-          { from: selection.to, to: selection.to + '</span>'.length, insert: '' },
-          { from: beforeFrom, to: selection.from, insert: '' },
-        ],
-        selection: { anchor: beforeFrom, head: beforeFrom + selected.length },
+        changes: { from: startLine.from, to: endLine.to, insert },
+        selection: {
+          anchor: startLine.from,
+          head: startLine.from + insert.length,
+        },
         scrollIntoView: true,
       })
       dispatchCurrentValue(view)
-      return
-    }
+    },
+    [dispatchCurrentValue],
+  )
 
-    wrapSelection(view, `<span style="color: ${color}">`, '</span>')
-  }, [dispatchCurrentValue, wrapSelection])
-
-  const insertCodeBlock = useCallback((view: EditorView) => {
-    const selection = view.state.selection.main
-    const selected = view.state.doc.sliceString(selection.from, selection.to)
-    const insert = selected ? `\`\`\`\n${selected}\n\`\`\`` : `\`\`\`\n\n\`\`\``
-    view.dispatch({
-      changes: { from: selection.from, to: selection.to, insert },
-      selection: { anchor: selection.from + 3 },
-      scrollIntoView: true,
-    })
-    dispatchCurrentValue(view)
-  }, [dispatchCurrentValue])
-
-  const insertQuote = useCallback((view: EditorView) => {
-    const selection = view.state.selection.main
-    if (selection.empty) {
+  const insertBreak = useCallback(
+    (view: EditorView) => {
+      const selection = view.state.selection.main
       view.dispatch({
-        changes: { from: selection.from, to: selection.to, insert: '> ' },
-        selection: { anchor: selection.from + 2 },
+        changes: { from: selection.from, to: selection.to, insert: '<br>\n' },
+        selection: { anchor: selection.from + 5 },
         scrollIntoView: true,
       })
       dispatchCurrentValue(view)
-      return
-    }
+    },
+    [dispatchCurrentValue],
+  )
 
-    const doc = view.state.doc
-    const endPosition = selection.to > selection.from && doc.lineAt(selection.to).from === selection.to ? selection.to - 1 : selection.to
-    const startLine = doc.lineAt(selection.from)
-    const endLine = doc.lineAt(endPosition)
-    const lines = []
-    for (let lineNumber = startLine.number; lineNumber <= endLine.number; lineNumber += 1) {
-      const line = doc.line(lineNumber)
-      lines.push(line.text ? `> ${line.text}` : '>')
-    }
-    const insert = lines.join('\n')
-    view.dispatch({
-      changes: { from: startLine.from, to: endLine.to, insert },
-      selection: { anchor: startLine.from, head: startLine.from + insert.length },
-      scrollIntoView: true,
-    })
-    dispatchCurrentValue(view)
-  }, [dispatchCurrentValue])
-
-  const insertBreak = useCallback((view: EditorView) => {
-    const selection = view.state.selection.main
-    view.dispatch({
-      changes: { from: selection.from, to: selection.to, insert: '<br>\n' },
-      selection: { anchor: selection.from + 5 },
-      scrollIntoView: true,
-    })
-    dispatchCurrentValue(view)
-  }, [dispatchCurrentValue])
-
-  const replaceSelectionInView = useCallback((view: EditorView, action: FormatAction, color = lastTextColor) => {
-    if (action === 'bold') wrapSelection(view, '**', '**')
-    else if (action === 'italic') wrapSelection(view, '*', '*')
-    else if (action === 'link') wrapSelection(view, '[', '](url)')
-    else if (action === 'underline') wrapSelection(view, '<u>', '</u>')
-    else if (action === 'highlight') wrapSelection(view, '==', '==')
-    else if (action === 'inlineCode') wrapSelection(view, '`', '`')
-    else if (action === 'strikethrough') wrapSelection(view, '~~', '~~')
-    else if (action === 'color') wrapColorSelection(view, color)
-    else if (action === 'codeBlock') insertCodeBlock(view)
-    else if (action === 'quote') insertQuote(view)
-  }, [insertCodeBlock, insertQuote, lastTextColor, wrapColorSelection, wrapSelection])
+  const replaceSelectionInView = useCallback(
+    (view: EditorView, action: FormatAction, color = lastTextColor) => {
+      if (action === 'bold') wrapSelection(view, '**', '**')
+      else if (action === 'italic') wrapSelection(view, '*', '*')
+      else if (action === 'link') wrapSelection(view, '[', '](url)')
+      else if (action === 'underline') wrapSelection(view, '<u>', '</u>')
+      else if (action === 'highlight') wrapSelection(view, '==', '==')
+      else if (action === 'inlineCode') wrapSelection(view, '`', '`')
+      else if (action === 'strikethrough') wrapSelection(view, '~~', '~~')
+      else if (action === 'color') wrapColorSelection(view, color)
+      else if (action === 'codeBlock') insertCodeBlock(view)
+      else if (action === 'quote') insertQuote(view)
+    },
+    [insertCodeBlock, insertQuote, lastTextColor, wrapColorSelection, wrapSelection],
+  )
 
   const runEditorCommand = useCallback((view: EditorView, command: (target: EditorView) => boolean) => {
     const handled = command(view)
@@ -563,48 +675,98 @@ export function MarkdownEditor({
     [],
   )
 
-  const replaceSelection = useCallback((action: FormatAction, color?: string) => {
-    if (!editorView) return
-    replaceSelectionInView(editorView, action, color)
-  }, [editorView, replaceSelectionInView])
+  const replaceSelection = useCallback(
+    (action: FormatAction, color?: string) => {
+      if (!editorView) return
+      replaceSelectionInView(editorView, action, color)
+    },
+    [editorView, replaceSelectionInView],
+  )
 
-  const applyTextColor = useCallback((color: string) => {
-    const normalized = normalizeHexColor(color)
-    if (!normalized) return
-    setLastTextColor(normalized)
-    setDraftTextColor(normalized)
-    replaceSelection('color', normalized)
-  }, [replaceSelection])
+  const applyTextColor = useCallback(
+    (color: string) => {
+      const normalized = normalizeHexColor(color)
+      if (!normalized) return
+      setLastTextColor(normalized)
+      setDraftTextColor(normalized)
+      replaceSelection('color', normalized)
+    },
+    [replaceSelection],
+  )
 
   const editorKeymap = useMemo(
     () =>
       // CodeMirror calls these commands on editor key events, not during React render.
       // eslint-disable-next-line react-hooks/refs
       keymap.of([
-        { key: 'Mod-b', run: (view) => { replaceSelectionInView(view, 'bold'); return true } },
-        { key: 'Mod-i', run: (view) => { replaceSelectionInView(view, 'italic'); return true } },
-        { key: 'Mod-u', run: (view) => { replaceSelectionInView(view, 'underline'); return true } },
-        { key: 'Mod-h', run: (view) => { replaceSelectionInView(view, 'highlight'); return true } },
-        { key: 'Mod-k', run: (view) => { replaceSelectionInView(view, 'link'); return true } },
-        { key: 'Mod-Shift-c', run: (view) => { replaceSelectionInView(view, 'inlineCode'); return true } },
-        { key: 'Mod-e', run: (view) => { replaceSelectionInView(view, 'quote'); return true } },
+        {
+          key: 'Mod-b',
+          run: (view) => {
+            replaceSelectionInView(view, 'bold')
+            return true
+          },
+        },
+        {
+          key: 'Mod-i',
+          run: (view) => {
+            replaceSelectionInView(view, 'italic')
+            return true
+          },
+        },
+        {
+          key: 'Mod-u',
+          run: (view) => {
+            replaceSelectionInView(view, 'underline')
+            return true
+          },
+        },
+        {
+          key: 'Mod-h',
+          run: (view) => {
+            replaceSelectionInView(view, 'highlight')
+            return true
+          },
+        },
+        {
+          key: 'Mod-k',
+          run: (view) => {
+            replaceSelectionInView(view, 'link')
+            return true
+          },
+        },
+        {
+          key: 'Mod-Shift-c',
+          run: (view) => {
+            replaceSelectionInView(view, 'inlineCode')
+            return true
+          },
+        },
+        {
+          key: 'Mod-e',
+          run: (view) => {
+            replaceSelectionInView(view, 'quote')
+            return true
+          },
+        },
         { key: 'Mod-d', run: (view) => runEditorCommand(view, copyLineDown) },
         { key: 'Mod-s', run: () => runSaveShortcut() },
         { key: 'Mod-y', run: (view) => runEditorCommand(view, deleteLine) },
         { key: 'Mod-l', run: (view) => runEditorCommand(view, deleteLine) },
         { key: 'Mod-z', run: (view) => runEditorCommand(view, undo) },
         { key: 'Mod-Shift-z', run: (view) => runEditorCommand(view, redo) },
-        { key: 'Shift-Enter', run: (view) => { insertBreak(view); return true } },
+        {
+          key: 'Shift-Enter',
+          run: (view) => {
+            insertBreak(view)
+            return true
+          },
+        },
       ]),
     [insertBreak, replaceSelectionInView, runEditorCommand, runSaveShortcut],
   )
 
   const editorExtensions = useMemo(
-    () => [
-      markdownExtension,
-      EditorView.lineWrapping,
-      editorKeymap,
-    ],
+    () => [markdownExtension, EditorView.lineWrapping, editorKeymap],
     [editorKeymap, markdownExtension],
   )
 
@@ -668,7 +830,11 @@ export function MarkdownEditor({
     if (!view || !insertRequest) return undefined
     const selection = view.state.selection.main
     view.dispatch({
-      changes: { from: selection.from, to: selection.to, insert: insertRequest.text },
+      changes: {
+        from: selection.from,
+        to: selection.to,
+        insert: insertRequest.text,
+      },
       selection: { anchor: selection.from + insertRequest.text.length },
       scrollIntoView: true,
     })
@@ -693,10 +859,7 @@ export function MarkdownEditor({
         if (!view) return
 
         const nextValue = view.state.doc.toString()
-        localValueRef.current = nextValue
-        lastEmittedValueRef.current = nextValue
-        hasLocalEditRef.current = true
-        setLocalValue(nextValue)
+        markLocalValue(nextValue)
 
         onContentEditRef.current?.(view.state.doc.lineAt(view.state.selection.main.head).number)
         onChangeRef.current(nextValue)
@@ -708,7 +871,7 @@ export function MarkdownEditor({
       editorView.dom.removeEventListener('compositionstart', handleCompositionStart)
       editorView.dom.removeEventListener('compositionend', handleCompositionEnd)
     }
-  }, [editorView, emitChange])
+  }, [editorView, markLocalValue])
 
   useEffect(() => {
     if (!editorView || !onPasteImages) return undefined
@@ -728,10 +891,7 @@ export function MarkdownEditor({
   }
 
   const handleChange = (nextValue: string, update: ViewUpdate) => {
-    localValueRef.current = nextValue
-    lastEmittedValueRef.current = nextValue
-    hasLocalEditRef.current = true
-    setLocalValue(nextValue)
+    markLocalValue(nextValue)
     if (!composingRef.current) {
       const line = update.state.doc.lineAt(update.state.selection.main.head).number
       onContentEditRef.current?.(line)
@@ -746,19 +906,77 @@ export function MarkdownEditor({
   return (
     <div className={styles.shell}>
       <div className={styles.toolbar} ref={toolbarRef}>
-        <ToolbarButton label={t('editor.undo')} shortcut={formatShortcut('Z')} icon={<ArrowUndoRegular />} onClick={() => runToolbarCommand(undo)} />
-        <ToolbarButton label={t('editor.redo')} shortcut={formatShortcut('Shift + Z')} icon={<ArrowRedoRegular />} onClick={() => runToolbarCommand(redo)} />
-        <ToolbarButton label={t('editor.bold')} shortcut={formatShortcut('B')} icon={<TextBoldRegular />} onClick={() => replaceSelection('bold')} />
-        <ToolbarButton label={t('editor.italic')} shortcut={formatShortcut('I')} icon={<TextItalicRegular />} onClick={() => replaceSelection('italic')} />
-        <ToolbarButton label={t('editor.underline')} shortcut={formatShortcut('U')} icon={<TextUnderlineRegular />} onClick={() => replaceSelection('underline')} />
-        <ToolbarButton label={t('editor.strikethrough')} icon={<TextStrikethroughRegular />} onClick={() => replaceSelection('strikethrough')} />
-        <ToolbarButton label={t('editor.inlineCode')} shortcut={formatShortcut('Shift + C')} icon={<CodeRegular />} onClick={() => replaceSelection('inlineCode')} />
-        <ToolbarButton label={t('editor.codeBlock')} icon={<CodeBlockRegular />} onClick={() => replaceSelection('codeBlock')} />
-        <ToolbarButton label={t('editor.quote')} shortcut={formatShortcut('E')} icon={<TextQuoteRegular />} onClick={() => replaceSelection('quote')} />
-        <ToolbarButton label={t('editor.link')} shortcut={formatShortcut('K')} icon={<LinkRegular />} onClick={() => replaceSelection('link')} />
-        <ToolbarButton label={t('editor.highlight')} shortcut={formatShortcut('H')} icon={<HighlightRegular />} onClick={() => replaceSelection('highlight')} />
+        <ToolbarButton
+          label={t('editor.undo')}
+          shortcut={formatShortcut('Z')}
+          icon={<ArrowUndoRegular />}
+          onClick={() => runToolbarCommand(undo)}
+        />
+        <ToolbarButton
+          label={t('editor.redo')}
+          shortcut={formatShortcut('Shift + Z')}
+          icon={<ArrowRedoRegular />}
+          onClick={() => runToolbarCommand(redo)}
+        />
+        <ToolbarButton
+          label={t('editor.bold')}
+          shortcut={formatShortcut('B')}
+          icon={<TextBoldRegular />}
+          onClick={() => replaceSelection('bold')}
+        />
+        <ToolbarButton
+          label={t('editor.italic')}
+          shortcut={formatShortcut('I')}
+          icon={<TextItalicRegular />}
+          onClick={() => replaceSelection('italic')}
+        />
+        <ToolbarButton
+          label={t('editor.underline')}
+          shortcut={formatShortcut('U')}
+          icon={<TextUnderlineRegular />}
+          onClick={() => replaceSelection('underline')}
+        />
+        <ToolbarButton
+          label={t('editor.strikethrough')}
+          icon={<TextStrikethroughRegular />}
+          onClick={() => replaceSelection('strikethrough')}
+        />
+        <ToolbarButton
+          label={t('editor.inlineCode')}
+          shortcut={formatShortcut('Shift + C')}
+          icon={<CodeRegular />}
+          onClick={() => replaceSelection('inlineCode')}
+        />
+        <ToolbarButton
+          label={t('editor.codeBlock')}
+          icon={<CodeBlockRegular />}
+          onClick={() => replaceSelection('codeBlock')}
+        />
+        <ToolbarButton
+          label={t('editor.quote')}
+          shortcut={formatShortcut('E')}
+          icon={<TextQuoteRegular />}
+          onClick={() => replaceSelection('quote')}
+        />
+        <ToolbarButton
+          label={t('editor.link')}
+          shortcut={formatShortcut('K')}
+          icon={<LinkRegular />}
+          onClick={() => replaceSelection('link')}
+        />
+        <ToolbarButton
+          label={t('editor.highlight')}
+          shortcut={formatShortcut('H')}
+          icon={<HighlightRegular />}
+          onClick={() => replaceSelection('highlight')}
+        />
         <div className={styles.splitButtonGroup}>
-          <ToolbarButton label={t('editor.textColor')} icon={<span className={styles.textColorGlyph}>A</span>} indicatorColor={lastTextColor} onClick={() => applyTextColor(lastTextColor)} />
+          <ToolbarButton
+            label={t('editor.textColor')}
+            icon={<span className={styles.textColorGlyph}>A</span>}
+            indicatorColor={lastTextColor}
+            onClick={() => applyTextColor(lastTextColor)}
+          />
           <Popover
             open={colorPopoverOpen}
             onOpenChange={(_, data) => {
@@ -769,14 +987,15 @@ export function MarkdownEditor({
           >
             <PopoverTrigger disableButtonEnhancement>
               <span>
-                <ToolbarButton label={t('editor.pickTextColor')} icon={<ChevronDownRegular />} onClick={() => undefined} />
+                <ToolbarButton
+                  label={t('editor.pickTextColor')}
+                  icon={<ChevronDownRegular />}
+                  onClick={() => undefined}
+                />
               </span>
             </PopoverTrigger>
             <PopoverSurface className={styles.colorPopover}>
-              <ColorPicker
-                color={pickerColor}
-                onColorChange={(_, data) => setDraftTextColor(hsvToHex(data.color))}
-              >
+              <ColorPicker color={pickerColor} onColorChange={(_, data) => setDraftTextColor(hsvToHex(data.color))}>
                 <div className={styles.colorPicker}>
                   <ColorArea className={styles.colorArea} />
                   <ColorSlider className={styles.colorSlider} />
@@ -845,7 +1064,9 @@ function ToolbarButton({
       {icon}
       <span className={styles.colorIndicator} style={{ backgroundColor: indicatorColor }} />
     </span>
-  ) : icon
+  ) : (
+    icon
+  )
   return (
     <Tooltip content={tooltip} relationship="label">
       <Button appearance="subtle" icon={buttonIcon} onClick={onClick} aria-label={tooltip} />
