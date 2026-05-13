@@ -188,7 +188,7 @@ const SYNC_TUNING = {
    *
    * 推荐范围：48 ~ 96
    */
-  editorBottomStickEpsilon: 48,
+  editorBottomStickEpsilon: 72,
 
   /**
    * editor 滚动比例达到多少，就认为接近底部。
