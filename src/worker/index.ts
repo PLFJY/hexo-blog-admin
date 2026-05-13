@@ -21,6 +21,7 @@ import {
   handlePostAssets,
   handlePostContent,
   handlePostsTree,
+  handlePublishPost,
   handleRenamePost,
   handleRenamePostAsset,
   handleTogglePostPublished,
@@ -126,6 +127,7 @@ async function handleApiRequest(request: Request, env: WorkerEnv, pathname: stri
   if (pathname === '/api/posts/asset/rename') return handleRenamePostAsset(env, request)
   if (pathname === '/api/posts/asset/delete') return handleDeletePostAsset(env, request)
   if (pathname === '/api/posts/rename') return handleRenamePost(env, request)
+  if (pathname === '/api/posts/publish') return handlePublishPost(env, request)
   if (pathname === '/api/posts/published') return handleTogglePostPublished(env, request)
   if (pathname === '/api/posts/delete') return handleDeletePost(env, request)
   if (pathname === '/api/drafts' && request.method === 'GET') return handleDrafts(env)

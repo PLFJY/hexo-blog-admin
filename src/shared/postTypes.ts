@@ -94,6 +94,19 @@ export type PostContentResponse = {
   sha?: string
 }
 
+export type PublishPostRequest = {
+  relativeId: string
+  markdown: string
+  message?: string
+  branch?: string
+}
+
+export type PublishPostResponse = {
+  commitSha: string
+  relativeId: string
+  markdown: string
+}
+
 export type TogglePostPublishedRequest = {
   relativeId: string
   published: boolean

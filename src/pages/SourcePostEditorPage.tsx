@@ -1,5 +1,5 @@
 import { Body1, Button, Dialog, DialogActions, DialogBody, DialogContent, DialogSurface, DialogTitle, Field, FluentProvider, Input, Popover, PopoverSurface, PopoverTrigger, Text, Title1, Title2, makeStyles, mergeClasses, tokens, webDarkTheme, webLightTheme } from '@fluentui/react-components'
-import { ArrowLeftRegular, DeleteRegular, SaveRegular } from '@fluentui/react-icons'
+import { ArrowLeftRegular, DeleteRegular, RocketRegular, SaveRegular } from '@fluentui/react-icons'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
@@ -19,9 +19,9 @@ import { deleteEditorSnapshot, readEditorSnapshot, writeEditorSnapshot } from '.
 import { resolveMarkdownResourceUrl } from '../lib/markdownResource'
 import type { PublicConfigResponse } from '../shared/apiTypes'
 import type { DraftAsset, DraftAssetListResponse } from '../shared/assetTypes'
-import type { DraftRecord, PublishDraftResponse } from '../shared/draftTypes'
+import type { DraftRecord } from '../shared/draftTypes'
 import { extractFrontMatterTitle } from '../shared/frontMatter'
-import type { PostAssetIndexResponse, PostContentResponse } from '../shared/postTypes'
+import type { PostAssetIndexResponse, PostContentResponse, PublishPostResponse } from '../shared/postTypes'
 import type { PostAsset } from '../shared/postTypes'
 import { usePageStyles } from './pageStyles'
 
@@ -117,7 +117,8 @@ type State =
       assetObjectUrls: Record<string, string>
       changingId?: boolean
       committing?: boolean
-      publishingSavedDraft?: boolean
+      publishingDirectly?: boolean
+      directPublishConfirmOpen?: boolean
       conflict?: {
         legacy?: boolean
         cloudMarkdown: string
@@ -308,24 +309,32 @@ export function SourcePostEditorPage() {
       })
       .catch((error: unknown) => setState({ ...state, message: error instanceof Error ? error.message : 'Unknown error' }))
   }
-  const publishSavedDraft = () => {
-    if (!state.savedDraft || state.publishingSavedDraft) return
-    setState({ ...state, publishingSavedDraft: true, message: undefined })
-    void sendJson<PublishDraftResponse>('/drafts/publish', 'POST', { draftId: state.savedDraft.id })
+  const publishDirectly = () => {
+    if (state.status !== 'ready' || state.publishingDirectly) return
+    setState({ ...state, publishingDirectly: true, directPublishConfirmOpen: false, message: t('posts.directPublishing') })
+    void sendJson<PublishPostResponse>('/posts/publish', 'POST', {
+      relativeId: state.post.post.relativeId,
+      markdown: state.markdown,
+    })
       .then((response) => {
         deleteEditorSnapshot(`source:${relativeId}`)
         setState({
           ...state,
-          savedDraft: undefined,
-          publishingSavedDraft: false,
+          markdown: response.markdown,
+          baseMarkdown: response.markdown,
+          baseRevision: response.commitSha,
           assets: [],
-          message: `${t('drafts.published')}: ${response.commitSha}`,
+          assetObjectUrls: {},
+          publishingDirectly: false,
+          directPublishConfirmOpen: false,
+          message: t('posts.directPublishSuccess', { commitSha: response.commitSha }),
         })
       })
       .catch((error: unknown) =>
         setState({
           ...state,
-          publishingSavedDraft: false,
+          publishingDirectly: false,
+          directPublishConfirmOpen: false,
           message: error instanceof Error ? error.message : 'Unknown error',
         }),
       )
@@ -394,8 +403,6 @@ export function SourcePostEditorPage() {
           draft={state.savedDraft}
           onOpenDrafts={() => navigate('/drafts')}
           onContinueDraft={() => navigate(`/drafts/edit?draftId=${encodeURIComponent(state.savedDraft?.id ?? '')}`)}
-          onPublishDraft={publishSavedDraft}
-          publishing={state.publishingSavedDraft}
           message={state.message}
         />
       ) : null}
@@ -410,7 +417,15 @@ export function SourcePostEditorPage() {
       ) : null}
       <section className={styles.card}>
         <div className={styles.row}>
-          <Button appearance="primary" icon={<SaveRegular />} onClick={saveAsDraft}>{t('posts.createDraft')}</Button>
+          <Button appearance="primary" icon={<SaveRegular />} onClick={saveAsDraft} disabled={state.committing || state.publishingDirectly || state.changingId}>{t('posts.createDraft')}</Button>
+          <Button
+            appearance="primary"
+            icon={<RocketRegular />}
+            onClick={() => setState({ ...state, directPublishConfirmOpen: true })}
+            disabled={state.committing || state.publishingDirectly || state.changingId || mermaidErrors.length > 0}
+          >
+            {state.publishingDirectly ? t('actions.publishing') : t('posts.directPublish')}
+          </Button>
           <DeletePostPopover onConfirm={deletePost} />
           <ChangeIdDialog
             currentRelativeId={state.post.post.relativeId}
@@ -428,6 +443,12 @@ export function SourcePostEditorPage() {
             onError={(message) => setState({ ...state, message })}
           />
         </div>
+        <DirectPublishDialog
+          open={Boolean(state.directPublishConfirmOpen)}
+          submitting={Boolean(state.publishingDirectly)}
+          onCancel={() => setState({ ...state, directPublishConfirmOpen: false })}
+          onConfirm={publishDirectly}
+        />
         <MarkdownAssetPanel
           ref={assetPanelRef}
           relativeId={state.post.post.relativeId}
@@ -468,15 +489,11 @@ function DraftSavedOverlay({
   draft,
   onOpenDrafts,
   onContinueDraft,
-  onPublishDraft,
-  publishing,
   message,
 }: {
   draft: DraftRecord
   onOpenDrafts: () => void
   onContinueDraft: () => void
-  onPublishDraft: () => void
-  publishing?: boolean
   message?: string
 }) {
   const styles = useSourceEditorStyles()
@@ -502,16 +519,45 @@ function DraftSavedOverlay({
           <Text>{t('posts.draftSavedId', { id: draft.relativeId })}</Text>
           {message ? <Text>{message}</Text> : null}
           <div className={styles.decisionActions}>
-            <Button onClick={onOpenDrafts} disabled={publishing}>{t('posts.goToDrafts')}</Button>
-            <Button onClick={onContinueDraft} disabled={publishing}>{t('posts.continueDraft')}</Button>
-            <Button appearance="primary" onClick={onPublishDraft} disabled={publishing}>
-              {publishing ? t('actions.publishing') : t('posts.publishSavedDraft')}
-            </Button>
+            <Button onClick={onOpenDrafts}>{t('posts.goToDrafts')}</Button>
+            <Button appearance="primary" onClick={onContinueDraft}>{t('posts.continueDraft')}</Button>
           </div>
         </section>
       </div>
     </FluentProvider>,
     document.body,
+  )
+}
+
+function DirectPublishDialog({
+  open,
+  submitting,
+  onCancel,
+  onConfirm,
+}: {
+  open: boolean
+  submitting: boolean
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  const { t } = useTranslation()
+  return (
+    <Dialog open={open} onOpenChange={(_, data) => !submitting && !data.open && onCancel()}>
+      <DialogSurface>
+        <DialogBody>
+          <DialogTitle>{t('posts.directPublishTitle')}</DialogTitle>
+          <DialogContent>
+            <Text>{t('posts.directPublishDescription')}</Text>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={onCancel} disabled={submitting}>{t('actions.cancel')}</Button>
+            <Button appearance="primary" icon={<RocketRegular />} onClick={onConfirm} disabled={submitting}>
+              {submitting ? t('actions.publishing') : t('posts.confirmDirectPublish')}
+            </Button>
+          </DialogActions>
+        </DialogBody>
+      </DialogSurface>
+    </Dialog>
   )
 }
 

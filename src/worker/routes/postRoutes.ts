@@ -1,8 +1,9 @@
-import type { PostContentResponse, TogglePostPublishedRequest, TogglePostPublishedResponse } from '../../shared/postTypes'
+import type { PostContentResponse, PublishPostRequest, PublishPostResponse, TogglePostPublishedRequest, TogglePostPublishedResponse } from '../../shared/postTypes'
 import type { WorkerEnv } from '../env'
 import { buildPostAssetPaths, buildPostPaths } from '../../features/posts/postPathUtils'
-import { setFrontMatterBoolean } from '../../shared/frontMatter'
+import { ensureFrontMatterDate, extractFrontMatterTitle, setFrontMatterBoolean } from '../../shared/frontMatter'
 import { removeMarkdownImageReferences } from '../../shared/markdownAssets'
+import { deleteDraftAssetManifest, getDraftAsset, getDraftAssetManifest } from '../services/d1/d1DraftAssets'
 import { getGitHubFile, getGitHubFileBase64 } from '../services/github/githubContent'
 import { createBatchCommit } from '../services/github/githubGitCommit'
 import { getAdminIndex } from '../services/indexer/adminIndex'
@@ -36,6 +37,15 @@ type DeletePostRequest = {
 }
 
 type TogglePostPublishedBody = Partial<TogglePostPublishedRequest>
+
+const arrayBufferToBase64 = (buffer: ArrayBuffer) => {
+  const bytes = new Uint8Array(buffer)
+  let binary = ''
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte)
+  }
+  return btoa(binary)
+}
 
 export async function handlePostsTree(env: WorkerEnv): Promise<Response> {
   return json(await getAdminIndex(env))
@@ -209,6 +219,52 @@ export async function handleDeletePost(env: WorkerEnv, request: Request): Promis
     deletions,
   })
   return json({ commitSha: commit.commitSha, relativeId })
+}
+
+export async function handlePublishPost(env: WorkerEnv, request: Request): Promise<Response> {
+  if (request.method !== 'POST') return json({ error: 'METHOD_NOT_ALLOWED' }, { status: 405 })
+  const body = (await request.json()) as Partial<PublishPostRequest>
+  if (!body.relativeId || typeof body.markdown !== 'string') {
+    return json({ error: 'BAD_REQUEST', message: 'relativeId and markdown are required' }, { status: 400 })
+  }
+  const relativeId = assertSafeRelativeId(body.relativeId)
+  const config = requireConfig(env)
+  const index = await getAdminIndex(env)
+  const post = index.posts.find((item) => item.relativeId === relativeId)
+  if (!post) return json({ error: 'NOT_FOUND', message: 'Post not found' }, { status: 404 })
+
+  const postPath = post.path || buildPostPaths({ postsDir: config.POSTS_DIR, relativeId }).postPath
+  const markdown = ensureFrontMatterDate(body.markdown)
+  const draftManifest = await getDraftAssetManifest(env, relativeId, relativeId)
+  const draftAssetFiles = (await Promise.all(
+    draftManifest.assets.map(async (asset) => {
+      const object = await getDraftAsset(env, asset.key)
+      if (!object) return undefined
+      return {
+        path: asset.finalRepoPath,
+        encoding: 'base64' as const,
+        content: arrayBufferToBase64(await object.arrayBuffer()),
+      }
+    }),
+  )).filter((file): file is { path: string; encoding: 'base64'; content: string } => Boolean(file))
+
+  const commit = await createBatchCommit(env, {
+    branch: body.branch || config.GITHUB_BRANCH,
+    message: body.message || `Publish ${extractFrontMatterTitle(markdown) || relativeId}`,
+    files: [
+      { path: postPath, encoding: 'utf-8', content: markdown },
+      ...draftAssetFiles,
+    ],
+    deletions: [],
+  })
+  await deleteDraftAssetManifest(env, relativeId)
+
+  const response: PublishPostResponse = {
+    commitSha: commit.commitSha,
+    relativeId,
+    markdown,
+  }
+  return json(response)
 }
 
 export async function handleTogglePostPublished(env: WorkerEnv, request: Request): Promise<Response> {
