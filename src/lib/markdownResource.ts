@@ -1,12 +1,14 @@
 import { buildApiUrl } from './apiClient'
 import type { PublicConfigResponse } from '../shared/apiTypes'
 import type { DraftAsset } from '../shared/assetTypes'
+import type { PostAsset } from '../shared/postTypes'
 
 type ResolveMarkdownResourceOptions = {
   src: string
   relativeId: string
   publicConfig?: PublicConfigResponse
   assets?: DraftAsset[]
+  sourceAssets?: PostAsset[]
   assetObjectUrls?: Record<string, string>
   debugPublicUrl?: boolean
 }
@@ -53,6 +55,7 @@ export function resolveMarkdownResourceUrl({
   relativeId,
   publicConfig,
   assets = [],
+  sourceAssets = [],
   assetObjectUrls = {},
   debugPublicUrl = false,
 }: ResolveMarkdownResourceOptions): ResolvedMarkdownResourceUrl {
@@ -68,6 +71,10 @@ export function resolveMarkdownResourceUrl({
       }
     }
     return fallbackUrl
+  }
+  const sourceAsset = sourceAssets.find((asset) => asset.markdownPath === trimmed)
+  if (sourceAsset) {
+    return sourceAsset.publicUrl ?? buildApiUrl(`/posts/asset/blob?repoPath=${encodeURIComponent(sourceAsset.repoPath)}`)
   }
   if (isSpecialUrl(trimmed)) {
     const fallbackUrl = buildConfiguredAssetFallbackUrl(publicConfig, trimmed)

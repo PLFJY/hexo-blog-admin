@@ -1,4 +1,4 @@
-import { Body1, Button, Field, FluentProvider, Input, Popover, PopoverSurface, PopoverTrigger, Text, Title1, Title2, makeStyles, mergeClasses, tokens, webDarkTheme, webLightTheme } from '@fluentui/react-components'
+import { Body1, Button, Dialog, DialogActions, DialogBody, DialogContent, DialogSurface, DialogTitle, Field, FluentProvider, Input, Popover, PopoverSurface, PopoverTrigger, Text, Title1, Title2, makeStyles, mergeClasses, tokens, webDarkTheme, webLightTheme } from '@fluentui/react-components'
 import { ArrowLeftRegular, DeleteRegular, SaveRegular } from '@fluentui/react-icons'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -95,6 +95,8 @@ const useSourceEditorStyles = makeStyles({
     },
   },
   confirmSurface: { display: 'grid', gap: tokens.spacingVerticalM, width: 'min(320px, 90vw)' },
+  changeIdSurface: { width: 'min(520px, 92vw)' },
+  changeIdContent: { display: 'grid', gap: tokens.spacingVerticalM },
 })
 
 type State =
@@ -132,6 +134,7 @@ export function SourcePostEditorPage() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const relativeId = params.get('relativeId') ?? ''
+  const renamedFrom = params.get('renamedFrom') ?? ''
   const [state, setState] = useState<State>({ status: 'loading' })
   const assetPanelRef = useRef<MarkdownAssetPanelHandle>(null)
 
@@ -209,6 +212,7 @@ export function SourcePostEditorPage() {
         relativeId: state.post.post.relativeId,
         publicConfig: state.publicConfig,
         assets: state.assets,
+        sourceAssets: state.sourceAssets,
         assetObjectUrls: state.assetObjectUrls,
         debugPublicUrl: assetPublicUrlDebug,
       })
@@ -217,6 +221,7 @@ export function SourcePostEditorPage() {
     state.status === 'ready' ? state.post.post.relativeId : '',
     state.status === 'ready' ? state.publicConfig : undefined,
     state.status === 'ready' ? state.assets : undefined,
+    state.status === 'ready' ? state.sourceAssets : undefined,
     state.status === 'ready' ? state.assetObjectUrls : undefined,
   ])
 
@@ -388,6 +393,9 @@ export function SourcePostEditorPage() {
           <Text>{state.message}</Text>
         </section>
       ) : null}
+      {assetPublicUrlDebug && renamedFrom && renamedFrom !== state.post.post.relativeId ? (
+        <SourceIdDebugPanel sourceRelativeId={renamedFrom} currentRelativeId={state.post.post.relativeId} />
+      ) : null}
       <section className={styles.card}>
         <div className={styles.row}>
           <Button appearance="primary" icon={<SaveRegular />} onClick={saveAsDraft}>{t('posts.createDraft')}</Button>
@@ -398,7 +406,7 @@ export function SourcePostEditorPage() {
             disabled={state.committing}
             onDone={(relativeId, markdown, commitSha) => {
               setState({ ...state, markdown, message: t('posts.renameSuccess', { relativeId, commitSha }) })
-              navigate(`/posts/edit?relativeId=${encodeURIComponent(relativeId)}`, { replace: true })
+              navigate(`/posts/edit?relativeId=${encodeURIComponent(relativeId)}&renamedFrom=${encodeURIComponent(state.post.post.relativeId)}`, { replace: true })
             }}
             onError={(message) => setState({ ...state, message })}
           />
@@ -509,6 +517,19 @@ function DeletePostPopover({ onConfirm }: { onConfirm: () => void }) {
   )
 }
 
+function SourceIdDebugPanel({ sourceRelativeId, currentRelativeId }: { sourceRelativeId: string; currentRelativeId: string }) {
+  const styles = useSourceEditorStyles()
+  return (
+    <section className={styles.statusPanel}>
+      <Text weight="semibold">ID mapping debug</Text>
+      <Text>sourceRelativeId: {sourceRelativeId}</Text>
+      <Text>currentRelativeId: {currentRelativeId}</Text>
+      <Text>request: /posts/rename</Text>
+      <Text>source action: source post and source assets moved to currentRelativeId paths</Text>
+    </section>
+  )
+}
+
 function ChangeIdDialog({
   currentRelativeId,
   markdown,
@@ -522,12 +543,12 @@ function ChangeIdDialog({
   onDone: (relativeId: string, markdown: string, commitSha: string) => void
   onError: (message: string) => void
 }) {
+  const styles = useSourceEditorStyles()
   const { t } = useTranslation()
   const [value, setValue] = useState(currentRelativeId)
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const submit = () => {
-    if (!window.confirm(t('posts.confirmChangeId'))) return
     setBusy(true)
     void sendJson<{ commitSha: string; relativeId: string; markdown: string }>('/posts/rename', 'POST', {
       relativeId: currentRelativeId,
@@ -542,17 +563,28 @@ function ChangeIdDialog({
       .finally(() => setBusy(false))
   }
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.spacingVerticalS, minWidth: 0 }}>
-      <Button onClick={() => setOpen((current) => !current)} disabled={disabled || busy}>{t('posts.changeId')}</Button>
-      {open ? (
-        <section style={{ display: 'grid', gap: tokens.spacingVerticalS, padding: tokens.spacingVerticalS }}>
-          <Field label={t('posts.newRelativeId')}>
-            <Input value={value} onChange={(_, data) => setValue(data.value)} />
-          </Field>
-          <Text size={200}>{t('posts.changeIdDescription')}</Text>
-          <Button appearance="primary" onClick={submit} disabled={busy || !value.trim()}>{busy ? t('actions.submitting') : t('actions.confirm')}</Button>
-        </section>
-      ) : null}
-    </div>
+    <>
+      <Button onClick={() => setOpen(true)} disabled={disabled || busy}>{t('posts.changeId')}</Button>
+      <Dialog open={open} onOpenChange={(_, data) => !busy && setOpen(data.open)}>
+        <DialogSurface className={styles.changeIdSurface}>
+          <DialogBody>
+            <DialogTitle>{t('posts.changeId')}</DialogTitle>
+            <DialogContent className={styles.changeIdContent}>
+              <Text>{t('posts.confirmChangeId')}</Text>
+              <Field label={t('posts.newRelativeId')}>
+                <Input value={value} onChange={(_, data) => setValue(data.value)} />
+              </Field>
+              <Text size={200}>{t('posts.changeIdDescription')}</Text>
+            </DialogContent>
+            <DialogActions>
+              <Button appearance="secondary" onClick={() => setOpen(false)} disabled={busy}>{t('actions.cancel')}</Button>
+              <Button appearance="primary" onClick={submit} disabled={busy || !value.trim() || value.trim() === currentRelativeId}>
+                {busy ? t('actions.submitting') : t('actions.confirm')}
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
+    </>
   )
 }

@@ -69,16 +69,33 @@ export async function saveDraft(env: WorkerEnv, request: SaveDraftRequest, id?: 
   }
 
   const now = new Date().toISOString()
-  const draftId = id && resolveDraftId(id) ? resolveDraftId(id) : createDraftId(request.relativeId)
-  const existing = await getDraft(env, draftId)
   const relativeId = normalizeRelativeId(request.relativeId)
+  const draftId = createDraftId(relativeId)
+  const previousDraftId = id && resolveDraftId(id) ? resolveDraftId(id) : ''
+  const existing = previousDraftId ? await getDraft(env, previousDraftId) : await getDraft(env, draftId)
   const sourceRelativeId = request.sourceRelativeId ? normalizeRelativeId(request.sourceRelativeId) : existing?.sourceRelativeId
   const title = extractFrontMatterTitle(request.markdown)
   const createdAt = existing?.createdAt ?? now
 
   try {
-    await db(env)
-      .prepare(
+    if (previousDraftId && previousDraftId !== draftId) {
+      const duplicate = await getDraft(env, draftId)
+      if (duplicate) throw new Error(`Draft relativeId already exists: ${relativeId}`)
+      await db(env).batch([
+        db(env)
+          .prepare(
+            `INSERT INTO drafts (id, relative_id, source_relative_id, title, markdown, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`,
+          )
+          .bind(draftId, relativeId, sourceRelativeId ?? null, title, request.markdown, createdAt, now),
+        db(env)
+          .prepare('UPDATE draft_assets SET draft_id = ?1, updated_at = ?2 WHERE draft_id = ?3')
+          .bind(draftId, now, previousDraftId),
+        db(env).prepare('DELETE FROM drafts WHERE id = ?1').bind(previousDraftId),
+      ])
+    } else {
+      await db(env)
+        .prepare(
       `INSERT INTO drafts (id, relative_id, source_relative_id, title, markdown, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
          ON CONFLICT(id) DO UPDATE SET
@@ -87,9 +104,10 @@ export async function saveDraft(env: WorkerEnv, request: SaveDraftRequest, id?: 
            title = excluded.title,
            markdown = excluded.markdown,
            updated_at = excluded.updated_at`,
-      )
-      .bind(draftId, relativeId, sourceRelativeId ?? null, title, request.markdown, createdAt, now)
-      .run()
+        )
+        .bind(draftId, relativeId, sourceRelativeId ?? null, title, request.markdown, createdAt, now)
+        .run()
+    }
   } catch (error) {
     if (error instanceof Error && error.message.toLowerCase().includes('unique')) {
       throw new Error(`Draft relativeId already exists: ${relativeId}`)

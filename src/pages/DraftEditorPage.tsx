@@ -20,6 +20,7 @@ import type { DraftAsset, DraftAssetListResponse } from '../shared/assetTypes'
 import type { DraftListResponse, DraftRecord, PublishDraftResponse } from '../shared/draftTypes'
 import { removeMarkdownImageReferences } from '../shared/markdownAssets'
 import type { PostAsset, PostAssetIndexResponse, PostTreeResponse } from '../shared/postTypes'
+import { buildPostAssetPaths } from '../features/posts/postPathUtils'
 import { usePageStyles } from './pageStyles'
 
 const useStyles = makeStyles({
@@ -119,6 +120,17 @@ async function fetchSourceAssets(relativeId: string, postIndex: PostTreeResponse
     .catch(() => [])
 }
 
+function mapSourceAssetsToCurrentRelativeId(sourceAssets: PostAsset[], sourceRelativeId: string | undefined, currentRelativeId: string): PostAsset[] {
+  const normalizedSource = sourceRelativeId ? normalizeRelativeId(sourceRelativeId) : ''
+  const normalizedCurrent = normalizeRelativeId(currentRelativeId)
+  if (!normalizedSource || normalizedSource === normalizedCurrent) return sourceAssets
+  return sourceAssets.map((asset) => ({
+    ...asset,
+    postRelativeId: normalizedSource,
+    markdownPath: buildPostAssetPaths({ postsDir: '', relativeId: normalizedCurrent, filename: asset.filename }).markdownPath,
+  }))
+}
+
 async function fetchDraftAssets(draftId: string, relativeId: string): Promise<DraftAsset[]> {
   if (!draftId) return []
   const response = await getJson<DraftAssetListResponse>(`/assets?draftId=${encodeURIComponent(draftId)}&relativeId=${encodeURIComponent(relativeId)}`)
@@ -142,6 +154,7 @@ type State =
       committing?: boolean
       publishing?: boolean
       baseMarkdown: string
+      baseRelativeId: string
       baseUpdatedAt?: string
       snapshotDisabled?: boolean
       conflict?: {
@@ -160,6 +173,7 @@ export function DraftEditorPage() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const draftId = params.get('draftId') ?? ''
+  const renamedFrom = params.get('renamedFrom') ?? ''
   const [state, setState] = useState<State>({ status: 'loading' })
   const pollTimer = useRef<number | undefined>(undefined)
   const assetPanelRef = useRef<MarkdownAssetPanelHandle>(null)
@@ -204,7 +218,12 @@ export function DraftEditorPage() {
           message = t('conflict.conflictDetected')
         }
         const assets = await fetchDraftAssets(nextDraft.id, nextDraft.relativeId)
-        const sourceAssets = await fetchSourceAssets(nextDraft.relativeId, postIndex)
+        const sourceAssetRelativeId = nextDraft.sourceRelativeId || nextDraft.relativeId
+        const sourceAssets = mapSourceAssetsToCurrentRelativeId(
+          await fetchSourceAssets(sourceAssetRelativeId, postIndex),
+          nextDraft.sourceRelativeId,
+          nextDraft.relativeId,
+        )
         setState({
           status: 'ready',
           draft: nextDraft,
@@ -216,6 +235,7 @@ export function DraftEditorPage() {
           assetObjectUrls: {},
           message,
           baseMarkdown: draft.markdown,
+          baseRelativeId: renamedFrom || draft.relativeId,
           baseUpdatedAt: draft.updatedAt,
           conflict,
         })
@@ -223,7 +243,12 @@ export function DraftEditorPage() {
           void getJson<PostTreeResponse>('/posts/tree')
             .then(async (freshIndex) => {
               setCachedAdminIndex(freshIndex)
-              const freshSourceAssets = await fetchSourceAssets(nextDraft.relativeId, freshIndex)
+              const sourceAssetRelativeId = nextDraft.sourceRelativeId || nextDraft.relativeId
+              const freshSourceAssets = mapSourceAssetsToCurrentRelativeId(
+                await fetchSourceAssets(sourceAssetRelativeId, freshIndex),
+                nextDraft.sourceRelativeId,
+                nextDraft.relativeId,
+              )
               setState((current) =>
                 current.status === 'ready'
                   ? {
@@ -239,7 +264,7 @@ export function DraftEditorPage() {
       })
       .catch((error: unknown) => setState({ status: 'error', message: error instanceof Error ? error.message : 'Unknown error' }))
     return () => window.clearTimeout(pollTimer.current)
-  }, [draftId])
+  }, [draftId, renamedFrom])
 
   useEffect(() => {
     if (state.status !== 'ready' || !state.draft.id || state.snapshotDisabled || state.conflict) return
@@ -261,6 +286,7 @@ export function DraftEditorPage() {
         relativeId: state.draft.relativeId,
         publicConfig: state.publicConfig,
         assets: state.assets,
+        sourceAssets: state.sourceAssets,
         assetObjectUrls: state.assetObjectUrls,
         debugPublicUrl: assetPublicUrlDebug,
       })
@@ -269,6 +295,7 @@ export function DraftEditorPage() {
     state.status === 'ready' ? state.draft.relativeId : '',
     state.status === 'ready' ? state.publicConfig : undefined,
     state.status === 'ready' ? state.assets : undefined,
+    state.status === 'ready' ? state.sourceAssets : undefined,
     state.status === 'ready' ? state.assetObjectUrls : undefined,
   ])
 
@@ -298,7 +325,7 @@ export function DraftEditorPage() {
     const nextMarkdown = removeMarkdownImageReferences(state.draft.markdown, asset.markdownPath)
     setState({ ...state, saving: true, committing: true, message: t('assets.submittingDelete') })
     void sendJson<{ commitSha: string; markdown: string }>('/posts/asset/delete', 'POST', {
-      relativeId: state.draft.relativeId,
+      relativeId: asset.postRelativeId || state.draft.sourceRelativeId || state.draft.relativeId,
       repoPath: asset.repoPath,
       markdownPath: asset.markdownPath,
     })
@@ -330,13 +357,19 @@ export function DraftEditorPage() {
     }
     const method = state.draft.id ? 'PUT' : 'POST'
     const path = state.draft.id ? `/drafts/${encodeURIComponent(state.draft.id)}` : '/drafts'
+    const previousDraftId = state.draft.id
+    const previousRelativeId = state.baseRelativeId || state.draft.relativeId
     setState({ ...state, saving: true })
     void sendJson<DraftRecord>(path, method, { ...state.draft, relativeId: normalizedRelativeId })
       .then(async (draft) => {
         const assets = await fetchDraftAssets(draft.id, draft.relativeId)
+        if (previousDraftId && previousDraftId !== draft.id) deleteEditorSnapshot(`draft:${previousDraftId}`)
         deleteEditorSnapshot(`draft:${draft.id}`)
-        setState({ ...state, draft, saving: false, message: t('drafts.saved'), assets, baseMarkdown: draft.markdown, baseUpdatedAt: draft.updatedAt })
-        if (!draftId) navigate(`/drafts/edit?draftId=${encodeURIComponent(draft.id)}`, { replace: true })
+        setState({ ...state, draft, saving: false, message: t('drafts.saved'), assets, baseMarkdown: draft.markdown, baseRelativeId: draft.relativeId, baseUpdatedAt: draft.updatedAt })
+        if (draftId !== draft.id) {
+          const mappingParam = previousRelativeId && previousRelativeId !== draft.relativeId ? `&renamedFrom=${encodeURIComponent(previousRelativeId)}` : ''
+          navigate(`/drafts/edit?draftId=${encodeURIComponent(draft.id)}${mappingParam}`, { replace: true })
+        }
       })
       .catch((error: unknown) => setState({ ...state, saving: false, message: error instanceof Error ? error.message : 'Unknown error' }))
   }
@@ -427,6 +460,7 @@ export function DraftEditorPage() {
             {state.message ? <Text>{state.message}</Text> : null}
           </section>
         ) : null}
+        {assetPublicUrlDebug ? <DraftIdDebugPanel draft={state.draft} baseRelativeId={state.baseRelativeId} normalizedRelativeId={normalizedRelativeId} assets={state.assets} /> : null}
         <Field
           label={t('drafts.relativeIdLabel')}
           validationState={!canSaveDraft ? 'error' : undefined}
@@ -472,6 +506,46 @@ export function DraftEditorPage() {
 function ChangeIdNote() {
   const { t } = useTranslation()
   return <Text>{t('drafts.changeIdNote')}</Text>
+}
+
+function DraftIdDebugPanel({
+  draft,
+  baseRelativeId,
+  normalizedRelativeId,
+  assets,
+}: {
+  draft: DraftRecord
+  baseRelativeId: string
+  normalizedRelativeId: string
+  assets: DraftAsset[]
+}) {
+  const localStyles = useStyles()
+  const changedFromSource = Boolean(draft.sourceRelativeId && draft.sourceRelativeId !== normalizedRelativeId)
+  const changedFromLoaded = Boolean(baseRelativeId && baseRelativeId !== normalizedRelativeId)
+  if (!changedFromSource && !changedFromLoaded) return null
+
+  return (
+    <section className={localStyles.statusPanel}>
+      <Text weight="semibold">ID mapping debug</Text>
+      <Text>sourceRelativeId: {draft.sourceRelativeId || '-'}</Text>
+      <Text>loadedRelativeId: {baseRelativeId || '-'}</Text>
+      <Text>currentRelativeId: {draft.relativeId || '-'}</Text>
+      <Text>normalizedRelativeId: {normalizedRelativeId || '-'}</Text>
+      <Text>draftId: {draft.id || '-'}</Text>
+      {assets.length > 0 ? (
+        <ul style={{ display: 'grid', gap: tokens.spacingVerticalXS, margin: 0, paddingInlineStart: '18px' }}>
+          {assets.map((asset) => (
+            <li key={asset.key}>
+              <Text block>asset.relativeId: {asset.relativeId}</Text>
+              <Text block>r2Key: {asset.key}</Text>
+              <Text block>markdownPath: {asset.markdownPath}</Text>
+              <Text block>finalRepoPath: {asset.finalRepoPath}</Text>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
+  )
 }
 
 function DeleteDraftPopover({ disabled, onConfirm }: { disabled?: boolean; onConfirm: () => void }) {
