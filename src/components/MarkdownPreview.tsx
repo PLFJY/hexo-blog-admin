@@ -158,6 +158,22 @@ const useStyles = makeStyles({
       textAlign: 'left',
       whiteSpace: 'pre-wrap',
     },
+    '& .hba-mermaid[data-mermaid-status="pending"] .hba-mermaid__source': {
+      display: 'none',
+    },
+    '& .hba-mermaid__placeholder': {
+      color: tokens.colorNeutralForeground3,
+      fontSize: '12px',
+      lineHeight: tokens.lineHeightBase300,
+    },
+    '& .hba-mermaid__error': {
+      marginBottom: tokens.spacingVerticalS,
+      color: tokens.colorPaletteRedForeground1,
+      fontSize: '12px',
+      lineHeight: tokens.lineHeightBase300,
+      textAlign: 'left',
+      whiteSpace: 'pre-wrap',
+    },
     '& .hba-source-line-sentinel': {
       display: 'block',
       height: 0,
@@ -183,6 +199,11 @@ export type MermaidRenderError = {
   message: string
 }
 
+type MermaidRenderCacheEntry = {
+  svg: string
+  height?: number
+}
+
 const areMermaidRenderErrorsEqual = (left: MermaidRenderError[], right: MermaidRenderError[]) =>
   left.length === right.length &&
   left.every((error, index) => {
@@ -201,7 +222,20 @@ const escapeHtml = (value: string) => MarkdownIt().utils.escapeHtml(value)
 const renderTokenAttrs = (attrs: [string, string][]) =>
   attrs.map(([name, value]) => ` ${escapeHtml(name)}="${escapeHtml(value)}"`).join('')
 
-function createMarkdownRenderer(resolveResourceUrl?: (src: string) => ResolvedMarkdownResourceUrl) {
+const hashString = (value: string) => {
+  let hash = 0
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) | 0
+  }
+  return Math.abs(hash).toString(36)
+}
+
+const getMermaidCacheKey = (source: string, theme: string) => `${theme}:${hashString(source)}`
+
+function createMarkdownRenderer(
+  resolveResourceUrl: ((src: string) => ResolvedMarkdownResourceUrl) | undefined,
+  getCachedMermaidSvg?: (source: string) => string | undefined,
+) {
   const md = new MarkdownIt({
     html: true,
     linkify: true,
@@ -241,10 +275,18 @@ function createMarkdownRenderer(resolveResourceUrl?: (src: string) => ResolvedMa
       return defaultFenceRenderer ? defaultFenceRenderer(tokens, index, options, env, self) : self.renderToken(tokens, index, options)
     }
 
+    const cachedSvg = getCachedMermaidSvg?.(token.content)
+    if (cachedSvg) {
+      token.attrJoin('class', 'hba-mermaid')
+      token.attrSet('data-mermaid-status', 'rendered')
+      const attrs = renderTokenAttrs(token.attrs ?? [])
+      return `<div${attrs}>${cachedSvg}</div>`
+    }
+
     token.attrJoin('class', 'hba-mermaid')
     token.attrSet('data-mermaid-status', 'pending')
     const attrs = renderTokenAttrs(token.attrs ?? [])
-    return `<div${attrs}><pre class="hba-mermaid__source">${escapeHtml(token.content)}</pre></div>`
+    return `<div${attrs}><pre class="hba-mermaid__source" hidden>${escapeHtml(token.content)}</pre><div class="hba-mermaid__placeholder">Rendering Mermaid diagram...</div></div>`
   }
 
   const defaultLinkOpenRenderer = md.renderer.rules.link_open
@@ -298,7 +340,16 @@ export function MarkdownPreview({
   const onMermaidRenderErrorsChangeRef = useRef(onMermaidRenderErrorsChange)
   const lastMermaidRenderErrorsRef = useRef<MermaidRenderError[]>([])
   const mermaidRenderRunRef = useRef(0)
-  const renderer = useMemo(() => createMarkdownRenderer(resolveResourceUrl), [resolveResourceUrl])
+  const mermaidRenderCacheRef = useRef(new Map<string, MermaidRenderCacheEntry>())
+  const mermaidTheme = resolvedMode === 'dark' ? 'dark' : 'default'
+  const renderer = useMemo(
+    () =>
+      createMarkdownRenderer(resolveResourceUrl, (source) => {
+        const cacheKey = getMermaidCacheKey(source, mermaidTheme)
+        return mermaidRenderCacheRef.current.get(cacheKey)?.svg
+      }),
+    [resolveResourceUrl, mermaidTheme],
+  )
   const html = useMemo(() => {
     const title = extractFrontMatterTitle(markdown)
     const body = stripFrontMatter(markdown)
@@ -335,13 +386,22 @@ export function MarkdownPreview({
   }, [])
 
   useEffect(() => {
-    onPreviewContentChangeRef.current?.()
     emitMermaidRenderErrors([])
+    const element = rootRef.current
+    const hasPendingMermaid = Boolean(element?.querySelector('.hba-mermaid[data-mermaid-status="pending"]'))
+    if (!hasPendingMermaid) onPreviewContentChangeRef.current?.()
   }, [html])
 
   useEffect(() => {
     const element = rootRef.current
-    if (!element || !html.includes('hba-mermaid')) return undefined
+    if (!element) return undefined
+
+    const initialBlocks = Array.from(
+      element.querySelectorAll<HTMLElement>(
+        '.hba-mermaid[data-mermaid-status="pending"], .hba-mermaid[data-mermaid-status="error"]',
+      ),
+    )
+    if (initialBlocks.length === 0) return undefined
 
     const renderRun = mermaidRenderRunRef.current + 1
     mermaidRenderRunRef.current = renderRun
@@ -362,34 +422,58 @@ export function MarkdownPreview({
       mermaid.initialize({
         startOnLoad: false,
         securityLevel: 'strict',
-        theme: resolvedMode === 'dark' ? 'dark' : 'default',
+        theme: mermaidTheme,
       })
 
       const currentElement = rootRef.current
       if (!currentElement) return
-      const blocks = Array.from(currentElement.querySelectorAll<HTMLElement>('.hba-mermaid'))
+      const blocks = Array.from(
+        currentElement.querySelectorAll<HTMLElement>(
+          '.hba-mermaid[data-mermaid-status="pending"], .hba-mermaid[data-mermaid-status="error"]',
+        ),
+      )
       const errors: MermaidRenderError[] = []
-      await Promise.all(blocks.map(async (block, index) => {
+      for (const [index, block] of blocks.entries()) {
+        if (cancelled || mermaidRenderRunRef.current !== renderRun || !block.isConnected) return
         const source = block.dataset.mermaidSource ?? block.querySelector<HTMLElement>('.hba-mermaid__source')?.textContent ?? ''
         if (!source.trim()) return
 
         try {
+          const cacheKey = getMermaidCacheKey(source, mermaidTheme)
+          const cached = mermaidRenderCacheRef.current.get(cacheKey)
+          if (cached) {
+            block.dataset.mermaidSource = source
+            block.innerHTML = cached.svg
+            block.dataset.mermaidStatus = 'rendered'
+            continue
+          }
+
           const { svg, bindFunctions } = await mermaid.render(`hba-mermaid-${renderRun}-${index}`, source)
           if (cancelled || mermaidRenderRunRef.current !== renderRun || !block.isConnected) return
           block.dataset.mermaidSource = source
           block.innerHTML = svg
+          mermaidRenderCacheRef.current.set(cacheKey, {
+            svg,
+            height: block.offsetHeight,
+          })
+          if (mermaidRenderCacheRef.current.size > 50) {
+            const oldestKey = mermaidRenderCacheRef.current.keys().next().value
+            if (oldestKey) mermaidRenderCacheRef.current.delete(oldestKey)
+          }
           block.dataset.mermaidStatus = 'rendered'
           bindFunctions?.(block)
         } catch (error) {
           if (cancelled || mermaidRenderRunRef.current !== renderRun || !block.isConnected) return
           block.dataset.mermaidStatus = 'error'
+          const message = error instanceof Error ? error.message : 'Failed to render Mermaid diagram.'
+          block.innerHTML = `<div class="hba-mermaid__error">${escapeHtml(message)}</div><pre class="hba-mermaid__source">${escapeHtml(source)}</pre>`
           errors.push({
             index,
             line: Number.isFinite(Number(block.dataset.sourceLine)) ? Number(block.dataset.sourceLine) : undefined,
-            message: error instanceof Error ? error.message : 'Failed to render Mermaid diagram.',
+            message,
           })
         }
-      }))
+      }
 
       if (!cancelled && mermaidRenderRunRef.current === renderRun) {
         errors.sort((a, b) => a.index - b.index)
@@ -398,18 +482,15 @@ export function MarkdownPreview({
       if (!cancelled) notifyPreviewContentChange()
     }
 
-    const timer = window.setTimeout(() => {
-      frame = window.requestAnimationFrame(() => {
-        void renderMermaidBlocks()
-      })
-    }, 0)
+    frame = window.requestAnimationFrame(() => {
+      void renderMermaidBlocks()
+    })
     return () => {
       cancelled = true
-      if (timer !== undefined) window.clearTimeout(timer)
       if (frame !== undefined) window.cancelAnimationFrame(frame)
       if (settleFrame !== undefined) window.cancelAnimationFrame(settleFrame)
     }
-  }, [html, resolvedMode])
+  }, [html, mermaidTheme])
 
   useEffect(() => {
     const element = rootRef.current

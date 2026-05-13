@@ -158,6 +158,9 @@ const getPreviewY = (previewRoot: HTMLElement, element: HTMLElement) => {
   return elementRect.top - rootRect.top + previewRoot.scrollTop
 }
 
+const hasPendingMermaidBlocks = (root: HTMLElement) =>
+  Boolean(root.querySelector('.hba-mermaid[data-mermaid-status="pending"]'))
+
 const buildPreviewLineMap = (view: EditorView, previewRoot: HTMLElement): PreviewLineMap => {
   const previewMaxScrollTop = Math.max(0, previewRoot.scrollHeight - previewRoot.clientHeight)
   const anchorByLine = new Map<number, number>([[1, 0]])
@@ -392,6 +395,7 @@ export function ArticleMarkdownWorkspace({
     const view = editorViewRef.current
     const root = previewRootRef.current
     if (!view || !root) return undefined
+    if (hasPendingMermaidBlocks(root)) return scrollMapRef.current
 
     const nextMap = buildPreviewLineMap(view, root)
     scrollMapRef.current = nextMap
@@ -425,6 +429,12 @@ export function ArticleMarkdownWorkspace({
 
   const getOrBuildScrollMap = useCallback(() => {
     if (!scrollMapDirtyRef.current && scrollMapRef.current) return scrollMapRef.current
+
+    const root = previewRootRef.current
+    if (root && hasPendingMermaidBlocks(root)) {
+      if (scrollMapRef.current) return scrollMapRef.current
+      return undefined
+    }
 
     // 如果用户正在滚动，优先用旧 map，避免滚动帧里抢主线程重建。
     if (scrollMapRef.current && !canRebuildScrollMapNow()) return scrollMapRef.current
