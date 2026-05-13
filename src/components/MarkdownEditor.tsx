@@ -511,6 +511,18 @@ export function MarkdownEditor({
     return true
   }, [])
 
+  const markdownExtension = useMemo(() => markdown(), [])
+
+  const basicSetup = useMemo(
+    () => ({
+      foldGutter: true,
+      highlightActiveLine: true,
+      highlightActiveLineGutter: true,
+      lineNumbers: true,
+    }),
+    [],
+  )
+
   const replaceSelection = useCallback((action: FormatAction, color?: string) => {
     if (!editorView) return
     replaceSelectionInView(editorView, action, color)
@@ -545,6 +557,15 @@ export function MarkdownEditor({
         { key: 'Shift-Enter', run: (view) => { insertBreak(view); return true } },
       ]),
     [insertBreak, replaceSelectionInView, runEditorCommand, runSaveShortcut],
+  )
+
+  const editorExtensions = useMemo(
+    () => [
+      markdownExtension,
+      EditorView.lineWrapping,
+      editorKeymap,
+    ],
+    [editorKeymap, markdownExtension],
   )
 
   useEffect(() => {
@@ -737,23 +758,14 @@ export function MarkdownEditor({
         value={localValue}
         height="560px"
         theme={resolvedMode}
-        extensions={[
-          markdown(),
-          EditorView.lineWrapping,
-          editorKeymap,
-        ]}
+        extensions={editorExtensions}
         onChange={handleChange}
         onCreateEditor={(view) => {
           setEditorView(view)
           onEditorViewChangeRef.current?.(view)
         }}
         onUpdate={handleUpdate}
-        basicSetup={{
-          foldGutter: true,
-          highlightActiveLine: true,
-          highlightActiveLineGutter: true,
-          lineNumbers: true
-        }}
+        basicSetup={basicSetup}
       />
     </div>
   )
