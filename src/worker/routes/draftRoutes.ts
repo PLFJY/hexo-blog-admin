@@ -95,7 +95,11 @@ export async function handlePublishDraft(env: WorkerEnv, request: Request): Prom
   const markdown = ensureFrontMatterDate(draft.markdown)
   const sourceRelativeId = draft.sourceRelativeId && isValidRelativeId(draft.sourceRelativeId) ? draft.sourceRelativeId : undefined
   const sourceRename = Boolean(sourceRelativeId && sourceRelativeId !== draft.relativeId)
-  const index = sourceRelativeId ? await getAdminIndex(env) : undefined
+  const index = await getAdminIndex(env)
+  const targetPost = index.posts.find((item) => item.relativeId === draft.relativeId)
+  if (targetPost && targetPost.relativeId !== sourceRelativeId) {
+    return json({ error: 'CONFLICT', message: `Post relativeId already exists: ${draft.relativeId}` }, { status: 409 })
+  }
   const sourcePost = sourceRelativeId ? index?.posts.find((item) => item.relativeId === sourceRelativeId) : undefined
   const sourceAssets = sourcePost && index ? await getPostSourceAssets(env, sourceRelativeId!, index) : []
   const draftManifest = await getDraftAssetManifest(env, draft.id, draft.relativeId)

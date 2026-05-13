@@ -406,7 +406,12 @@ export function SourcePostEditorPage() {
             disabled={state.committing}
             onDone={(relativeId, markdown, commitSha) => {
               setState({ ...state, markdown, message: t('posts.renameSuccess', { relativeId, commitSha }) })
-              navigate(`/posts/edit?relativeId=${encodeURIComponent(relativeId)}&renamedFrom=${encodeURIComponent(state.post.post.relativeId)}`, { replace: true })
+              navigate('/posts', {
+                state: {
+                  commitSha,
+                  message: t('posts.renameSuccess', { relativeId, commitSha }),
+                },
+              })
             }}
             onError={(message) => setState({ ...state, message })}
           />

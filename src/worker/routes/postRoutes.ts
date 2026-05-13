@@ -91,6 +91,9 @@ export async function handleRenamePostAsset(env: WorkerEnv, request: Request): P
   const index = await getAdminIndex(env)
   const post = index.posts.find((item) => item.relativeId === relativeId)
   if (!post) return json({ error: 'NOT_FOUND', message: 'Post not found' }, { status: 404 })
+  if (newRelativeId !== relativeId && index.posts.some((item) => item.relativeId === newRelativeId)) {
+    return json({ error: 'CONFLICT', message: `Post relativeId already exists: ${newRelativeId}` }, { status: 409 })
+  }
   const sourceAssets = await getPostSourceAssets(env, relativeId, index)
   const asset = sourceAssets.find((item) => item.repoPath === oldRepoPath)
   if (!asset) return json({ error: 'NOT_FOUND', message: 'Asset not found in admin-index' }, { status: 404 })

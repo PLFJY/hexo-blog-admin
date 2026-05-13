@@ -1,15 +1,17 @@
 import { Body1, Button, Popover, PopoverSurface, PopoverTrigger, Spinner, Text, Title1, Title3, makeStyles, tokens } from '@fluentui/react-components'
 import { ArrowSyncRegular, DeleteRegular, DocumentEditRegular, FolderRegular, EyeOffRegular, EyeRegular } from '@fluentui/react-icons'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate } from 'react-router'
+import { useLocation, useNavigate } from 'react-router'
 import { EmptyState } from '../components/EmptyState'
 import { ErrorState } from '../components/ErrorState'
 import { LoadingState } from '../components/LoadingState'
 import { getJson, sendJson } from '../lib/apiClient'
 import { getCachedAdminIndex, setCachedAdminIndex } from '../lib/indexCache'
 import type { PostFile, PostTreeNode, PostTreeResponse, TogglePostPublishedResponse } from '../shared/postTypes'
+import { CustomizeSaveStatusPanel } from './customizeShared'
 import { usePageStyles } from './pageStyles'
+import { useCommitDeployTracker } from './useCommitDeployTracker'
 
 const usePostStyles = makeStyles({
   treeGrid: { display: 'grid', gap: tokens.spacingVerticalM },
@@ -143,6 +145,11 @@ type PostsState =
   | { status: 'ready'; index: PostTreeResponse; openingRelativeId?: string; deletingRelativeId?: string; togglingRelativeId?: string; message?: string; syncing?: boolean }
   | { status: 'error'; message: string }
 
+type PostsLocationState = {
+  commitSha?: string
+  message?: string
+}
+
 type TreeProps = {
   nodes: PostTreeNode[]
   postsById: Map<string, PostFile>
@@ -239,7 +246,11 @@ export function PostsPage() {
   const localStyles = usePostStyles()
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const location = useLocation()
+  const tracker = useCommitDeployTracker()
+  const handledCommitSha = useRef<string | undefined>(undefined)
   const [state, setState] = useState<PostsState>({ status: 'loading' })
+  const locationState = location.state as PostsLocationState | null
   const postsById = useMemo(
     () => new Map((state.status === 'ready' ? state.index.posts : []).map((post) => [post.relativeId, post])),
     [state],
@@ -248,7 +259,12 @@ export function PostsPage() {
   const load = () => {
     const cached = getCachedAdminIndex()
     if (cached) {
-      setState({ status: 'ready', index: cached, syncing: true })
+      setState((current) => ({
+        status: 'ready',
+        index: cached,
+        message: current.status === 'ready' ? current.message : locationState?.message,
+        syncing: true,
+      }))
     } else {
       setState({ status: 'loading' })
     }
@@ -262,7 +278,7 @@ export function PostsPage() {
           openingRelativeId: current.status === 'ready' ? current.openingRelativeId : undefined,
           deletingRelativeId: current.status === 'ready' ? current.deletingRelativeId : undefined,
           togglingRelativeId: current.status === 'ready' ? current.togglingRelativeId : undefined,
-          message: current.status === 'ready' ? current.message : undefined,
+          message: current.status === 'ready' ? current.message : locationState?.message,
           syncing: false,
         }))
       })
@@ -321,6 +337,21 @@ export function PostsPage() {
   }
 
   useEffect(load, [])
+
+  useEffect(() => {
+    const commitSha = locationState?.commitSha
+    if (!commitSha || handledCommitSha.current === commitSha) return
+    handledCommitSha.current = commitSha
+    tracker.start(commitSha)
+    if (locationState?.message) {
+      setState((current) => (current.status === 'ready' ? { ...current, message: locationState.message } : current))
+    }
+    navigate('/posts', { replace: true, state: null })
+  }, [locationState?.commitSha])
+
+  useEffect(() => {
+    if (tracker.status.indexSynced) load()
+  }, [tracker.status.indexSynced])
   if (state.status === 'loading') return <LoadingState />
   if (state.status === 'error') return <ErrorState message={state.message} onRetry={load} />
 
@@ -338,6 +369,7 @@ export function PostsPage() {
         </div>
         <Body1>{t('posts.description')}</Body1>
       </header>
+      <CustomizeSaveStatusPanel status={tracker.status} />
       {state.index.posts.length === 0 ? (
         <EmptyState title={t('posts.emptyTitle')} description={t('posts.emptyDescription')} />
       ) : (

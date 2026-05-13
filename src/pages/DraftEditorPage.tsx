@@ -312,7 +312,7 @@ export function DraftEditorPage() {
     })
   const normalizedRelativeId = normalizeRelativeId(state.draft.relativeId)
   const duplicateDraft = state.drafts.some((draft) => draft.id !== state.draft.id && draft.relativeId === normalizedRelativeId)
-  const duplicatePost = !state.draft.id && state.postRelativeIds.includes(normalizedRelativeId)
+  const duplicatePost = state.postRelativeIds.includes(normalizedRelativeId) && state.draft.sourceRelativeId !== normalizedRelativeId
   const canSaveDraft = isValidRelativeId(state.draft.relativeId) && !duplicateDraft && !duplicatePost
   const insertMarkdown = (text: string) => setState((current) => (current.status === 'ready' ? { ...current, insertRequest: { id: Date.now(), text } } : current))
   const replaceMarkdownPath = (oldPath: string, newPath: string) =>
