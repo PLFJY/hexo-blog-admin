@@ -428,6 +428,7 @@ export function SourcePostEditorPage() {
               setState((current) => (current.status === 'ready' && current.insertRequest?.id === id ? { ...current, insertRequest: undefined } : current))
             }
             onPasteImages={(files) => void assetPanelRef.current?.handleIncomingImageFiles(files, 'paste')}
+            onSaveShortcut={saveAsDraft}
           />
         </Field>
       </section>

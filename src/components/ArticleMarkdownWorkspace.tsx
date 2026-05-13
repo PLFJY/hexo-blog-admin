@@ -136,6 +136,7 @@ type ArticleMarkdownWorkspaceProps = {
   insertRequest?: { id: number; text: string }
   onInsertConsumed?: (id: number) => void
   onPasteImages?: (files: File[]) => void
+  onSaveShortcut?: () => void
 }
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
@@ -337,6 +338,7 @@ export function ArticleMarkdownWorkspace({
   insertRequest,
   onInsertConsumed,
   onPasteImages,
+  onSaveShortcut,
 }: ArticleMarkdownWorkspaceProps) {
   const styles = useStyles()
   const [editorView, setEditorView] = useState<EditorView | null>(null)
@@ -848,6 +850,7 @@ export function ArticleMarkdownWorkspace({
           insertRequest={insertRequest}
           onInsertConsumed={onInsertConsumed}
           onPasteImages={onPasteImages}
+          onSaveShortcut={onSaveShortcut}
         />
       </div>
       <div

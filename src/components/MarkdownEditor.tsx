@@ -1,5 +1,5 @@
 import { markdown } from '@codemirror/lang-markdown'
-import { deleteLine, redo, undo } from '@codemirror/commands'
+import { copyLineDown, deleteLine, redo, undo } from '@codemirror/commands'
 import CodeMirror from '@uiw/react-codemirror'
 import { EditorView, keymap, type ViewUpdate } from '@uiw/react-codemirror'
 import {
@@ -136,6 +136,7 @@ type MarkdownEditorProps = {
   onEditorViewChange?: (view: EditorView | null) => void
   onToolbarHeightChange?: (height: number) => void
   onContentEdit?: (line?: number) => void
+  onSaveShortcut?: () => void
   insertRequest?: { id: number; text: string }
   onInsertConsumed?: (id: number) => void
   onPasteImages?: (files: File[]) => void
@@ -256,6 +257,7 @@ export function MarkdownEditor({
   onEditorViewChange,
   onToolbarHeightChange,
   onContentEdit,
+  onSaveShortcut,
   insertRequest,
   onInsertConsumed,
   onPasteImages,
@@ -276,6 +278,7 @@ export function MarkdownEditor({
   const onEditorViewChangeRef = useRef(onEditorViewChange)
   const onToolbarHeightChangeRef = useRef(onToolbarHeightChange)
   const onContentEditRef = useRef(onContentEdit)
+  const onSaveShortcutRef = useRef(onSaveShortcut)
   const toolbarRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -297,6 +300,10 @@ export function MarkdownEditor({
   useEffect(() => {
     onContentEditRef.current = onContentEdit
   }, [onContentEdit])
+
+  useEffect(() => {
+    onSaveShortcutRef.current = onSaveShortcut
+  }, [onSaveShortcut])
 
   useEffect(() => {
     const toolbar = toolbarRef.current
@@ -498,6 +505,12 @@ export function MarkdownEditor({
     return handled
   }, [])
 
+  const runSaveShortcut = useCallback(() => {
+    if (!onSaveShortcutRef.current) return false
+    onSaveShortcutRef.current()
+    return true
+  }, [])
+
   const replaceSelection = useCallback((action: FormatAction, color?: string) => {
     if (!editorView) return
     replaceSelectionInView(editorView, action, color)
@@ -523,14 +536,15 @@ export function MarkdownEditor({
         { key: 'Mod-k', run: (view) => { replaceSelectionInView(view, 'link'); return true } },
         { key: 'Mod-Shift-c', run: (view) => { replaceSelectionInView(view, 'inlineCode'); return true } },
         { key: 'Mod-e', run: (view) => { replaceSelectionInView(view, 'quote'); return true } },
-        { key: 'Mod-d', run: (view) => { replaceSelectionInView(view, 'strikethrough'); return true } },
+        { key: 'Mod-d', run: (view) => runEditorCommand(view, copyLineDown) },
+        { key: 'Mod-s', run: () => runSaveShortcut() },
         { key: 'Mod-y', run: (view) => runEditorCommand(view, deleteLine) },
         { key: 'Mod-l', run: (view) => runEditorCommand(view, deleteLine) },
         { key: 'Mod-z', run: (view) => runEditorCommand(view, undo) },
         { key: 'Mod-Shift-z', run: (view) => runEditorCommand(view, redo) },
         { key: 'Shift-Enter', run: (view) => { insertBreak(view); return true } },
       ]),
-    [insertBreak, replaceSelectionInView, runEditorCommand],
+    [insertBreak, replaceSelectionInView, runEditorCommand, runSaveShortcut],
   )
 
   useEffect(() => {
@@ -550,6 +564,12 @@ export function MarkdownEditor({
         event.stopPropagation()
         runEditorCommand(editorView, command)
       }
+      const saveShortcut = () => {
+        if (!onSaveShortcutRef.current) return
+        event.preventDefault()
+        event.stopPropagation()
+        runSaveShortcut()
+      }
 
       if (event.key === 'Enter' && event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey) {
         event.preventDefault()
@@ -561,12 +581,13 @@ export function MarkdownEditor({
       if (!isShortcutModifierPressed(event) || event.altKey) return
       if (key === 'z' && event.shiftKey) runCommand(redo)
       else if (key === 'z' && !event.shiftKey) runCommand(undo)
+      else if (key === 's' && !event.shiftKey) saveShortcut()
       else if ((key === 'y' || key === 'l') && !event.shiftKey) runCommand(deleteLine)
+      else if (key === 'd' && !event.shiftKey) runCommand(copyLineDown)
       else if (key === 'b') runFormat('bold')
       else if (key === 'i') runFormat('italic')
       else if (key === 'u') runFormat('underline')
       else if (key === 'h') runFormat('highlight')
-      else if (key === 'd') runFormat('strikethrough')
       else if (key === 'e') runFormat('quote')
       else if (key === 'k') runFormat('link')
       else if (key === 'c' && event.shiftKey) runFormat('inlineCode')
@@ -574,7 +595,7 @@ export function MarkdownEditor({
 
     window.addEventListener('keydown', handleKeyDown, { capture: true })
     return () => window.removeEventListener('keydown', handleKeyDown, { capture: true })
-  }, [editorView, insertBreak, replaceSelectionInView, runEditorCommand])
+  }, [editorView, insertBreak, replaceSelectionInView, runEditorCommand, runSaveShortcut])
 
   const runToolbarCommand = (command: (target: EditorView) => boolean) => {
     if (!editorView) return
@@ -656,7 +677,7 @@ export function MarkdownEditor({
         <ToolbarButton label={t('editor.bold')} shortcut={formatShortcut('B')} icon={<TextBoldRegular />} onClick={() => replaceSelection('bold')} />
         <ToolbarButton label={t('editor.italic')} shortcut={formatShortcut('I')} icon={<TextItalicRegular />} onClick={() => replaceSelection('italic')} />
         <ToolbarButton label={t('editor.underline')} shortcut={formatShortcut('U')} icon={<TextUnderlineRegular />} onClick={() => replaceSelection('underline')} />
-        <ToolbarButton label={t('editor.strikethrough')} shortcut={formatShortcut('D')} icon={<TextStrikethroughRegular />} onClick={() => replaceSelection('strikethrough')} />
+        <ToolbarButton label={t('editor.strikethrough')} icon={<TextStrikethroughRegular />} onClick={() => replaceSelection('strikethrough')} />
         <ToolbarButton label={t('editor.inlineCode')} shortcut={formatShortcut('Shift + C')} icon={<CodeRegular />} onClick={() => replaceSelection('inlineCode')} />
         <ToolbarButton label={t('editor.codeBlock')} icon={<CodeBlockRegular />} onClick={() => replaceSelection('codeBlock')} />
         <ToolbarButton label={t('editor.quote')} shortcut={formatShortcut('E')} icon={<TextQuoteRegular />} onClick={() => replaceSelection('quote')} />
