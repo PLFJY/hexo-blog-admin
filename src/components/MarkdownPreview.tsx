@@ -166,13 +166,51 @@ const useStyles = makeStyles({
       fontSize: '12px',
       lineHeight: tokens.lineHeightBase300,
     },
-    '& .hba-mermaid__error': {
-      marginBottom: tokens.spacingVerticalS,
+    '& .hba-mermaid[data-mermaid-status="error"]': {
+      border: `1px solid ${tokens.colorPaletteRedBorder2}`,
+      backgroundColor: tokens.colorPaletteRedBackground1,
+      textAlign: 'left',
+    },
+    '& .hba-mermaid__error-card': {
+      display: 'grid',
+      gridTemplateColumns: 'auto minmax(0, 1fr)',
+      gap: tokens.spacingHorizontalM,
+      alignItems: 'start',
+      padding: tokens.spacingVerticalM,
+      borderRadius: tokens.borderRadiusMedium,
+    },
+    '& .hba-mermaid__error-icon': {
+      fontSize: '36px',
+      lineHeight: '40px',
+    },
+    '& .hba-mermaid__error-content': {
+      minWidth: 0,
+    },
+    '& .hba-mermaid__error-title': {
       color: tokens.colorPaletteRedForeground1,
+      fontWeight: tokens.fontWeightSemibold,
+      fontSize: '15px',
+      lineHeight: '22px',
+    },
+    '& .hba-mermaid__error-meta': {
+      marginTop: tokens.spacingVerticalXXS,
+      color: tokens.colorNeutralForeground2,
       fontSize: '12px',
       lineHeight: tokens.lineHeightBase300,
-      textAlign: 'left',
+    },
+    '& .hba-mermaid__error-message': {
+      margin: `${tokens.spacingVerticalS} 0 0`,
+      padding: tokens.spacingVerticalS,
+      borderRadius: tokens.borderRadiusSmall,
+      backgroundColor: tokens.colorNeutralBackground1,
+      color: tokens.colorPaletteRedForeground1,
       whiteSpace: 'pre-wrap',
+      overflowX: 'auto',
+    },
+    '& .hba-mermaid[data-mermaid-status="error"] .hba-mermaid__source': {
+      marginTop: tokens.spacingVerticalS,
+      maxHeight: '220px',
+      overflow: 'auto',
     },
     '& .hba-source-line-sentinel': {
       display: 'block',
@@ -231,6 +269,65 @@ const hashString = (value: string) => {
 }
 
 const getMermaidCacheKey = (source: string, theme: string) => `${theme}:${hashString(source)}`
+
+const escapeCssIdentifier = (value: string) => {
+  if (typeof CSS !== 'undefined' && CSS.escape) return CSS.escape(value)
+  return value.replace(/[^a-zA-Z0-9_-]/g, '\\$&')
+}
+
+const cleanupMermaidArtifacts = (root: HTMLElement | null, id: string) => {
+  const escapedId = escapeCssIdentifier(id)
+  document.querySelectorAll<Element>(`#${escapedId}, [id^="${escapedId}-"]`).forEach((node) => {
+    if (!root?.contains(node)) node.remove()
+  })
+}
+
+const renderMermaidErrorBlock = (
+  block: HTMLElement,
+  {
+    source,
+    line,
+    title,
+    message,
+  }: {
+    source: string
+    line?: number
+    title: string
+    message: string
+  },
+) => {
+  const meta = line ? `第 ${line} 行附近` : '请检查该 Mermaid 代码块'
+  block.dataset.mermaidSource = source
+  block.dataset.mermaidStatus = 'error'
+  block.innerHTML = `
+    <div class="hba-mermaid__error-card">
+      <div class="hba-mermaid__error-icon" aria-hidden="true">💣</div>
+      <div class="hba-mermaid__error-content">
+        <div class="hba-mermaid__error-title">${escapeHtml(title)}</div>
+        <div class="hba-mermaid__error-meta">${escapeHtml(meta)}</div>
+        <pre class="hba-mermaid__error-message">${escapeHtml(message)}</pre>
+      </div>
+    </div>
+    <pre class="hba-mermaid__source">${escapeHtml(source)}</pre>
+  `
+}
+
+const createMermaidScratchContainer = (block: HTMLElement) => {
+  const scratch = document.createElement('div')
+  scratch.className = 'hba-mermaid__scratch'
+  scratch.setAttribute('aria-hidden', 'true')
+
+  scratch.style.position = 'absolute'
+  scratch.style.left = '-100000px'
+  scratch.style.top = '0'
+  scratch.style.width = `${Math.max(block.clientWidth, 320)}px`
+  scratch.style.pointerEvents = 'none'
+  scratch.style.visibility = 'hidden'
+  scratch.style.overflow = 'hidden'
+
+  block.appendChild(scratch)
+  return scratch
+}
 
 function createMarkdownRenderer(
   resolveResourceUrl: ((src: string) => ResolvedMarkdownResourceUrl) | undefined,
@@ -386,10 +483,12 @@ export function MarkdownPreview({
   }, [])
 
   useEffect(() => {
-    emitMermaidRenderErrors([])
     const element = rootRef.current
     const hasPendingMermaid = Boolean(element?.querySelector('.hba-mermaid[data-mermaid-status="pending"]'))
-    if (!hasPendingMermaid) onPreviewContentChangeRef.current?.()
+    if (!hasPendingMermaid) {
+      emitMermaidRenderErrors([])
+      onPreviewContentChangeRef.current?.()
+    }
   }, [html])
 
   useEffect(() => {
@@ -397,9 +496,7 @@ export function MarkdownPreview({
     if (!element) return undefined
 
     const initialBlocks = Array.from(
-      element.querySelectorAll<HTMLElement>(
-        '.hba-mermaid[data-mermaid-status="pending"], .hba-mermaid[data-mermaid-status="error"]',
-      ),
+      element.querySelectorAll<HTMLElement>('.hba-mermaid[data-mermaid-status="pending"]'),
     )
     if (initialBlocks.length === 0) return undefined
 
@@ -418,36 +515,80 @@ export function MarkdownPreview({
       const mermaid = (await import('mermaid')).default
       if (cancelled || mermaidRenderRunRef.current !== renderRun) return
 
-      mermaid.initialize({
+      const mermaidConfig = {
         startOnLoad: false,
         securityLevel: 'strict',
         theme: mermaidTheme,
-      })
+        suppressErrorRendering: true,
+      } satisfies Parameters<typeof mermaid.initialize>[0] & { suppressErrorRendering: boolean }
+
+      mermaid.initialize(mermaidConfig)
 
       const currentElement = rootRef.current
       if (!currentElement) return
       const blocks = Array.from(
-        currentElement.querySelectorAll<HTMLElement>(
-          '.hba-mermaid[data-mermaid-status="pending"], .hba-mermaid[data-mermaid-status="error"]',
-        ),
+        currentElement.querySelectorAll<HTMLElement>('.hba-mermaid[data-mermaid-status="pending"]'),
       )
       const errors: MermaidRenderError[] = []
       for (const [index, block] of blocks.entries()) {
         if (cancelled || mermaidRenderRunRef.current !== renderRun || !block.isConnected) return
         const source = block.dataset.mermaidSource ?? block.querySelector<HTMLElement>('.hba-mermaid__source')?.textContent ?? ''
-        if (!source.trim()) return
+        if (!source.trim()) {
+          block.dataset.mermaidSource = source
+          block.innerHTML = ''
+          block.dataset.mermaidStatus = 'rendered'
+          continue
+        }
+
+        const line = Number.isFinite(Number(block.dataset.sourceLine)) ? Number(block.dataset.sourceLine) : undefined
+
+        const cacheKey = getMermaidCacheKey(source, mermaidTheme)
+        const cached = mermaidRenderCache.get(cacheKey)
+        if (cached) {
+          block.dataset.mermaidSource = source
+          block.innerHTML = cached.svg
+          block.dataset.mermaidStatus = 'rendered'
+          continue
+        }
+
+        let parsed: boolean
 
         try {
-          const cacheKey = getMermaidCacheKey(source, mermaidTheme)
-          const cached = mermaidRenderCache.get(cacheKey)
-          if (cached) {
-            block.dataset.mermaidSource = source
-            block.innerHTML = cached.svg
-            block.dataset.mermaidStatus = 'rendered'
-            continue
-          }
+          parsed = Boolean(await mermaid.parse(source, { suppressErrors: true }))
+        } catch (error) {
+          if (cancelled || mermaidRenderRunRef.current !== renderRun || !block.isConnected) return
+          const message = error instanceof Error ? error.message : 'Mermaid 语法错误'
+          renderMermaidErrorBlock(block, {
+            source,
+            line,
+            title: 'Mermaid 语法错误',
+            message,
+          })
+          errors.push({
+            index,
+            line,
+            message,
+          })
+          continue
+        }
 
-          const { svg, bindFunctions } = await mermaid.render(`hba-mermaid-${renderRun}-${index}`, source)
+        if (!parsed) {
+          const message = 'Mermaid 语法错误'
+          renderMermaidErrorBlock(block, {
+            source,
+            line,
+            title: 'Mermaid 语法错误',
+            message,
+          })
+          errors.push({ index, line, message })
+          continue
+        }
+
+        const id = `hba-mermaid-${renderRun}-${index}`
+        const renderContainer = createMermaidScratchContainer(block)
+
+        try {
+          const { svg, bindFunctions } = await mermaid.render(id, source, renderContainer)
           if (cancelled || mermaidRenderRunRef.current !== renderRun || !block.isConnected) return
           block.dataset.mermaidSource = source
           block.innerHTML = svg
@@ -463,14 +604,21 @@ export function MarkdownPreview({
           bindFunctions?.(block)
         } catch (error) {
           if (cancelled || mermaidRenderRunRef.current !== renderRun || !block.isConnected) return
-          block.dataset.mermaidStatus = 'error'
-          const message = error instanceof Error ? error.message : 'Failed to render Mermaid diagram.'
-          block.innerHTML = `<div class="hba-mermaid__error">${escapeHtml(message)}</div><pre class="hba-mermaid__source">${escapeHtml(source)}</pre>`
-          errors.push({
-            index,
-            line: Number.isFinite(Number(block.dataset.sourceLine)) ? Number(block.dataset.sourceLine) : undefined,
+          const message = error instanceof Error ? error.message : 'Mermaid 渲染失败'
+          renderMermaidErrorBlock(block, {
+            source,
+            line,
+            title: 'Mermaid 渲染失败',
             message,
           })
+          errors.push({
+            index,
+            line,
+            message,
+          })
+        } finally {
+          renderContainer.remove()
+          cleanupMermaidArtifacts(rootRef.current, id)
         }
       }
 
