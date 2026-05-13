@@ -14,7 +14,7 @@ import {
 import { DeleteRegular, DocumentEditRegular } from '@fluentui/react-icons'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate } from 'react-router'
+import { useLocation, useNavigate } from 'react-router'
 import { ErrorState } from '../components/ErrorState'
 import { LoadingState } from '../components/LoadingState'
 import { deleteEditorSnapshot } from '../lib/editorSnapshot'
@@ -100,12 +100,16 @@ export function DraftsPage() {
   const draftStyles = useDraftStyles()
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const location = useLocation()
+  const routeMessage = typeof (location.state as { message?: unknown } | null)?.message === 'string'
+    ? (location.state as { message: string }).message
+    : undefined
   const [state, setState] = useState<DraftsState>({ status: 'loading' })
 
   const load = () => {
     setState({ status: 'loading' })
     void getJson<DraftListResponse>('/drafts')
-      .then(({ drafts }) => setState({ status: 'ready', drafts }))
+      .then(({ drafts }) => setState({ status: 'ready', drafts, message: routeMessage }))
       .catch((error: unknown) => setState({ status: 'error', message: error instanceof Error ? error.message : 'Unknown error' }))
   }
 

@@ -1,4 +1,4 @@
-import { Body1, Button, Field, Input, Popover, PopoverSurface, PopoverTrigger, Text, Title1, makeStyles, mergeClasses, tokens } from '@fluentui/react-components'
+import { Body1, Button, Field, Input, Popover, PopoverSurface, PopoverTrigger, Text, Title1, makeStyles, tokens } from '@fluentui/react-components'
 import { ArrowLeftRegular, DeleteRegular, RocketRegular, SaveRegular } from '@fluentui/react-icons'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -10,7 +10,6 @@ import { ErrorState } from '../components/ErrorState'
 import { LoadingState } from '../components/LoadingState'
 import { MarkdownAssetPanel } from '../components/MarkdownAssetPanel'
 import type { MarkdownAssetPanelHandle } from '../components/MarkdownAssetPanel'
-import { StatusBadge } from '../components/StatusBadge'
 import { decideEditorConflict } from '../lib/editorConflict'
 import { deleteEditorSnapshot, readEditorSnapshot, writeEditorSnapshot } from '../lib/editorSnapshot'
 import { getCachedAdminIndex, setCachedAdminIndex } from '../lib/indexCache'
@@ -18,7 +17,6 @@ import { getJson, sendJson } from '../lib/apiClient'
 import { resolveMarkdownResourceUrl } from '../lib/markdownResource'
 import type { PublicConfigResponse } from '../shared/apiTypes'
 import type { DraftAsset, DraftAssetListResponse } from '../shared/assetTypes'
-import type { DeployRecord, DeployStatusResponse } from '../shared/deployTypes'
 import type { DraftListResponse, DraftRecord, PublishDraftResponse } from '../shared/draftTypes'
 import { removeMarkdownImageReferences } from '../shared/markdownAssets'
 import type { PostAsset, PostAssetIndexResponse, PostTreeResponse } from '../shared/postTypes'
@@ -133,9 +131,6 @@ type State =
       insertRequest?: { id: number; text: string }
       assetObjectUrls: Record<string, string>
       message?: string
-      publishCommitSha?: string
-      deploy?: DeployRecord
-      indexSynced?: boolean
       saving?: boolean
       committing?: boolean
       publishing?: boolean
@@ -342,57 +337,22 @@ export function DraftEditorPage() {
     })
   }
 
-  const syncIndex = (commitSha: string, deploy: DeployRecord) => {
-    void sendJson<PostTreeResponse>('/index/sync-online', 'POST')
-      .then((index) => {
-        setCachedAdminIndex(index)
-        setState((current) => (current.status === 'ready' ? { ...current, deploy, indexSynced: true, message: `${t('drafts.indexSynced')}: ${commitSha}` } : current))
-      })
-      .catch((error: unknown) => setState((current) => (current.status === 'ready' ? { ...current, deploy, message: error instanceof Error ? error.message : 'Unknown error' } : current)))
-  }
-
-  const startDeployPolling = (commitSha: string, attempt = 0) => {
-    window.clearTimeout(pollTimer.current)
-    pollTimer.current = window.setTimeout(() => {
-      void getJson<DeployStatusResponse>(`/deploy/status?commitSha=${encodeURIComponent(commitSha)}`)
-        .then((data) => {
-          const deploy = data.deploy
-          const shouldContinue = attempt < 20 && (deploy.status === 'queued' || deploy.status === 'in_progress')
-          setState((current) => (current.status === 'ready' ? { ...current, deploy, message: shouldContinue ? t('drafts.deployTracking') : current.message } : current))
-          if (deploy.status === 'success') syncIndex(commitSha, deploy)
-          else if (shouldContinue) startDeployPolling(commitSha, attempt + 1)
-        })
-    }, attempt === 0 ? 3000 : 8000)
-  }
-
   const publish = () => {
     if (!state.draft.id || !canSaveDraft) return
-    setState({ ...state, publishing: true })
-    void sendJson<PublishDraftResponse>('/drafts/publish', 'POST', { draftId: state.draft.id })
+    setState({ ...state, saving: true, publishing: true })
+    void sendJson<DraftRecord>(`/drafts/${encodeURIComponent(state.draft.id)}`, 'PUT', {
+      ...state.draft,
+      relativeId: normalizedRelativeId,
+    })
+      .then((draft) => sendJson<PublishDraftResponse>('/drafts/publish', 'POST', { draftId: draft.id }).then((response) => ({ draft, response })))
       .then((response) => {
-        deleteEditorSnapshot(`draft:${state.draft.id}`)
-        setState({
-          ...state,
-          publishing: false,
-          snapshotDisabled: true,
-          assets: [],
-          message: `${t('drafts.published')}: ${response.commitSha}`,
-          publishCommitSha: response.commitSha,
-          deploy: { id: response.commitSha, status: 'queued', commitSha: response.commitSha },
-          indexSynced: false,
-        })
-        startDeployPolling(response.commitSha)
+        deleteEditorSnapshot(`draft:${response.draft.id}`)
+        navigate('/drafts', { state: { message: `${t('drafts.published')}: ${response.response.commitSha}` } })
       })
-      .catch((error: unknown) => setState({ ...state, publishing: false, message: error instanceof Error ? error.message : 'Unknown error' }))
+      .catch((error: unknown) => setState({ ...state, saving: false, publishing: false, message: error instanceof Error ? error.message : 'Unknown error' }))
   }
 
-  const panelTone =
-    state.deploy?.status === 'failed'
-      ? localStyles.statusPanelError
-      : state.deploy?.status === 'success' || state.indexSynced
-        ? localStyles.statusPanelSuccess
-        : ''
-  const showStatusPanel = Boolean(state.message || state.publishCommitSha || state.deploy || state.indexSynced)
+  const showStatusPanel = Boolean(state.message)
   const snapshotScope = state.draft.id ? `draft:${state.draft.id}` : ''
   const resolveConflictWithCloud = () => {
     if (snapshotScope) deleteEditorSnapshot(snapshotScope)
@@ -441,27 +401,18 @@ export function DraftEditorPage() {
           <Button appearance="primary" icon={<SaveRegular />} onClick={save} disabled={!canSaveDraft || state.saving}>
             {state.saving ? t('actions.saving') : t('drafts.saveDraft')}
           </Button>
-          <Button icon={<RocketRegular />} onClick={publish} disabled={!state.draft.id || !canSaveDraft || state.publishing}>
+          <Button icon={<RocketRegular />} onClick={publish} disabled={!state.draft.id || !canSaveDraft || state.saving || state.publishing}>
             {state.publishing ? t('actions.publishing') : t('drafts.publishDraft')}
           </Button>
           <DeleteDraftPopover disabled={!state.draft.id} onConfirm={remove} />
           <ChangeIdNote />
         </div>
         {showStatusPanel ? (
-          <section className={mergeClasses(localStyles.statusPanel, panelTone)}>
+          <section className={localStyles.statusPanel}>
             <div className={localStyles.statusPanelHeader}>
               <Text weight="semibold">{t('drafts.statusPanelTitle')}</Text>
-              {state.deploy ? (
-                <StatusBadge status={state.deploy.status === 'success' ? 'success' : state.deploy.status === 'failed' ? 'danger' : 'informative'}>
-                  {state.deploy.status}
-                </StatusBadge>
-              ) : null}
             </div>
             {state.message ? <Text>{state.message}</Text> : null}
-            <div className={localStyles.statusMeta}>
-              {state.publishCommitSha ? <Text size={200}>{t('deploy.commit')}: {state.publishCommitSha}</Text> : null}
-              {state.indexSynced ? <Text size={200}>{t('drafts.indexSynced')}</Text> : null}
-            </div>
           </section>
         ) : null}
         <Field
