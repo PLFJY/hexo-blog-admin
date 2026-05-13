@@ -2,6 +2,7 @@ import type { PostContentResponse, TogglePostPublishedRequest, TogglePostPublish
 import type { WorkerEnv } from '../env'
 import { buildPostAssetPaths, buildPostPaths } from '../../features/posts/postPathUtils'
 import { setFrontMatterBoolean } from '../../shared/frontMatter'
+import { removeMarkdownImageReferences } from '../../shared/markdownAssets'
 import { getGitHubFile, getGitHubFileBase64 } from '../services/github/githubContent'
 import { createBatchCommit } from '../services/github/githubGitCommit'
 import { getAdminIndex } from '../services/indexer/adminIndex'
@@ -76,13 +77,6 @@ export async function handlePostAssets(env: WorkerEnv, request: Request): Promis
 }
 
 const replaceAll = (value: string, from: string, to: string) => value.split(from).join(to)
-
-const removeMarkdownImageReferences = (markdown: string, markdownPath: string) => {
-  const escaped = markdownPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  return markdown
-    .replace(new RegExp(`!?\\[[^\\]]*\\]\\(${escaped}\\)\\n?`, 'g'), '')
-    .replace(new RegExp(escaped, 'g'), '')
-}
 
 export async function handleRenamePostAsset(env: WorkerEnv, request: Request): Promise<Response> {
   if (request.method !== 'POST') return json({ error: 'METHOD_NOT_ALLOWED' }, { status: 405 })

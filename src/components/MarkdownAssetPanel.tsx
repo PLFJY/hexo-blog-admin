@@ -513,9 +513,9 @@ export const MarkdownAssetPanel = forwardRef<MarkdownAssetPanelHandle, MarkdownA
                 <Button appearance="subtle" icon={<CopyRegular />} onClick={() => copyPath(asset.markdownPath)}>{t('actions.copy')}</Button>
                 <Button appearance="subtle" icon={<ImageAddRegular />} onClick={() => onInsertMarkdown(`![${asset.filename}](${asset.markdownPath})`)}>{t('actions.insert')}</Button>
                 <Button appearance="subtle" icon={<OpenRegular />} onClick={() => openPreview(asset)}>{t('assets.preview')}</Button>
-                {asset.kind === 'source' ? (
+                {asset.kind === 'source' && onSourceAssetRename ? (
                   <Button appearance="subtle" icon={<RenameRegular />} onClick={() => setSourceRenameAsset(asset)}>{t('actions.rename')}</Button>
-                ) : (
+                ) : asset.kind === 'temp' ? (
                   <>
                     <Button appearance="subtle" icon={<ResizeImageRegular />} disabled={busyKey === asset.key} onClick={() => void compressTemp(asset)}>{t('assets.compressCache')}</Button>
                     <RenameAssetPopover
@@ -525,12 +525,12 @@ export const MarkdownAssetPanel = forwardRef<MarkdownAssetPanelHandle, MarkdownA
                       onConfirm={(filename) => renameTemp(asset, filename)}
                     />
                   </>
-                )}
+                ) : null}
                 {asset.kind === 'temp' ? (
                   <DeleteAssetPopover busy={busyKey === asset.key} onConfirm={() => removeTemp(asset)} />
-                ) : (
+                ) : onSourceAssetDelete ? (
                   <DeleteAssetPopover busy={false} onConfirm={() => onSourceAssetDelete?.(asset)} />
-                )}
+                ) : null}
               </span>
             </li>
           )

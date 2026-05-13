@@ -20,6 +20,7 @@ import type { PublicConfigResponse } from '../shared/apiTypes'
 import type { DraftAsset, DraftAssetListResponse } from '../shared/assetTypes'
 import type { DeployRecord, DeployStatusResponse } from '../shared/deployTypes'
 import type { DraftListResponse, DraftRecord, PublishDraftResponse } from '../shared/draftTypes'
+import { removeMarkdownImageReferences } from '../shared/markdownAssets'
 import type { PostAsset, PostAssetIndexResponse, PostTreeResponse } from '../shared/postTypes'
 import { usePageStyles } from './pageStyles'
 
@@ -136,6 +137,7 @@ type State =
       deploy?: DeployRecord
       indexSynced?: boolean
       saving?: boolean
+      committing?: boolean
       publishing?: boolean
       baseMarkdown: string
       baseUpdatedAt?: string
@@ -286,6 +288,35 @@ export function DraftEditorPage() {
         ? { ...current, draft: { ...current.draft, markdown: current.draft.markdown.split(oldPath).join(newPath) } }
         : current,
     )
+  const deleteSourceAssetFromDraft = (asset: PostAsset) => {
+    const nextMarkdown = removeMarkdownImageReferences(state.draft.markdown, asset.markdownPath)
+    setState({ ...state, saving: true, committing: true, message: t('assets.submittingDelete') })
+    void sendJson<{ commitSha: string; markdown: string }>('/posts/asset/delete', 'POST', {
+      relativeId: state.draft.relativeId,
+      repoPath: asset.repoPath,
+      markdownPath: asset.markdownPath,
+    })
+      .then(async (response) => {
+        const savedDraft = state.draft.id
+          ? await sendJson<DraftRecord>(`/drafts/${encodeURIComponent(state.draft.id)}`, 'PUT', {
+              ...state.draft,
+              markdown: nextMarkdown,
+            })
+          : { ...state.draft, markdown: nextMarkdown }
+        if (savedDraft.id) deleteEditorSnapshot(`draft:${savedDraft.id}`)
+        setState({
+          ...state,
+          draft: savedDraft,
+          sourceAssets: state.sourceAssets.filter((item) => item.repoPath !== asset.repoPath),
+          saving: false,
+          committing: false,
+          message: t('assets.deleteCommitSuccess', { commitSha: response.commitSha }),
+          baseMarkdown: savedDraft.markdown,
+          baseUpdatedAt: savedDraft.updatedAt,
+        })
+      })
+      .catch((error: unknown) => setState({ ...state, saving: false, committing: false, message: error instanceof Error ? error.message : 'Unknown error' }))
+  }
   const save = () => {
     if (!canSaveDraft) {
       setState({ ...state, message: t('drafts.relativeIdRequired') })
@@ -449,6 +480,7 @@ export function DraftEditorPage() {
           onAssetsChange={(assets) => setState((current) => (current.status === 'ready' ? { ...current, assets } : current))}
           onInsertMarkdown={insertMarkdown}
           onMarkdownPathReplace={replaceMarkdownPath}
+          onSourceAssetDelete={deleteSourceAssetFromDraft}
           uploadDisabled={!canSaveDraft}
         />
         <Field label={t('drafts.markdownLabel')}>
