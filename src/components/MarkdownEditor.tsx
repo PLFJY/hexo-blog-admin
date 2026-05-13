@@ -677,11 +677,12 @@ export function MarkdownEditor({
     emitPreviewSyncPosition(update.view, 'cursor')
   }
 
-  const handleChange = (nextValue: string) => {
+  const handleChange = (nextValue: string, update: ViewUpdate) => {
     localValueRef.current = nextValue
     setLocalValue(nextValue)
     if (!composingRef.current) {
-      onContentEditRef.current?.(editorView?.state.doc.lineAt(editorView.state.selection.main.head).number)
+      const line = update.state.doc.lineAt(update.state.selection.main.head).number
+      onContentEditRef.current?.(line)
       onChangeRef.current(nextValue)
     }
   }

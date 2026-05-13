@@ -92,6 +92,11 @@ const SYNC_TUNING = {
   editRevealRatio: 0.28,
 
   /**
+   * 内容编辑前预览接近底部时，编辑后继续贴住新底部的容差。
+   */
+  contentEditBottomStickEpsilon: 8,
+
+  /**
    * editor -> preview 的语义同步权重。
    *
    * 1.0: 完全按源码行语义同步，最准，但可能有锚点感。
@@ -313,6 +318,30 @@ const getPreviewYForSourceLine = (previewRoot: HTMLElement, line: number) => {
   return Number.isFinite(y) ? y : undefined
 }
 
+const isSourceLineBlockVisible = (previewRoot: HTMLElement, line: number) => {
+  const anchors = Array.from(previewRoot.querySelectorAll<HTMLElement>('[data-source-line]'))
+    .map((element) => {
+      const startLine = Number(element.dataset.sourceLine)
+      const endLine = Number(element.dataset.sourceEndLine)
+      return {
+        element,
+        startLine,
+        endLine: Number.isFinite(endLine) ? endLine : startLine,
+      }
+    })
+    .filter((anchor) => Number.isFinite(anchor.startLine) && anchor.startLine >= 1)
+
+  const containing = anchors.find((anchor) => anchor.startLine <= line && anchor.endLine >= line)
+  if (!containing) return false
+
+  const top = getPreviewY(previewRoot, containing.element)
+  const bottom = top + containing.element.offsetHeight
+  const viewportTop = previewRoot.scrollTop
+  const viewportBottom = previewRoot.scrollTop + previewRoot.clientHeight
+
+  return bottom > viewportTop + 8 && top < viewportBottom - 8
+}
+
 const getEditorTopVisibleLine = (view: EditorView) => {
   const rect = view.scrollDOM.getBoundingClientRect()
   const anchorYInViewport = SYNC_TUNING.editorScrollAnchorYOffset
@@ -390,6 +419,7 @@ export function ArticleMarkdownWorkspace({
   const isSingleColumnLayoutRef = useRef(false)
   const pendingContentEditSyncRef = useRef(false)
   const pendingContentEditLineRef = useRef<number | undefined>(undefined)
+  const previewWasAtBottomBeforeContentEditRef = useRef(false)
 
   const rebuildScrollMap = useCallback(() => {
     const view = editorViewRef.current
@@ -557,6 +587,7 @@ export function ArticleMarkdownWorkspace({
   const syncPreviewToEditedLine = useCallback((line: number) => {
     const root = previewRootRef.current
     if (!root) return
+    if (isSourceLineBlockVisible(root, line)) return
 
     const previewMaxScrollTop = Math.max(0, root.scrollHeight - root.clientHeight)
     const previewY = getPreviewYForSourceLine(root, line)
@@ -641,8 +672,22 @@ export function ArticleMarkdownWorkspace({
       pendingContentEditSyncRef.current = false
       const line = pendingContentEditLineRef.current
       pendingContentEditLineRef.current = undefined
-      if (line === undefined) scheduleEditorToPreviewSync()
-      else window.requestAnimationFrame(() => syncPreviewToEditedLine(line))
+
+      if (previewWasAtBottomBeforeContentEditRef.current) {
+        previewWasAtBottomBeforeContentEditRef.current = false
+
+        window.requestAnimationFrame(() => {
+          const root = previewRootRef.current
+          if (!root) return
+
+          const maxScrollTop = Math.max(0, root.scrollHeight - root.clientHeight)
+          setPreviewScrollTopProgrammatically(maxScrollTop)
+        })
+      } else if (line === undefined) {
+        scheduleEditorToPreviewSync()
+      } else {
+        window.requestAnimationFrame(() => syncPreviewToEditedLine(line))
+      }
     }
 
     if (suppressPreviewScrollForContentEditRef.current) {
@@ -652,7 +697,7 @@ export function ArticleMarkdownWorkspace({
         })
       })
     }
-  }, [invalidateScrollMap, scheduleEditorToPreviewSync, syncPreviewToEditedLine])
+  }, [invalidateScrollMap, scheduleEditorToPreviewSync, setPreviewScrollTopProgrammatically, syncPreviewToEditedLine])
 
   const cancelPreviewDrivenSync = useCallback(() => {
     if (activeScrollSourceRef.current === 'preview') activeScrollSourceRef.current = null
@@ -668,6 +713,16 @@ export function ArticleMarkdownWorkspace({
 
   const handleContentEdit = useCallback((line?: number) => {
     cancelPreviewDrivenSync()
+
+    const root = previewRootRef.current
+    if (root) {
+      const maxScrollTop = Math.max(0, root.scrollHeight - root.clientHeight)
+      previewWasAtBottomBeforeContentEditRef.current =
+        root.scrollTop >= maxScrollTop - SYNC_TUNING.contentEditBottomStickEpsilon
+    } else {
+      previewWasAtBottomBeforeContentEditRef.current = false
+    }
+
     suppressPreviewScrollForContentEditRef.current = true
     pendingContentEditSyncRef.current = true
     pendingContentEditLineRef.current = line
