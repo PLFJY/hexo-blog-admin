@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { MarkdownEditor } from './MarkdownEditor'
 import { MarkdownPreview } from './MarkdownPreview'
+import type { MermaidRenderError } from './MarkdownPreview'
 import { buildApiUrl } from '../lib/apiClient'
 import type { ResolvedMarkdownResourceUrl } from '../lib/markdownResource'
 import type { DraftAsset } from '../shared/assetTypes'
@@ -137,6 +138,7 @@ type ArticleMarkdownWorkspaceProps = {
   onInsertConsumed?: (id: number) => void
   onPasteImages?: (files: File[]) => void
   onSaveShortcut?: () => void
+  onMermaidRenderErrorsChange?: (errors: MermaidRenderError[]) => void
 }
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
@@ -158,31 +160,46 @@ const getPreviewY = (previewRoot: HTMLElement, element: HTMLElement) => {
 
 const buildPreviewLineMap = (view: EditorView, previewRoot: HTMLElement): PreviewLineMap => {
   const previewMaxScrollTop = Math.max(0, previewRoot.scrollHeight - previewRoot.clientHeight)
-  const anchors: SourceAnchor[] = [{ line: 1, previewY: 0 }]
-  const seenLines = new Set<number>([1])
+  const anchorByLine = new Map<number, number>([[1, 0]])
+  const addAnchor = (line: number, previewY: number, mode: 'min' | 'max') => {
+    const safeLine = Math.min(view.state.doc.lines, Math.max(1, Math.floor(line)))
+    const safePreviewY = clamp(previewY, 0, previewMaxScrollTop)
+    const current = anchorByLine.get(safeLine)
+    if (current == null) {
+      anchorByLine.set(safeLine, safePreviewY)
+      return
+    }
+
+    anchorByLine.set(safeLine, mode === 'min' ? Math.min(current, safePreviewY) : Math.max(current, safePreviewY))
+  }
 
   const previewAnchors = Array.from(previewRoot.querySelectorAll<HTMLElement>('[data-source-line]'))
     .map((element) => ({
       element,
-      line: Number(element.dataset.sourceLine),
+      startLine: Number(element.dataset.sourceLine),
+      endLine: Number(element.dataset.sourceEndLine),
     }))
-    .filter((anchor) => Number.isFinite(anchor.line) && anchor.line >= 1)
-    .sort((a, b) => a.line - b.line)
+    .filter((anchor) => Number.isFinite(anchor.startLine) && anchor.startLine >= 1)
+    .sort((a, b) => a.startLine - b.startLine)
 
   for (const anchor of previewAnchors) {
-    const line = Math.min(view.state.doc.lines, Math.max(1, Math.floor(anchor.line)))
-    if (seenLines.has(line)) continue
-
     const previewY = getPreviewY(previewRoot, anchor.element)
     if (!Number.isFinite(previewY)) continue
 
-    seenLines.add(line)
-    anchors.push({
-      line,
-      previewY: clamp(previewY, 0, previewMaxScrollTop),
-    })
+    const startLine = Math.min(view.state.doc.lines, Math.max(1, Math.floor(anchor.startLine)))
+    const endLine = Number.isFinite(anchor.endLine)
+      ? Math.min(view.state.doc.lines, Math.max(startLine, Math.floor(anchor.endLine)))
+      : startLine
+    addAnchor(startLine, previewY, 'min')
+
+    if (endLine > startLine) {
+      const rectHeight = anchor.element.getBoundingClientRect().height
+      const elementHeight = Number.isFinite(rectHeight) && rectHeight > 0 ? rectHeight : anchor.element.offsetHeight
+      addAnchor(endLine, previewY + elementHeight, 'max')
+    }
   }
 
+  const anchors = Array.from(anchorByLine.entries()).map(([line, previewY]) => ({ line, previewY }))
   anchors.sort((a, b) => a.line - b.line)
 
   const normalized: SourceAnchor[] = []
@@ -339,6 +356,7 @@ export function ArticleMarkdownWorkspace({
   onInsertConsumed,
   onPasteImages,
   onSaveShortcut,
+  onMermaidRenderErrorsChange,
 }: ArticleMarkdownWorkspaceProps) {
   const styles = useStyles()
   const [editorView, setEditorView] = useState<EditorView | null>(null)
@@ -865,6 +883,7 @@ export function ArticleMarkdownWorkspace({
           resolveResourceUrl={resolveResourceUrl}
           onPreviewRootReady={handlePreviewRootReady}
           onPreviewContentChange={handlePreviewContentChange}
+          onMermaidRenderErrorsChange={onMermaidRenderErrorsChange}
         />
       </div>
     </div>

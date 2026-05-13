@@ -10,6 +10,7 @@ import { ArticleMarkdownWorkspace } from '../components/ArticleMarkdownWorkspace
 import { EditorConflictResolverDialog } from '../components/EditorConflictResolverDialog'
 import { ErrorState } from '../components/ErrorState'
 import { LoadingState } from '../components/LoadingState'
+import type { MermaidRenderError } from '../components/MarkdownPreview'
 import { MarkdownAssetPanel } from '../components/MarkdownAssetPanel'
 import type { MarkdownAssetPanelHandle } from '../components/MarkdownAssetPanel'
 import { ApiError, getJson, sendJson } from '../lib/apiClient'
@@ -136,6 +137,7 @@ export function SourcePostEditorPage() {
   const relativeId = params.get('relativeId') ?? ''
   const renamedFrom = params.get('renamedFrom') ?? ''
   const [state, setState] = useState<State>({ status: 'loading' })
+  const [mermaidErrors, setMermaidErrors] = useState<MermaidRenderError[]>([])
   const assetPanelRef = useRef<MarkdownAssetPanelHandle>(null)
 
   useEffect(() => {
@@ -353,6 +355,16 @@ export function SourcePostEditorPage() {
   }
   return (
     <section className={styles.page}>
+      {mermaidErrors.length > 0 ? (
+        <section className={styles.pageBanner} role="alert" aria-live="polite">
+          <Text weight="semibold">Mermaid 流程图渲染失败</Text>
+          {mermaidErrors.map((error) => (
+            <Text key={`${error.index}-${error.line ?? 'unknown'}`}>
+              {error.line ? `第 ${error.line} 行：` : ''}{error.message}
+            </Text>
+          ))}
+        </section>
+      ) : null}
       {state.conflict ? (
         <EditorConflictResolverDialog
           open
@@ -443,6 +455,7 @@ export function SourcePostEditorPage() {
             }
             onPasteImages={(files) => void assetPanelRef.current?.handleIncomingImageFiles(files, 'paste')}
             onSaveShortcut={saveAsDraft}
+            onMermaidRenderErrorsChange={setMermaidErrors}
           />
         </Field>
       </section>
