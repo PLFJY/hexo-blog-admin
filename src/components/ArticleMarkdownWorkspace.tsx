@@ -222,7 +222,7 @@ const SYNC_TUNING = {
    *
    * 推荐范围：180 ~ 500
    */
-  bottomStickSmoothDuration: 250,
+  bottomStickSmoothDuration: 400,
 
   /**
    * preview 贴底动画距离目标小于多少 px 时直接吸附到底。
