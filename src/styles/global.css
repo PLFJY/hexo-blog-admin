@@ -38,3 +38,9 @@ body {
 code {
   font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
 }
+
+.cm-editor,
+.cm-scroller,
+.cm-content {
+  max-width: 100%;
+}
