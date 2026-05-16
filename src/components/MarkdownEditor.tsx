@@ -133,6 +133,8 @@ type MarkdownEditorProps = {
   onChange: (value: string) => void
   onPreviewSyncPositionChange?: (position: PreviewSyncPosition) => void
   onEditorViewChange?: (view: EditorView | null) => void
+  onContentEdit?: (line?: number) => void
+  onSaveShortcut?: () => void
   insertRequest?: { id: number; text: string }
   onInsertConsumed?: (id: number) => void
   onPasteImages?: (files: File[]) => void
@@ -140,6 +142,7 @@ type MarkdownEditorProps = {
 }
 
 type FormatAction = 'bold' | 'italic' | 'link' | 'underline' | 'highlight' | 'inlineCode' | 'codeBlock' | 'quote' | 'strikethrough' | 'color'
+
 export type PreviewSyncPosition = {
   line: number
   source: 'scroll' | 'cursor'
@@ -155,18 +158,13 @@ const isApplePlatform = () =>
 
 const formatShortcut = (key: string) => `${isApplePlatform() ? '⌘' : 'Ctrl'} + ${key}`
 const buildTooltip = (label: string, shortcut?: string) => (shortcut ? `${label} · ${shortcut}` : label)
-const isShortcutModifierPressed = (event: KeyboardEvent) => (isApplePlatform() ? event.metaKey : event.ctrlKey)
 const createEditorInstanceKey = (documentKey: string | undefined, revision: number) => `${documentKey ?? '__hba_single_document__'}:${revision}`
 
 function normalizeHexColor(value: string | undefined) {
   const trimmed = value?.trim() ?? ''
   if (/^#[0-9a-f]{6}$/i.test(trimmed)) return trimmed.toLowerCase()
   if (/^#[0-9a-f]{3}$/i.test(trimmed)) {
-    return `#${trimmed
-      .slice(1)
-      .split('')
-      .map((char) => `${char}${char}`)
-      .join('')}`.toLowerCase()
+    return `#${trimmed.slice(1).split('').map((char) => `${char}${char}`).join('')}`.toLowerCase()
   }
   return null
 }
@@ -238,6 +236,8 @@ export function MarkdownEditor({
   onChange,
   onPreviewSyncPositionChange,
   onEditorViewChange,
+  onContentEdit,
+  onSaveShortcut,
   insertRequest,
   onInsertConsumed,
   onPasteImages,
@@ -247,23 +247,27 @@ export function MarkdownEditor({
   const { t } = useTranslation()
   const { resolvedMode } = useAppTheme()
   const [editorView, setEditorView] = useState<EditorView | null>(null)
-  const [localValue, setLocalValue] = useState(value)
-  const resetRevisionRef = useRef(0)
-  const [editorInstanceKey, setEditorInstanceKey] = useState(() => createEditorInstanceKey(documentKey, 0))
+  const [editorSeedValue, setEditorSeedValue] = useState(value)
+  const [editorRevision, setEditorRevision] = useState(0)
   const [lastTextColor, setLastTextColor] = useState(defaultTextColor)
   const [draftTextColor, setDraftTextColor] = useState(defaultTextColor)
   const [colorPopoverOpen, setColorPopoverOpen] = useState(false)
-  const localValueRef = useRef(value)
+
+  const editorLiveValueRef = useRef(value)
+  const editorDocumentKeyRef = useRef(documentKey)
   const editorViewRef = useRef<EditorView | null>(null)
   const hasLocalEditRef = useRef(false)
   const lastLocalEditAtRef = useRef(0)
-  const documentKeyRef = useRef(documentKey)
-  const onChangeRef = useRef(onChange)
   const composingRef = useRef(false)
   const compositionFrameRef = useRef<number | undefined>(undefined)
   const compositionUnlockFrameRef = useRef<number | undefined>(undefined)
+  const onChangeRef = useRef(onChange)
   const onPreviewSyncPositionChangeRef = useRef(onPreviewSyncPositionChange)
   const onEditorViewChangeRef = useRef(onEditorViewChange)
+  const onContentEditRef = useRef(onContentEdit)
+  const onSaveShortcutRef = useRef(onSaveShortcut)
+
+  const editorInstanceKey = useMemo(() => createEditorInstanceKey(documentKey, editorRevision), [documentKey, editorRevision])
 
   useEffect(() => {
     onChangeRef.current = onChange
@@ -277,48 +281,48 @@ export function MarkdownEditor({
     onEditorViewChangeRef.current = onEditorViewChange
   }, [onEditorViewChange])
 
+  useEffect(() => {
+    onContentEditRef.current = onContentEdit
+  }, [onContentEdit])
+
+  useEffect(() => {
+    onSaveShortcutRef.current = onSaveShortcut
+  }, [onSaveShortcut])
+
   const isEditorFocused = useCallback(() => {
     const view = editorViewRef.current
     return Boolean(view && (view.hasFocus || view.dom.contains(document.activeElement)))
   }, [])
 
-  const resetEditorDocument = useCallback((nextValue: string, nextDocumentKey = documentKeyRef.current) => {
-    resetRevisionRef.current += 1
-    documentKeyRef.current = nextDocumentKey
-    localValueRef.current = nextValue
+  const resetEditorDocument = useCallback((nextValue: string, nextDocumentKey = editorDocumentKeyRef.current) => {
+    editorDocumentKeyRef.current = nextDocumentKey
+    editorLiveValueRef.current = nextValue
     hasLocalEditRef.current = false
     lastLocalEditAtRef.current = 0
-    setLocalValue(nextValue)
-    setEditorInstanceKey(createEditorInstanceKey(nextDocumentKey, resetRevisionRef.current))
+    setEditorSeedValue(nextValue)
+    setEditorRevision((revision) => revision + 1)
   }, [])
 
   const markLocalValue = useCallback((nextValue: string) => {
-    localValueRef.current = nextValue
+    editorLiveValueRef.current = nextValue
     hasLocalEditRef.current = true
     lastLocalEditAtRef.current = Date.now()
-
-    // CodeMirror is the live source of truth while editing.
-    // Do not mirror every keystroke into React state, otherwise @uiw/react-codemirror
-    // can receive a stale controlled `value` during IME composition and reset the doc.
   }, [])
 
   useEffect(() => {
-    if (documentKeyRef.current !== documentKey) {
+    if (editorDocumentKeyRef.current !== documentKey) {
       resetEditorDocument(value, documentKey)
       return
     }
 
-    if (value === localValueRef.current) {
+    if (value === editorLiveValueRef.current) {
       hasLocalEditRef.current = false
       return
     }
 
-    // Same-document external values are usually parent-state catch-up, autosave,
-    // or async draft-load echoes. They must not overwrite a focused/dirty editor.
-    // Only allow them to initialize an untouched editor before the user starts editing.
     const untouched = !hasLocalEditRef.current && lastLocalEditAtRef.current === 0
     if (untouched && !composingRef.current && !isEditorFocused()) {
-      resetEditorDocument(value, documentKeyRef.current)
+      resetEditorDocument(value, editorDocumentKeyRef.current)
     }
   }, [documentKey, isEditorFocused, resetEditorDocument, value])
 
@@ -335,13 +339,14 @@ export function MarkdownEditor({
     onPreviewSyncPositionChangeRef.current?.(getPreviewPosition(view, source))
   }, [])
 
-  const emitChange = useCallback((nextValue: string) => {
+  const emitChange = useCallback((nextValue: string, view?: EditorView) => {
     markLocalValue(nextValue)
+    if (view) onContentEditRef.current?.(view.state.doc.lineAt(view.state.selection.main.head).number)
     onChangeRef.current(nextValue)
   }, [markLocalValue])
 
   const dispatchCurrentValue = useCallback((view: EditorView) => {
-    emitChange(view.state.doc.toString())
+    emitChange(view.state.doc.toString(), view)
     view.focus()
   }, [emitChange])
 
@@ -405,26 +410,6 @@ export function MarkdownEditor({
       dispatchCurrentValue(view)
       return
     }
-
-    const openingSpanPattern = /<span style="color: #[0-9a-f]{6}">$/i
-    const beforeStart = Math.max(0, selection.from - '<span style="color: #000000">'.length)
-    const beforeText = view.state.doc.sliceString(beforeStart, selection.from)
-    const openingMatch = beforeText.match(openingSpanPattern)
-    const afterText = view.state.doc.sliceString(selection.to, selection.to + '</span>'.length)
-    if (selected && openingMatch && afterText === '</span>') {
-      const beforeFrom = selection.from - openingMatch[0].length
-      view.dispatch({
-        changes: [
-          { from: selection.to, to: selection.to + '</span>'.length, insert: '' },
-          { from: beforeFrom, to: selection.from, insert: '' },
-        ],
-        selection: { anchor: beforeFrom, head: beforeFrom + selected.length },
-        scrollIntoView: true,
-      })
-      dispatchCurrentValue(view)
-      return
-    }
-
     wrapSelection(view, `<span style="color: ${color}">`, '</span>')
   }, [dispatchCurrentValue, wrapSelection])
 
@@ -451,7 +436,6 @@ export function MarkdownEditor({
       dispatchCurrentValue(view)
       return
     }
-
     const doc = view.state.doc
     const endPosition = selection.to > selection.from && doc.lineAt(selection.to).from === selection.to ? selection.to - 1 : selection.to
     const startLine = doc.lineAt(selection.from)
@@ -506,11 +490,29 @@ export function MarkdownEditor({
     replaceSelection('color', normalized)
   }, [replaceSelection])
 
+  const markdownExtension = useMemo(() => markdown(), [])
+  const mobileSafeEditorTheme = useMemo(
+    () =>
+      EditorView.theme({
+        '&': { maxWidth: '100%' },
+        '.cm-scroller': { overflowX: 'hidden' },
+        '.cm-content': { minWidth: '0', maxWidth: '100%' },
+        '.cm-line': { overflowWrap: 'anywhere', wordBreak: 'break-word' },
+        '.cm-gutters': { flexShrink: '0', fontVariantNumeric: 'tabular-nums' },
+        '.cm-lineNumbers .cm-gutterElement': {
+          minWidth: '3.25em',
+          boxSizing: 'border-box',
+          textAlign: 'right',
+          fontVariantNumeric: 'tabular-nums',
+        },
+      }),
+    [],
+  )
+
   const editorKeymap = useMemo(
     () =>
-      // CodeMirror calls these commands on editor key events, not during React render.
-      // eslint-disable-next-line react-hooks/refs
       keymap.of([
+        { key: 'Mod-s', run: () => { onSaveShortcutRef.current?.(); return true } },
         { key: 'Mod-b', run: (view) => { replaceSelectionInView(view, 'bold'); return true } },
         { key: 'Mod-i', run: (view) => { replaceSelectionInView(view, 'italic'); return true } },
         { key: 'Mod-u', run: (view) => { replaceSelectionInView(view, 'underline'); return true } },
@@ -523,11 +525,9 @@ export function MarkdownEditor({
     [insertBreak, replaceSelectionInView],
   )
 
-  const markdownExtension = useMemo(() => markdown(), [])
-
   const editorExtensions = useMemo(
-    () => [markdownExtension, EditorView.lineWrapping, editorKeymap],
-    [editorKeymap, markdownExtension],
+    () => [markdownExtension, EditorView.lineWrapping, mobileSafeEditorTheme, editorKeymap],
+    [editorKeymap, markdownExtension, mobileSafeEditorTheme],
   )
 
   const basicSetup = useMemo(
@@ -539,37 +539,6 @@ export function MarkdownEditor({
     }),
     [],
   )
-
-  useEffect(() => {
-    if (!editorView) return undefined
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const key = event.key.toLowerCase()
-      const run = (action: FormatAction) => {
-        event.preventDefault()
-        event.stopPropagation()
-        replaceSelectionInView(editorView, action)
-      }
-
-      if (event.key === 'Enter' && event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey) {
-        event.preventDefault()
-        event.stopPropagation()
-        insertBreak(editorView)
-        return
-      }
-
-      if (!isShortcutModifierPressed(event) || event.altKey) return
-      if (key === 'b') run('bold')
-      else if (key === 'i') run('italic')
-      else if (key === 'u') run('underline')
-      else if (key === 'h') run('highlight')
-      else if (key === 'd') run('strikethrough')
-      else if (key === 'e') run('quote')
-      else if (event.key === '`' || event.code === 'Backquote') run('inlineCode')
-    }
-
-    editorView.dom.addEventListener('keydown', handleKeyDown, { capture: true })
-    return () => editorView.dom.removeEventListener('keydown', handleKeyDown, { capture: true })
-  }, [editorView, insertBreak, replaceSelectionInView])
 
   const runNativeHistory = (command: 'undo' | 'redo') => {
     if (!editorView) return
@@ -587,7 +556,7 @@ export function MarkdownEditor({
     })
     editorView.focus()
     const frame = window.requestAnimationFrame(() => {
-      emitChange(editorView.state.doc.toString())
+      emitChange(editorView.state.doc.toString(), editorView)
       onInsertConsumed?.(insertRequest.id)
     })
     return () => window.cancelAnimationFrame(frame)
@@ -606,10 +575,8 @@ export function MarkdownEditor({
         const view = editorViewRef.current ?? editorView
         const nextValue = view.state.doc.toString()
         markLocalValue(nextValue)
+        onContentEditRef.current?.(view.state.doc.lineAt(view.state.selection.main.head).number)
         onChangeRef.current(nextValue)
-
-        // Keep composition locked for one more frame after emitting the final text,
-        // so React cannot feed a stale value back into CodeMirror in the same IME cycle.
         compositionUnlockFrameRef.current = window.requestAnimationFrame(() => {
           composingRef.current = false
           compositionUnlockFrameRef.current = undefined
@@ -637,13 +604,17 @@ export function MarkdownEditor({
   }, [editorView, onPasteImages])
 
   const handleUpdate = (update: ViewUpdate) => {
-    if (!onPreviewSyncPositionChange || (!update.docChanged && !update.selectionSet)) return
+    if (!onPreviewSyncPositionChangeRef.current) return
+    if (update.docChanged || !update.selectionSet) return
     emitPreviewSyncPosition(update.view, 'cursor')
   }
 
-  const handleChange = (nextValue: string) => {
+  const handleChange = (nextValue: string, update: ViewUpdate) => {
     markLocalValue(nextValue)
-    if (!composingRef.current) onChangeRef.current(nextValue)
+    if (!composingRef.current) {
+      onContentEditRef.current?.(update.state.doc.lineAt(update.state.selection.main.head).number)
+      onChangeRef.current(nextValue)
+    }
   }
 
   const normalizedDraftTextColor = normalizeHexColor(draftTextColor)
@@ -680,20 +651,13 @@ export function MarkdownEditor({
               </span>
             </PopoverTrigger>
             <PopoverSurface className={styles.colorPopover}>
-              <ColorPicker
-                color={pickerColor}
-                onColorChange={(_, data) => setDraftTextColor(hsvToHex(data.color))}
-              >
+              <ColorPicker color={pickerColor} onColorChange={(_, data) => setDraftTextColor(hsvToHex(data.color))}>
                 <div className={styles.colorPicker}>
                   <ColorArea className={styles.colorArea} />
                   <ColorSlider className={styles.colorSlider} />
                 </div>
               </ColorPicker>
-              <Field
-                label={t('editor.hexColor')}
-                validationState={colorError ? 'error' : 'none'}
-                validationMessage={colorError}
-              >
+              <Field label={t('editor.hexColor')} validationState={colorError ? 'error' : 'none'} validationMessage={colorError}>
                 <Input value={draftTextColor} onChange={(_, data) => setDraftTextColor(data.value)} />
               </Field>
               <div className={styles.colorActions}>
@@ -716,7 +680,7 @@ export function MarkdownEditor({
       <CodeMirror
         key={editorInstanceKey}
         className={styles.root}
-        value={localValue}
+        value={editorSeedValue}
         height="560px"
         theme={resolvedMode}
         extensions={editorExtensions}
