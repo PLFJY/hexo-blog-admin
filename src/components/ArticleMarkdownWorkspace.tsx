@@ -1064,6 +1064,17 @@ export function ArticleMarkdownWorkspace({
       const previewY = mapSourceLineToPreviewY(line, lineMap);
       if (previewY == null) return;
 
+      const visibilityPadding = 48;
+      const visibleTop = root.scrollTop + visibilityPadding;
+      const visibleBottom =
+        root.scrollTop + root.clientHeight - visibilityPadding;
+
+      // 如果目标行已经在 preview 可视区内，不要为了固定 reveal 比例而强行滚动。
+      if (previewY >= visibleTop && previewY <= visibleBottom) {
+        pendingCursorLineRef.current = undefined;
+        return;
+      }
+
       const target =
         previewY - root.clientHeight * SYNC_TUNING.cursorRevealRatio;
       pendingCursorLineRef.current = undefined;

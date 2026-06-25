@@ -1,6 +1,6 @@
 import { markdown } from '@codemirror/lang-markdown'
 import CodeMirror from '@uiw/react-codemirror'
-import { EditorView, keymap, type ViewUpdate } from '@uiw/react-codemirror'
+import { EditorView, Transaction, keymap, type ViewUpdate } from '@uiw/react-codemirror'
 import {
   Button,
   ColorArea,
@@ -159,6 +159,12 @@ const isApplePlatform = () =>
 const formatShortcut = (key: string) => `${isApplePlatform() ? '⌘' : 'Ctrl'} + ${key}`
 const buildTooltip = (label: string, shortcut?: string) => (shortcut ? `${label} · ${shortcut}` : label)
 const createEditorInstanceKey = (documentKey: string | undefined, revision: number) => `${documentKey ?? '__hba_single_document__'}:${revision}`
+
+const isPointerSelectionUpdate = (update: ViewUpdate) =>
+  update.transactions.some((transaction) => {
+    const userEvent = transaction.annotation(Transaction.userEvent)
+    return userEvent === 'select.pointer' || userEvent?.startsWith('select.pointer')
+  })
 
 function normalizeHexColor(value: string | undefined) {
   const trimmed = value?.trim() ?? ''
@@ -606,6 +612,11 @@ export function MarkdownEditor({
   const handleUpdate = (update: ViewUpdate) => {
     if (!onPreviewSyncPositionChangeRef.current) return
     if (update.docChanged || !update.selectionSet) return
+
+    // 鼠标 / 触摸点击 editor 只是移动光标，不应该强行滚动 preview。
+    // 否则会覆盖用户刚刚通过正常滚动建立好的 editor -> preview 对齐。
+    if (isPointerSelectionUpdate(update)) return
+
     emitPreviewSyncPosition(update.view, 'cursor')
   }
 
