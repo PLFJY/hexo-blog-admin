@@ -464,6 +464,85 @@ const mapSourceLineToPreviewY = (line: number, lineMap: PreviewLineMap) => {
   return yStart + progress * (yEnd - yStart);
 };
 
+const getPreviewRangeForSourceLine = (
+  previewRoot: HTMLElement,
+  line: number,
+) => {
+  const candidates = Array.from(
+    previewRoot.querySelectorAll<HTMLElement>("[data-source-line]"),
+  )
+    .map((element) => {
+      const startLine = Number(element.dataset.sourceLine);
+      const endLine = Number(element.dataset.sourceEndLine);
+      if (!Number.isFinite(startLine)) return undefined;
+
+      const safeEndLine = Number.isFinite(endLine)
+        ? Math.max(startLine, endLine)
+        : startLine;
+
+      return {
+        element,
+        startLine,
+        endLine: safeEndLine,
+      };
+    })
+    .filter(Boolean) as Array<{
+    element: HTMLElement;
+    startLine: number;
+    endLine: number;
+  }>;
+
+  const containing = candidates
+    .filter(
+      (candidate) =>
+        candidate.startLine <= line && candidate.endLine >= line,
+    )
+    .sort((a, b) => {
+      const aSpan = a.endLine - a.startLine;
+      const bSpan = b.endLine - b.startLine;
+      return aSpan - bSpan || b.startLine - a.startLine;
+    })[0];
+
+  if (containing) {
+    const top = getPreviewY(previewRoot, containing.element);
+    const height =
+      containing.element.getBoundingClientRect().height ||
+      containing.element.offsetHeight ||
+      0;
+
+    return {
+      top,
+      bottom: top + height,
+      y: line >= containing.endLine ? top + height : top,
+    };
+  }
+
+  const previous = candidates
+    .filter((candidate) => candidate.endLine < line)
+    .sort((a, b) => b.endLine - a.endLine)[0];
+
+  const next = candidates
+    .filter((candidate) => candidate.startLine > line)
+    .sort((a, b) => a.startLine - b.startLine)[0];
+
+  if (next) {
+    const top = getPreviewY(previewRoot, next.element);
+    return { top, bottom: top, y: top };
+  }
+
+  if (previous) {
+    const top = getPreviewY(previewRoot, previous.element);
+    const height =
+      previous.element.getBoundingClientRect().height ||
+      previous.element.offsetHeight ||
+      0;
+
+    return { top, bottom: top + height, y: top + height };
+  }
+
+  return undefined;
+};
+
 const mapPreviewYToSourceLine = (previewY: number, lineMap: PreviewLineMap) => {
   const { lines, previewYs } = lineMap;
   if (lines.length === 0 || lines.length !== previewYs.length) return undefined;
@@ -1049,7 +1128,9 @@ export function ArticleMarkdownWorkspace({
 
   const syncPreviewToCursorLine = useCallback(
     (line: number) => {
-      if (activeScrollSourceRef.current !== null) {
+      // 只有用户正在滚 preview 时，才延迟 editor cursor reveal。
+      // 如果 active source 是 editor，说明 editor 本来就是同步源，应该允许 preview 跟随。
+      if (activeScrollSourceRef.current === "preview") {
         pendingCursorLineRef.current = line;
         return;
       }
@@ -1061,7 +1142,8 @@ export function ArticleMarkdownWorkspace({
         return;
       }
 
-      const previewY = mapSourceLineToPreviewY(line, lineMap);
+      const range = getPreviewRangeForSourceLine(root, line);
+      const previewY = range?.y ?? mapSourceLineToPreviewY(line, lineMap);
       if (previewY == null) return;
 
       const visibilityPadding = 48;
@@ -1070,7 +1152,22 @@ export function ArticleMarkdownWorkspace({
         root.scrollTop + root.clientHeight - visibilityPadding;
 
       // 如果目标行已经在 preview 可视区内，不要为了固定 reveal 比例而强行滚动。
-      if (previewY >= visibleTop && previewY <= visibleBottom) {
+      if (range) {
+        const rangeHeight = range.bottom - range.top;
+        const visibleHeight = visibleBottom - visibleTop;
+        const rangeIntersectsViewport =
+          range.bottom >= visibleTop && range.top <= visibleBottom;
+        const pointVisible =
+          previewY >= visibleTop && previewY <= visibleBottom;
+
+        if (
+          pointVisible ||
+          (rangeHeight <= visibleHeight && rangeIntersectsViewport)
+        ) {
+          pendingCursorLineRef.current = undefined;
+          return;
+        }
+      } else if (previewY >= visibleTop && previewY <= visibleBottom) {
         pendingCursorLineRef.current = undefined;
         return;
       }
@@ -1102,12 +1199,24 @@ export function ArticleMarkdownWorkspace({
 
   const releaseActiveSource = useCallback(() => {
     activeScrollSourceRef.current = null;
-    pendingCursorLineRef.current = undefined;
 
     if (scrollMapDirtyRef.current && canRebuildScrollMapNow()) {
       scheduleScrollMapRebuild();
     }
-  }, [canRebuildScrollMapNow, scheduleScrollMapRebuild]);
+
+    const pendingLine = pendingCursorLineRef.current;
+    if (pendingLine !== undefined) {
+      pendingCursorLineRef.current = undefined;
+
+      window.requestAnimationFrame(() => {
+        syncPreviewToCursorLine(pendingLine);
+      });
+    }
+  }, [
+    canRebuildScrollMapNow,
+    scheduleScrollMapRebuild,
+    syncPreviewToCursorLine,
+  ]);
 
   const markActiveSource = useCallback(
     (source: Exclude<ScrollSource, null>) => {
@@ -1327,6 +1436,25 @@ export function ArticleMarkdownWorkspace({
     [scheduleCursorSync],
   );
 
+  const handleEditorContentEdit = useCallback(
+    (line?: number) => {
+      if (line == null) return;
+
+      latestCursorLineRef.current = line;
+
+      // 内容编辑来自 editor，本来就应该让 preview 跟随 editor。
+      // 不要在这里走 preview -> editor，也不要把 active source 设成 preview。
+      if (activeScrollSourceRef.current === "preview") {
+        pendingCursorLineRef.current = line;
+        return;
+      }
+
+      markActiveSource("editor");
+      scheduleCursorSync(line);
+    },
+    [markActiveSource, scheduleCursorSync],
+  );
+
   const handleEditorPointerEnter = useCallback(() => {
     pointerAreaRef.current = "editor";
   }, []);
@@ -1532,6 +1660,7 @@ export function ArticleMarkdownWorkspace({
           onChange={onChange}
           onPreviewSyncPositionChange={handlePreviewSyncPositionChange}
           onEditorViewChange={handleEditorViewChange}
+          onContentEdit={handleEditorContentEdit}
           insertRequest={insertRequest}
           onInsertConsumed={onInsertConsumed}
           onPasteImages={onPasteImages}
