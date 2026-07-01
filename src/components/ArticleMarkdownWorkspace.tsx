@@ -703,6 +703,9 @@ export function ArticleMarkdownWorkspace({
 
   const latestCursorLineRef = useRef(1);
   const pendingCursorLineRef = useRef<number | undefined>(undefined);
+  const pendingEditorContentLineRef = useRef<number | undefined>(undefined);
+  const editorContentSyncFrameRef = useRef<number | undefined>(undefined);
+  const editorContentSyncTimerRef = useRef<number | undefined>(undefined);
 
   const releasePreviewSuppressLater = useCallback((token: number) => {
     window.requestAnimationFrame(() => {
@@ -1127,7 +1130,13 @@ export function ArticleMarkdownWorkspace({
   }, [canRebuildScrollMapNow, rebuildScrollMap]);
 
   const syncPreviewToCursorLine = useCallback(
-    (line: number) => {
+    (
+      line: number,
+      options: {
+        forceMap?: boolean;
+        fromContentEdit?: boolean;
+      } = {},
+    ) => {
       // 只有用户正在滚 preview 时，才延迟 editor cursor reveal。
       // 如果 active source 是 editor，说明 editor 本来就是同步源，应该允许 preview 跟随。
       if (activeScrollSourceRef.current === "preview") {
@@ -1136,7 +1145,9 @@ export function ArticleMarkdownWorkspace({
       }
 
       const root = previewRootRef.current;
-      const lineMap = getOrBuildScrollMap();
+      const lineMap = options.forceMap
+        ? rebuildScrollMap()
+        : getOrBuildScrollMap();
       if (!root || !lineMap) {
         pendingCursorLineRef.current = line;
         return;
@@ -1162,7 +1173,9 @@ export function ArticleMarkdownWorkspace({
 
         if (
           pointVisible ||
-          (rangeHeight <= visibleHeight && rangeIntersectsViewport)
+          (!options.fromContentEdit &&
+            rangeHeight <= visibleHeight &&
+            rangeIntersectsViewport)
         ) {
           pendingCursorLineRef.current = undefined;
           return;
@@ -1180,8 +1193,45 @@ export function ArticleMarkdownWorkspace({
         SYNC_TUNING.cursorRevealSmoothDuration,
       );
     },
-    [getOrBuildScrollMap, setPreviewScrollTopWithCorrection],
+    [getOrBuildScrollMap, rebuildScrollMap, setPreviewScrollTopWithCorrection],
   );
+
+  const flushEditorContentSync = useCallback(() => {
+    const pendingLine = pendingEditorContentLineRef.current;
+    if (pendingLine === undefined) return;
+
+    pendingEditorContentLineRef.current = undefined;
+    pendingCursorLineRef.current = undefined;
+
+    // Preview DOM 已经因为 markdown 变化而更新，此时旧 map 不可信。
+    scrollMapDirtyRef.current = true;
+
+    syncPreviewToCursorLine(pendingLine, {
+      forceMap: true,
+      fromContentEdit: true,
+    });
+  }, [syncPreviewToCursorLine]);
+
+  const scheduleEditorContentSync = useCallback(() => {
+    if (editorContentSyncFrameRef.current !== undefined) {
+      window.cancelAnimationFrame(editorContentSyncFrameRef.current);
+      editorContentSyncFrameRef.current = undefined;
+    }
+
+    window.clearTimeout(editorContentSyncTimerRef.current);
+
+    // 等 Preview HTML commit + layout 基本稳定。
+    editorContentSyncFrameRef.current = window.requestAnimationFrame(() => {
+      editorContentSyncFrameRef.current = window.requestAnimationFrame(() => {
+        editorContentSyncFrameRef.current = undefined;
+
+        editorContentSyncTimerRef.current = window.setTimeout(() => {
+          editorContentSyncTimerRef.current = undefined;
+          flushEditorContentSync();
+        }, 40);
+      });
+    });
+  }, [flushEditorContentSync]);
 
   const scheduleCursorSync = useCallback(
     (line: number) => {
@@ -1388,6 +1438,16 @@ export function ArticleMarkdownWorkspace({
   const handlePreviewContentChange = useCallback(() => {
     invalidateScrollMap();
 
+    // 这是输入 / Enter / 删除导致的 Preview DOM 更新。
+    // 这条路径必须压过 bottom-stick，否则代码块末尾开始输入正文时会每个字跳一次。
+    if (pendingEditorContentLineRef.current !== undefined) {
+      cancelPreviewBottomStickAnimation(false);
+      cancelPreviewCorrectionAnimation();
+      cancelPreviewLiveFollowAnimation();
+      scheduleEditorContentSync();
+      return;
+    }
+
     const view = editorViewRef.current;
     if (
       activeScrollSourceRef.current === "editor" &&
@@ -1403,7 +1463,11 @@ export function ArticleMarkdownWorkspace({
     else if (activeScrollSourceRef.current === "preview")
       schedulePreviewToEditorSync();
   }, [
+    cancelPreviewBottomStickAnimation,
+    cancelPreviewCorrectionAnimation,
+    cancelPreviewLiveFollowAnimation,
     invalidateScrollMap,
+    scheduleEditorContentSync,
     scheduleEditorToPreviewSync,
     schedulePreviewToEditorSync,
     startPreviewBottomStick,
@@ -1441,18 +1505,28 @@ export function ArticleMarkdownWorkspace({
       if (line == null) return;
 
       latestCursorLineRef.current = line;
+      pendingEditorContentLineRef.current = line;
 
-      // 内容编辑来自 editor，本来就应该让 preview 跟随 editor。
-      // 不要在这里走 preview -> editor，也不要把 active source 设成 preview。
-      if (activeScrollSourceRef.current === "preview") {
-        pendingCursorLineRef.current = line;
-        return;
-      }
+      // 输入文字不是“用户滚动 editor”，不要刷新 active-source release timer。
+      // 但当 preview 不是用户滚动源时，仍记录 editor 是当前同步源。
+      if (activeScrollSourceRef.current !== "preview")
+        activeScrollSourceRef.current = "editor";
 
-      markActiveSource("editor");
-      scheduleCursorSync(line);
+      // 内容编辑后的 preview DOM 会更新，旧的 preview scroll 动画都应该停掉。
+      cancelPreviewBottomStickAnimation(false);
+      cancelPreviewCorrectionAnimation();
+      cancelPreviewLiveFollowAnimation();
+
+      invalidateScrollMap();
+      scheduleEditorContentSync();
     },
-    [markActiveSource, scheduleCursorSync],
+    [
+      cancelPreviewBottomStickAnimation,
+      cancelPreviewCorrectionAnimation,
+      cancelPreviewLiveFollowAnimation,
+      invalidateScrollMap,
+      scheduleEditorContentSync,
+    ],
   );
 
   const handleEditorPointerEnter = useCallback(() => {
@@ -1634,6 +1708,7 @@ export function ArticleMarkdownWorkspace({
       window.clearTimeout(scrollSourceReleaseTimerRef.current);
       window.clearTimeout(scrollMapRebuildTimerRef.current);
       window.clearTimeout(previewSettleTimerRef.current);
+      window.clearTimeout(editorContentSyncTimerRef.current);
 
       if (editorToPreviewFrameRef.current !== undefined)
         window.cancelAnimationFrame(editorToPreviewFrameRef.current);
@@ -1641,6 +1716,8 @@ export function ArticleMarkdownWorkspace({
         window.cancelAnimationFrame(previewToEditorFrameRef.current);
       if (cursorSyncFrameRef.current !== undefined)
         window.cancelAnimationFrame(cursorSyncFrameRef.current);
+      if (editorContentSyncFrameRef.current !== undefined)
+        window.cancelAnimationFrame(editorContentSyncFrameRef.current);
 
       cancelPreviewScrollAnimation();
     };
