@@ -140,7 +140,9 @@ export function DraftsPage() {
       )
   }
 
-  useEffect(load, [])
+  useEffect(() => {
+    queueMicrotask(load)
+  }, [])
 
   if (state.status === 'loading') return <LoadingState />
   if (state.status === 'error') return <ErrorState message={state.message} onRetry={load} />

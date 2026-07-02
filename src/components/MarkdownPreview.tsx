@@ -9,7 +9,7 @@ import markdownItSup from 'markdown-it-sup'
 import { makeStyles, tokens } from '@fluentui/react-components'
 import { useEffect, useMemo, useRef } from 'react'
 import 'katex/dist/katex.min.css'
-import { useAppTheme } from '../app/ThemeProvider'
+import { useAppTheme } from '../app/themeContext'
 import { extractFrontMatterTitle, stripFrontMatter } from '../shared/frontMatter'
 import type { ResolvedMarkdownResourceUrl } from '../lib/markdownResource'
 

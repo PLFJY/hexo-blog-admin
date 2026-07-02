@@ -110,7 +110,7 @@ export async function saveDraft(env: WorkerEnv, request: SaveDraftRequest, id?: 
     }
   } catch (error) {
     if (error instanceof Error && error.message.toLowerCase().includes('unique')) {
-      throw new Error(`Draft relativeId already exists: ${relativeId}`)
+      throw new Error(`Draft relativeId already exists: ${relativeId}`, { cause: error })
     }
     throw error
   }

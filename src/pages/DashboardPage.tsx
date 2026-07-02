@@ -162,7 +162,9 @@ export function DashboardPage() {
     }
   }
 
-  useEffect(load, [])
+  useEffect(() => {
+    queueMicrotask(load)
+  }, [])
 
   const recentDrafts = useMemo(() => {
     if (state.status !== 'ready') return []

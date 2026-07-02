@@ -1,7 +1,7 @@
 import { Button } from '@fluentui/react-components'
 import { DarkThemeRegular, WeatherMoonRegular, WeatherSunnyRegular } from '@fluentui/react-icons'
 import { useTranslation } from 'react-i18next'
-import { useAppTheme } from './ThemeProvider'
+import { useAppTheme } from './themeContext'
 
 export function ThemeSwitcher() {
   const { t } = useTranslation()

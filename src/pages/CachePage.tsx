@@ -76,7 +76,9 @@ export function CachePage() {
       .catch((error: unknown) => setState({ status: 'error', message: error instanceof Error ? error.message : 'Unknown error' }))
   }
 
-  useEffect(load, [])
+  useEffect(() => {
+    queueMicrotask(load)
+  }, [])
 
   if (state.status === 'loading') return <LoadingState />
   if (state.status === 'error') return <ErrorState message={state.message} onRetry={load} />

@@ -276,7 +276,8 @@ export const MarkdownAssetPanel = forwardRef<MarkdownAssetPanelHandle, MarkdownA
     if (decision !== 'compress') setCompressionDialog(null)
   }
 
-  const handleIncomingImageFiles = useCallback(async (files: File[], _source: IncomingImageSource) => {
+  const handleIncomingImageFiles = useCallback(async (files: File[], source: IncomingImageSource) => {
+    void source
     for (const file of files) {
       if (!file.type.startsWith('image/')) {
         setMessage({ kind: 'error', text: t('assets.notImage') })

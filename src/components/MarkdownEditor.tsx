@@ -31,7 +31,7 @@ import {
 } from '@fluentui/react-icons'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useAppTheme } from '../app/ThemeProvider'
+import { useAppTheme } from '../app/themeContext'
 import { extractImageFilesFromPasteEvent } from '../lib/clipboardImages'
 
 const useStyles = makeStyles({
@@ -271,7 +271,6 @@ export function MarkdownEditor({
   const onPreviewSyncPositionChangeRef = useRef(onPreviewSyncPositionChange)
   const onEditorViewChangeRef = useRef(onEditorViewChange)
   const onContentEditRef = useRef(onContentEdit)
-  const onSaveShortcutRef = useRef(onSaveShortcut)
 
   const editorInstanceKey = useMemo(() => createEditorInstanceKey(documentKey, editorRevision), [documentKey, editorRevision])
 
@@ -290,10 +289,6 @@ export function MarkdownEditor({
   useEffect(() => {
     onContentEditRef.current = onContentEdit
   }, [onContentEdit])
-
-  useEffect(() => {
-    onSaveShortcutRef.current = onSaveShortcut
-  }, [onSaveShortcut])
 
   const isEditorFocused = useCallback(() => {
     const view = editorViewRef.current
@@ -517,8 +512,10 @@ export function MarkdownEditor({
 
   const editorKeymap = useMemo(
     () =>
+      // CodeMirror stores these command callbacks and invokes them from editor events.
+      // eslint-disable-next-line react-hooks/refs
       keymap.of([
-        { key: 'Mod-s', run: () => { onSaveShortcutRef.current?.(); return true } },
+        { key: 'Mod-s', run: () => { onSaveShortcut?.(); return true } },
         { key: 'Mod-b', run: (view) => { replaceSelectionInView(view, 'bold'); return true } },
         { key: 'Mod-i', run: (view) => { replaceSelectionInView(view, 'italic'); return true } },
         { key: 'Mod-u', run: (view) => { replaceSelectionInView(view, 'underline'); return true } },
@@ -528,7 +525,7 @@ export function MarkdownEditor({
         { key: 'Mod-d', run: (view) => { replaceSelectionInView(view, 'strikethrough'); return true } },
         { key: 'Shift-Enter', run: (view) => { insertBreak(view); return true } },
       ]),
-    [insertBreak, replaceSelectionInView],
+    [insertBreak, onSaveShortcut, replaceSelectionInView],
   )
 
   const editorExtensions = useMemo(

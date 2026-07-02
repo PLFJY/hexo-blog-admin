@@ -106,8 +106,10 @@ export function LoginPage({ onLoggedIn }: LoginPageProps) {
   }
 
   useEffect(() => {
-    void refreshSetup().catch((error: unknown) => {
-      setSetupState({ status: 'error', message: error instanceof Error ? error.message : 'Unknown error' })
+    queueMicrotask(() => {
+      void refreshSetup().catch((error: unknown) => {
+        setSetupState({ status: 'error', message: error instanceof Error ? error.message : 'Unknown error' })
+      })
     })
   }, [])
 

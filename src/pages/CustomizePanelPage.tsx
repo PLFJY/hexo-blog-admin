@@ -597,15 +597,12 @@ function IconField({ label, value, onChange }: { label: string; value: string; o
 
 function IconPreview({ value }: { value: string }) {
   const styles = useStyles()
-  const [failed, setFailed] = useState(false)
+  const [failedUrl, setFailedUrl] = useState<string>()
   const iconUrl = fontAwesomeIconUrl(value)
-
-  useEffect(() => {
-    setFailed(false)
-  }, [iconUrl])
+  const failed = failedUrl === iconUrl
 
   if (iconUrl && !failed) {
-    return <img className={styles.iconImage} src={iconUrl} alt="" onError={() => setFailed(true)} />
+    return <img className={styles.iconImage} src={iconUrl} alt="" onError={() => setFailedUrl(iconUrl)} />
   }
   return <>{iconFallback(value)}</>
 }

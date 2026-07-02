@@ -246,7 +246,9 @@ export function CustomizeHomePage({ scope }: { scope: SettingsScope }) {
       })
   }
 
-  useEffect(load, [])
+  useEffect(() => {
+    queueMicrotask(load)
+  }, [])
 
   const groupedPanels = useMemo(() => {
     if (state.status !== 'ready') return []

@@ -1,18 +1,7 @@
 import { FluentProvider, webDarkTheme, webLightTheme } from '@fluentui/react-components'
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { safeGetLocalStorage, safeSetLocalStorage } from '../lib/storage'
-
-export type AppThemeMode = 'system' | 'light' | 'dark'
-type ResolvedThemeMode = 'light' | 'dark'
-
-type ThemeContextValue = {
-  mode: AppThemeMode
-  resolvedMode: ResolvedThemeMode
-  toggleTheme: () => void
-  setThemeMode: (mode: AppThemeMode) => void
-}
-
-const ThemeContext = createContext<ThemeContextValue | undefined>(undefined)
+import { ThemeContext, type AppThemeMode, type ResolvedThemeMode, type ThemeContextValue } from './themeContext'
 
 function getInitialTheme(): AppThemeMode {
   const stored = safeGetLocalStorage('theme')
@@ -70,10 +59,4 @@ export function AppThemeProvider({ children }: { children: ReactNode }) {
       <FluentProvider theme={resolvedMode === 'dark' ? webDarkTheme : webLightTheme}>{children}</FluentProvider>
     </ThemeContext.Provider>
   )
-}
-
-export function useAppTheme() {
-  const context = useContext(ThemeContext)
-  if (!context) throw new Error('useAppTheme must be used inside AppThemeProvider')
-  return context
 }

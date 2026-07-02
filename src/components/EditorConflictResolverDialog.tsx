@@ -193,9 +193,11 @@ export function EditorConflictResolverDialog({
 
   useEffect(() => {
     if (!open) return
-    setHunks(initialHunks)
-    setMergeOpen(false)
-    setActiveHunkId(undefined)
+    queueMicrotask(() => {
+      setHunks(initialHunks)
+      setMergeOpen(false)
+      setActiveHunkId(undefined)
+    })
   }, [initialHunks, open])
 
   const mergedMarkdown = useMemo(() => buildMergedMarkdown(hunks), [hunks])

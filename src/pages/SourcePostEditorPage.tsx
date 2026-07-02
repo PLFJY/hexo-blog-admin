@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearchParams } from 'react-router'
 import { useAdminBackground } from '../app/AdminBackgroundContext'
-import { useAppTheme } from '../app/ThemeProvider'
+import { useAppTheme } from '../app/themeContext'
 import { ArticleMarkdownWorkspace } from '../components/ArticleMarkdownWorkspace'
 import { EditorConflictResolverDialog } from '../components/EditorConflictResolverDialog'
 import { ErrorState } from '../components/ErrorState'
@@ -142,57 +142,66 @@ export function SourcePostEditorPage() {
   const assetPanelRef = useRef<MarkdownAssetPanelHandle>(null)
 
   useEffect(() => {
-    if (!relativeId) {
-      setState({ status: 'error', message: 'relativeId is required' })
-      return
-    }
-    setState({ status: 'loading' })
-    void Promise.all([
-      getJson<PostContentResponse>(`/posts/content?relativeId=${encodeURIComponent(relativeId)}`),
-      getJson<PublicConfigResponse>('/config/public'),
-      getJson<DraftAssetListResponse>(`/assets?draftId=${encodeURIComponent(relativeId)}&relativeId=${encodeURIComponent(relativeId)}`).catch(() => ({ manifest: { assets: [] } })),
-      getJson<PostAssetIndexResponse>(`/posts/assets?relativeId=${encodeURIComponent(relativeId)}`).catch(() => ({ relativeId, assets: [] })),
-    ])
-      .then(([post, publicConfig, assetResponse, sourceAssetResponse]) => {
-        const snapshotScope = `source:${relativeId}`
-        const decision = decideEditorConflict({ cloudMarkdown: post.markdown, snapshot: readEditorSnapshot(snapshotScope) })
-        let markdown = post.markdown
-        let message: string | undefined
-        let conflict: Extract<State, { status: 'ready' }>['conflict']
-        if (decision.kind === 'use-cloud') {
-          deleteEditorSnapshot(snapshotScope)
-          if (decision.reason === 'local-behind-cloud') message = t('conflict.localBehindCloud')
-        } else if (decision.kind === 'use-local') {
-          markdown = decision.localMarkdown
-          message = t('conflict.safeLocalRestored')
-        } else if (decision.kind === 'legacy-snapshot') {
-          conflict = { legacy: true, cloudMarkdown: post.markdown, localMarkdown: decision.localMarkdown }
-          message = t('conflict.legacySnapshotDescription')
-        } else {
-          conflict = { cloudMarkdown: decision.cloudMarkdown, localMarkdown: decision.localMarkdown }
-          message = t('conflict.conflictDetected')
-        }
-        setState({
-          status: 'ready',
-          post,
-          markdown,
-          baseMarkdown: post.markdown,
-          baseRevision: post.sha,
-          assets: assetResponse.manifest.assets,
-          sourceAssets: sourceAssetResponse.assets,
-          publicConfig,
-          assetObjectUrls: {},
-          message,
-          conflict,
+    let disposed = false
+    queueMicrotask(() => {
+      if (disposed) return
+
+      if (!relativeId) {
+        setState({ status: 'error', message: 'relativeId is required' })
+        return
+      }
+      setState({ status: 'loading' })
+      void Promise.all([
+        getJson<PostContentResponse>(`/posts/content?relativeId=${encodeURIComponent(relativeId)}`),
+        getJson<PublicConfigResponse>('/config/public'),
+        getJson<DraftAssetListResponse>(`/assets?draftId=${encodeURIComponent(relativeId)}&relativeId=${encodeURIComponent(relativeId)}`).catch(() => ({ manifest: { assets: [] } })),
+        getJson<PostAssetIndexResponse>(`/posts/assets?relativeId=${encodeURIComponent(relativeId)}`).catch(() => ({ relativeId, assets: [] })),
+      ])
+        .then(([post, publicConfig, assetResponse, sourceAssetResponse]) => {
+          const snapshotScope = `source:${relativeId}`
+          const decision = decideEditorConflict({ cloudMarkdown: post.markdown, snapshot: readEditorSnapshot(snapshotScope) })
+          let markdown = post.markdown
+          let message: string | undefined
+          let conflict: Extract<State, { status: 'ready' }>['conflict']
+          if (decision.kind === 'use-cloud') {
+            deleteEditorSnapshot(snapshotScope)
+            if (decision.reason === 'local-behind-cloud') message = t('conflict.localBehindCloud')
+          } else if (decision.kind === 'use-local') {
+            markdown = decision.localMarkdown
+            message = t('conflict.safeLocalRestored')
+          } else if (decision.kind === 'legacy-snapshot') {
+            conflict = { legacy: true, cloudMarkdown: post.markdown, localMarkdown: decision.localMarkdown }
+            message = t('conflict.legacySnapshotDescription')
+          } else {
+            conflict = { cloudMarkdown: decision.cloudMarkdown, localMarkdown: decision.localMarkdown }
+            message = t('conflict.conflictDetected')
+          }
+          setState({
+            status: 'ready',
+            post,
+            markdown,
+            baseMarkdown: post.markdown,
+            baseRevision: post.sha,
+            assets: assetResponse.manifest.assets,
+            sourceAssets: sourceAssetResponse.assets,
+            publicConfig,
+            assetObjectUrls: {},
+            message,
+            conflict,
+          })
         })
-      })
-      .catch((error: unknown) => {
-        if (error instanceof ApiError && error.status === 404) {
-          setState({ status: 'missing', relativeId })
-        } else {
-          setState({ status: 'error', message: error instanceof Error ? error.message : 'Unknown error' })
-        }
-      })
+        .catch((error: unknown) => {
+          if (error instanceof ApiError && error.status === 404) {
+            setState({ status: 'missing', relativeId })
+          } else {
+            setState({ status: 'error', message: error instanceof Error ? error.message : 'Unknown error' })
+          }
+        })
+    })
+
+    return () => {
+      disposed = true
+    }
   }, [relativeId])
 
   useEffect(() => {

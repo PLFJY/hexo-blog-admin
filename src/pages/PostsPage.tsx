@@ -1,5 +1,5 @@
 import { Body1, Button, Popover, PopoverSurface, PopoverTrigger, Spinner, Text, Title1, Title3, makeStyles, tokens } from '@fluentui/react-components'
-import { ArrowSyncRegular, DeleteRegular, DocumentEditRegular, FolderRegular, EyeOffRegular, EyeRegular } from '@fluentui/react-icons'
+import { DeleteRegular, DocumentEditRegular, FolderRegular, EyeOffRegular, EyeRegular } from '@fluentui/react-icons'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useLocation, useNavigate } from 'react-router'
@@ -336,7 +336,9 @@ export function PostsPage() {
       .catch((error: unknown) => setState({ ...state, togglingRelativeId: undefined, message: error instanceof Error ? error.message : 'Unknown error' }))
   }
 
-  useEffect(load, [])
+  useEffect(() => {
+    queueMicrotask(load)
+  }, [])
 
   useEffect(() => {
     const commitSha = locationState?.commitSha
@@ -344,13 +346,15 @@ export function PostsPage() {
     handledCommitSha.current = commitSha
     tracker.start(commitSha)
     if (locationState?.message) {
-      setState((current) => (current.status === 'ready' ? { ...current, message: locationState.message } : current))
+      queueMicrotask(() => {
+        setState((current) => (current.status === 'ready' ? { ...current, message: locationState.message } : current))
+      })
     }
     navigate('/posts', { replace: true, state: null })
   }, [locationState?.commitSha])
 
   useEffect(() => {
-    if (tracker.status.indexSynced) load()
+    if (tracker.status.indexSynced) queueMicrotask(load)
   }, [tracker.status.indexSynced])
   if (state.status === 'loading') return <LoadingState />
   if (state.status === 'error') return <ErrorState message={state.message} onRetry={load} />

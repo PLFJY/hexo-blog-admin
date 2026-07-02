@@ -181,91 +181,100 @@ export function DraftEditorPage() {
   const assetPanelRef = useRef<MarkdownAssetPanelHandle>(null)
 
   useEffect(() => {
-    setState({ status: 'loading' })
-    const draftRequest = draftId ? getJson<DraftRecord>(`/drafts/${encodeURIComponent(draftId)}`) : Promise.resolve(emptyDraft())
-    const cachedPostIndex = getCachedAdminIndex()
-    const postIndexRequest = cachedPostIndex
-      ? Promise.resolve(cachedPostIndex)
-      : getJson<PostTreeResponse>('/posts/tree')
-        .then((index) => {
-          setCachedAdminIndex(index)
-          return index
-        })
-        .catch(() => ({ posts: [], tree: [] }))
+    let disposed = false
+    queueMicrotask(() => {
+      if (disposed) return
 
-    void Promise.all([
-      draftRequest,
-      getJson<DraftListResponse>('/drafts'),
-      getJson<PublicConfigResponse>('/config/public'),
-      postIndexRequest,
-    ])
-      .then(async ([draft, draftList, publicConfig, postIndex]) => {
-        const snapshotScope = draft.id ? `draft:${draft.id}` : ''
-        const snapshot = snapshotScope ? readEditorSnapshot(snapshotScope) : { kind: 'none' as const }
-        const decision = decideEditorConflict({ cloudMarkdown: draft.markdown, snapshot })
-        let nextDraft = draft
-        let message: string | undefined
-        let conflict: Extract<State, { status: 'ready' }>['conflict']
-        if (decision.kind === 'use-cloud') {
-          if (snapshotScope) deleteEditorSnapshot(snapshotScope)
-          if (decision.reason === 'local-behind-cloud') message = t('conflict.localBehindCloud')
-        } else if (decision.kind === 'use-local') {
-          nextDraft = { ...draft, markdown: decision.localMarkdown }
-          message = t('conflict.safeLocalRestored')
-        } else if (decision.kind === 'legacy-snapshot') {
-          conflict = { legacy: true, cloudMarkdown: draft.markdown, localMarkdown: decision.localMarkdown }
-          message = t('conflict.legacySnapshotDescription')
-        } else {
-          conflict = { cloudMarkdown: decision.cloudMarkdown, localMarkdown: decision.localMarkdown }
-          message = t('conflict.conflictDetected')
-        }
-        const assets = await fetchDraftAssets(nextDraft.id, nextDraft.relativeId)
-        const sourceAssetRelativeId = nextDraft.sourceRelativeId || nextDraft.relativeId
-        const sourceAssets = mapSourceAssetsToCurrentRelativeId(
-          await fetchSourceAssets(sourceAssetRelativeId, postIndex),
-          nextDraft.sourceRelativeId,
-          nextDraft.relativeId,
-        )
-        setState({
-          status: 'ready',
-          draft: nextDraft,
-          drafts: draftList.drafts,
-          assets,
-          sourceAssets,
-          publicConfig,
-          postRelativeIds: postIndex.posts.map((post) => post.relativeId),
-          assetObjectUrls: {},
-          message,
-          baseMarkdown: draft.markdown,
-          baseRelativeId: renamedFrom || draft.relativeId,
-          baseUpdatedAt: draft.updatedAt,
-          conflict,
+      setState({ status: 'loading' })
+      const draftRequest = draftId ? getJson<DraftRecord>(`/drafts/${encodeURIComponent(draftId)}`) : Promise.resolve(emptyDraft())
+      const cachedPostIndex = getCachedAdminIndex()
+      const postIndexRequest = cachedPostIndex
+        ? Promise.resolve(cachedPostIndex)
+        : getJson<PostTreeResponse>('/posts/tree')
+          .then((index) => {
+            setCachedAdminIndex(index)
+            return index
+          })
+          .catch(() => ({ posts: [], tree: [] }))
+
+      void Promise.all([
+        draftRequest,
+        getJson<DraftListResponse>('/drafts'),
+        getJson<PublicConfigResponse>('/config/public'),
+        postIndexRequest,
+      ])
+        .then(async ([draft, draftList, publicConfig, postIndex]) => {
+          const snapshotScope = draft.id ? `draft:${draft.id}` : ''
+          const snapshot = snapshotScope ? readEditorSnapshot(snapshotScope) : { kind: 'none' as const }
+          const decision = decideEditorConflict({ cloudMarkdown: draft.markdown, snapshot })
+          let nextDraft = draft
+          let message: string | undefined
+          let conflict: Extract<State, { status: 'ready' }>['conflict']
+          if (decision.kind === 'use-cloud') {
+            if (snapshotScope) deleteEditorSnapshot(snapshotScope)
+            if (decision.reason === 'local-behind-cloud') message = t('conflict.localBehindCloud')
+          } else if (decision.kind === 'use-local') {
+            nextDraft = { ...draft, markdown: decision.localMarkdown }
+            message = t('conflict.safeLocalRestored')
+          } else if (decision.kind === 'legacy-snapshot') {
+            conflict = { legacy: true, cloudMarkdown: draft.markdown, localMarkdown: decision.localMarkdown }
+            message = t('conflict.legacySnapshotDescription')
+          } else {
+            conflict = { cloudMarkdown: decision.cloudMarkdown, localMarkdown: decision.localMarkdown }
+            message = t('conflict.conflictDetected')
+          }
+          const assets = await fetchDraftAssets(nextDraft.id, nextDraft.relativeId)
+          const sourceAssetRelativeId = nextDraft.sourceRelativeId || nextDraft.relativeId
+          const sourceAssets = mapSourceAssetsToCurrentRelativeId(
+            await fetchSourceAssets(sourceAssetRelativeId, postIndex),
+            nextDraft.sourceRelativeId,
+            nextDraft.relativeId,
+          )
+          setState({
+            status: 'ready',
+            draft: nextDraft,
+            drafts: draftList.drafts,
+            assets,
+            sourceAssets,
+            publicConfig,
+            postRelativeIds: postIndex.posts.map((post) => post.relativeId),
+            assetObjectUrls: {},
+            message,
+            baseMarkdown: draft.markdown,
+            baseRelativeId: renamedFrom || draft.relativeId,
+            baseUpdatedAt: draft.updatedAt,
+            conflict,
+          })
+          if (cachedPostIndex) {
+            void getJson<PostTreeResponse>('/posts/tree')
+              .then(async (freshIndex) => {
+                setCachedAdminIndex(freshIndex)
+                const sourceAssetRelativeId = nextDraft.sourceRelativeId || nextDraft.relativeId
+                const freshSourceAssets = mapSourceAssetsToCurrentRelativeId(
+                  await fetchSourceAssets(sourceAssetRelativeId, freshIndex),
+                  nextDraft.sourceRelativeId,
+                  nextDraft.relativeId,
+                )
+                setState((current) =>
+                  current.status === 'ready'
+                    ? {
+                        ...current,
+                        sourceAssets: current.draft.relativeId === nextDraft.relativeId ? freshSourceAssets : current.sourceAssets,
+                        postRelativeIds: freshIndex.posts.map((post) => post.relativeId),
+                      }
+                    : current,
+                )
+              })
+              .catch(() => undefined)
+          }
         })
-        if (cachedPostIndex) {
-          void getJson<PostTreeResponse>('/posts/tree')
-            .then(async (freshIndex) => {
-              setCachedAdminIndex(freshIndex)
-              const sourceAssetRelativeId = nextDraft.sourceRelativeId || nextDraft.relativeId
-              const freshSourceAssets = mapSourceAssetsToCurrentRelativeId(
-                await fetchSourceAssets(sourceAssetRelativeId, freshIndex),
-                nextDraft.sourceRelativeId,
-                nextDraft.relativeId,
-              )
-              setState((current) =>
-                current.status === 'ready'
-                  ? {
-                      ...current,
-                      sourceAssets: current.draft.relativeId === nextDraft.relativeId ? freshSourceAssets : current.sourceAssets,
-                      postRelativeIds: freshIndex.posts.map((post) => post.relativeId),
-                    }
-                  : current,
-              )
-            })
-            .catch(() => undefined)
-        }
-      })
-      .catch((error: unknown) => setState({ status: 'error', message: error instanceof Error ? error.message : 'Unknown error' }))
-    return () => window.clearTimeout(pollTimer.current)
+        .catch((error: unknown) => setState({ status: 'error', message: error instanceof Error ? error.message : 'Unknown error' }))
+    })
+
+    return () => {
+      disposed = true
+      window.clearTimeout(pollTimer.current)
+    }
   }, [draftId, renamedFrom])
 
   useEffect(() => {
