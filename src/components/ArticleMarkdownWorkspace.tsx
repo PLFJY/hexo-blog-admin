@@ -260,6 +260,36 @@ const SYNC_TUNING = {
    */
   cursorRevealSmoothDuration: 150,
 
+  /**
+   * content edit 场景下，目标 scrollTop 和当前 scrollTop 差距小于该值时不滚动。
+   *
+   * 这是防止“每输入一个字都做 3px / 8px / 15px 微调”的关键。
+   */
+  contentEditScrollDeadband: 32,
+
+  /**
+   * content edit 场景下，目标点距离 Preview 可视区边缘小于该值时才考虑滚动。
+   *
+   * 普通 cursor reveal 的 visibilityPadding 可以继续是 48；
+   * content edit 要更宽松，避免输入时太敏感。
+   */
+  contentEditVisibilityPadding: 72,
+
+  /**
+   * 当正在编辑文档最后几行时，如果 Preview 已经接近底部，则优先保持底部稳定。
+   */
+  contentEditTailLineThreshold: 3,
+
+  /**
+   * Preview 距离底部小于该值时，认为它已经处于末尾输入状态。
+   */
+  contentEditPreviewBottomStickEpsilon: 96,
+
+  /**
+   * content edit 场景下，如果需要贴底，使用更短更稳的贴底时长。
+   */
+  contentEditBottomStickDuration: 80,
+
   // ---------------------------------------------------------------------------
   // 6. preview -> editor 反向同步
   // ---------------------------------------------------------------------------
@@ -626,6 +656,17 @@ const isEditorAtBottom = (view: EditorView) => {
   return bottomVisibleLine >= view.state.doc.lines;
 };
 
+const isSourceLineNearDocumentEnd = (view: EditorView, line: number) =>
+  view.state.doc.lines - line <= SYNC_TUNING.contentEditTailLineThreshold;
+
+const isPreviewNearBottom = (root: HTMLElement) => {
+  const maxScrollTop = Math.max(0, root.scrollHeight - root.clientHeight);
+  return (
+    maxScrollTop - root.scrollTop <=
+    SYNC_TUNING.contentEditPreviewBottomStickEpsilon
+  );
+};
+
 const scrollEditorToLine = (view: EditorView, lineNumber: number) => {
   const safeLine = Math.max(
     1,
@@ -809,6 +850,26 @@ export function ArticleMarkdownWorkspace({
       previewSuppressTokenRef.current = token;
       suppressPreviewScrollRef.current = true;
       root.scrollTop = next;
+      releasePreviewSuppressLater(token);
+    },
+    [releasePreviewSuppressLater],
+  );
+
+  const setPreviewScrollTopForContentEdit = useCallback(
+    (target: number) => {
+      const root = previewRootRef.current;
+      if (!root) return;
+
+      const maxScrollTop = Math.max(0, root.scrollHeight - root.clientHeight);
+      const safeTarget = clamp(target, 0, maxScrollTop);
+      const distance = Math.abs(root.scrollTop - safeTarget);
+
+      if (distance < SYNC_TUNING.contentEditScrollDeadband) return;
+
+      const token = previewSuppressTokenRef.current + 1;
+      previewSuppressTokenRef.current = token;
+      suppressPreviewScrollRef.current = true;
+      root.scrollTop = safeTarget;
       releasePreviewSuppressLater(token);
     },
     [releasePreviewSuppressLater],
@@ -1157,10 +1218,18 @@ export function ArticleMarkdownWorkspace({
       const previewY = range?.y ?? mapSourceLineToPreviewY(line, lineMap);
       if (previewY == null) return;
 
-      const visibilityPadding = 48;
+      const visibilityPadding = options.fromContentEdit
+        ? SYNC_TUNING.contentEditVisibilityPadding
+        : 48;
       const visibleTop = root.scrollTop + visibilityPadding;
       const visibleBottom =
         root.scrollTop + root.clientHeight - visibilityPadding;
+      const pointVisible = previewY >= visibleTop && previewY <= visibleBottom;
+
+      if (options.fromContentEdit && pointVisible) {
+        pendingCursorLineRef.current = undefined;
+        return;
+      }
 
       // 如果目标行已经在 preview 可视区内，不要为了固定 reveal 比例而强行滚动。
       if (range) {
@@ -1168,32 +1237,95 @@ export function ArticleMarkdownWorkspace({
         const visibleHeight = visibleBottom - visibleTop;
         const rangeIntersectsViewport =
           range.bottom >= visibleTop && range.top <= visibleBottom;
-        const pointVisible =
-          previewY >= visibleTop && previewY <= visibleBottom;
 
         if (
-          pointVisible ||
-          (!options.fromContentEdit &&
-            rangeHeight <= visibleHeight &&
-            rangeIntersectsViewport)
+          !options.fromContentEdit &&
+          (pointVisible ||
+            (rangeHeight <= visibleHeight && rangeIntersectsViewport))
         ) {
           pendingCursorLineRef.current = undefined;
           return;
         }
-      } else if (previewY >= visibleTop && previewY <= visibleBottom) {
+      } else if (!options.fromContentEdit && pointVisible) {
         pendingCursorLineRef.current = undefined;
         return;
       }
 
       const target =
         previewY - root.clientHeight * SYNC_TUNING.cursorRevealRatio;
+      const safeTarget = clamp(target, 0, lineMap.previewMaxScrollTop);
+
+      if (options.fromContentEdit) {
+        const view = editorViewRef.current;
+        const maxScrollTop = Math.max(0, root.scrollHeight - root.clientHeight);
+
+        if (pointVisible) {
+          pendingCursorLineRef.current = undefined;
+          return;
+        }
+
+        if (
+          view &&
+          isSourceLineNearDocumentEnd(view, line) &&
+          isPreviewNearBottom(root)
+        ) {
+          pendingCursorLineRef.current = undefined;
+          const bottomDistance = Math.abs(root.scrollTop - maxScrollTop);
+          if (bottomDistance < SYNC_TUNING.contentEditScrollDeadband) return;
+
+          cancelPreviewBottomStickAnimation(false);
+          cancelPreviewCorrectionAnimation();
+          cancelPreviewLiveFollowAnimation();
+          if (bottomDistance < 160) {
+            setPreviewScrollTopForContentEdit(maxScrollTop);
+          } else {
+            setPreviewScrollTopWithCorrection(
+              maxScrollTop,
+              SYNC_TUNING.contentEditBottomStickDuration,
+            );
+          }
+          return;
+        }
+
+        if (
+          Math.abs(root.scrollTop - safeTarget) <
+          SYNC_TUNING.contentEditScrollDeadband
+        ) {
+          pendingCursorLineRef.current = undefined;
+          return;
+        }
+
+        pendingCursorLineRef.current = undefined;
+        cancelPreviewBottomStickAnimation(false);
+        cancelPreviewCorrectionAnimation();
+        cancelPreviewLiveFollowAnimation();
+
+        if (Math.abs(root.scrollTop - safeTarget) < 160) {
+          setPreviewScrollTopForContentEdit(safeTarget);
+        } else {
+          setPreviewScrollTopWithCorrection(
+            safeTarget,
+            SYNC_TUNING.cursorRevealSmoothDuration,
+          );
+        }
+        return;
+      }
+
       pendingCursorLineRef.current = undefined;
       setPreviewScrollTopWithCorrection(
-        clamp(target, 0, lineMap.previewMaxScrollTop),
+        safeTarget,
         SYNC_TUNING.cursorRevealSmoothDuration,
       );
     },
-    [getOrBuildScrollMap, rebuildScrollMap, setPreviewScrollTopWithCorrection],
+    [
+      cancelPreviewBottomStickAnimation,
+      cancelPreviewCorrectionAnimation,
+      cancelPreviewLiveFollowAnimation,
+      getOrBuildScrollMap,
+      rebuildScrollMap,
+      setPreviewScrollTopForContentEdit,
+      setPreviewScrollTopWithCorrection,
+    ],
   );
 
   const flushEditorContentSync = useCallback(() => {
@@ -1228,7 +1360,7 @@ export function ArticleMarkdownWorkspace({
         editorContentSyncTimerRef.current = window.setTimeout(() => {
           editorContentSyncTimerRef.current = undefined;
           flushEditorContentSync();
-        }, 40);
+        }, 80);
       });
     });
   }, [flushEditorContentSync]);
@@ -1441,9 +1573,6 @@ export function ArticleMarkdownWorkspace({
     // 这是输入 / Enter / 删除导致的 Preview DOM 更新。
     // 这条路径必须压过 bottom-stick，否则代码块末尾开始输入正文时会每个字跳一次。
     if (pendingEditorContentLineRef.current !== undefined) {
-      cancelPreviewBottomStickAnimation(false);
-      cancelPreviewCorrectionAnimation();
-      cancelPreviewLiveFollowAnimation();
       scheduleEditorContentSync();
       return;
     }
@@ -1463,9 +1592,6 @@ export function ArticleMarkdownWorkspace({
     else if (activeScrollSourceRef.current === "preview")
       schedulePreviewToEditorSync();
   }, [
-    cancelPreviewBottomStickAnimation,
-    cancelPreviewCorrectionAnimation,
-    cancelPreviewLiveFollowAnimation,
     invalidateScrollMap,
     scheduleEditorContentSync,
     scheduleEditorToPreviewSync,
@@ -1512,21 +1638,10 @@ export function ArticleMarkdownWorkspace({
       if (activeScrollSourceRef.current !== "preview")
         activeScrollSourceRef.current = "editor";
 
-      // 内容编辑后的 preview DOM 会更新，旧的 preview scroll 动画都应该停掉。
-      cancelPreviewBottomStickAnimation(false);
-      cancelPreviewCorrectionAnimation();
-      cancelPreviewLiveFollowAnimation();
-
       invalidateScrollMap();
       scheduleEditorContentSync();
     },
-    [
-      cancelPreviewBottomStickAnimation,
-      cancelPreviewCorrectionAnimation,
-      cancelPreviewLiveFollowAnimation,
-      invalidateScrollMap,
-      scheduleEditorContentSync,
-    ],
+    [invalidateScrollMap, scheduleEditorContentSync],
   );
 
   const handleEditorPointerEnter = useCallback(() => {
