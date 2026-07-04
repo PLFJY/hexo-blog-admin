@@ -69,12 +69,17 @@ const useStyles = makeStyles({
     listStyleType: 'none',
   },
   listItem: {
+    display: 'block',
+  },
+  listItemLink: {
     display: 'grid',
     gap: tokens.spacingVerticalXXS,
     padding: tokens.spacingHorizontalM,
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     borderRadius: tokens.borderRadiusMedium,
     backgroundColor: tokens.colorNeutralBackground1,
+    color: tokens.colorNeutralForeground1,
+    textDecorationLine: 'none',
     transition: 'all 0.1s cubic-bezier(0.4, 0, 0.2, 1)',
     ':hover': {
       borderTopColor: tokens.colorNeutralStroke1Hover,
@@ -82,6 +87,12 @@ const useStyles = makeStyles({
       borderBottomColor: tokens.colorNeutralStroke1Hover,
       borderLeftColor: tokens.colorNeutralStroke1Hover,
       backgroundColor: tokens.colorNeutralBackground1Hover,
+    },
+    ':focus-visible': {
+      outlineStyle: 'solid',
+      outlineWidth: tokens.strokeWidthThick,
+      outlineColor: tokens.colorStrokeFocus2,
+      outlineOffset: '2px',
     },
   },
   actions: {
@@ -272,9 +283,11 @@ export function DashboardPage() {
           <ul className={localStyles.list}>
             {recentDrafts.map((draft) => (
               <li className={localStyles.listItem} key={draft.id}>
-                <Text weight="semibold">{extractFrontMatterTitle(draft.markdown) || draft.relativeId || t('dashboard.untitledDraft')}</Text>
-                <Text className={localStyles.muted}>{draft.relativeId || '-'}</Text>
-                <Text className={localStyles.muted}>{t('dashboard.updatedAt')}: {new Date(draft.updatedAt).toLocaleString()}</Text>
+                <NavLink className={localStyles.listItemLink} to={`/drafts/edit?draftId=${encodeURIComponent(draft.id)}`}>
+                  <Text weight="semibold">{extractFrontMatterTitle(draft.markdown) || draft.relativeId || t('dashboard.untitledDraft')}</Text>
+                  <Text className={localStyles.muted}>{draft.relativeId || '-'}</Text>
+                  <Text className={localStyles.muted}>{t('dashboard.updatedAt')}: {new Date(draft.updatedAt).toLocaleString()}</Text>
+                </NavLink>
               </li>
             ))}
           </ul>
