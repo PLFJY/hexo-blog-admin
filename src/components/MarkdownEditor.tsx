@@ -33,6 +33,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAppTheme } from '../app/themeContext'
 import { extractImageFilesFromPasteEvent } from '../lib/clipboardImages'
+import type { MarkdownTextReplacement } from '../shared/markdownAssets'
 
 const useStyles = makeStyles({
   shell: {
@@ -135,11 +136,15 @@ type MarkdownEditorProps = {
   onEditorViewChange?: (view: EditorView | null) => void
   onContentEdit?: (line?: number) => void
   onSaveShortcut?: () => void
-  insertRequest?: { id: number; text: string }
-  onInsertConsumed?: (id: number) => void
+  editRequest?: MarkdownEditRequest
+  onEditConsumed?: (id: number) => void
   onPasteImages?: (files: File[]) => void
   documentKey?: string
 }
+
+export type MarkdownEditRequest =
+  | { id: number; kind: 'insert'; text: string }
+  | { id: number; kind: 'replace-all'; replacements: MarkdownTextReplacement[] }
 
 type FormatAction = 'bold' | 'italic' | 'link' | 'underline' | 'highlight' | 'inlineCode' | 'codeBlock' | 'quote' | 'strikethrough' | 'color'
 
@@ -244,8 +249,8 @@ export function MarkdownEditor({
   onEditorViewChange,
   onContentEdit,
   onSaveShortcut,
-  insertRequest,
-  onInsertConsumed,
+  editRequest,
+  onEditConsumed,
   onPasteImages,
   documentKey,
 }: MarkdownEditorProps) {
@@ -271,6 +276,8 @@ export function MarkdownEditor({
   const onPreviewSyncPositionChangeRef = useRef(onPreviewSyncPositionChange)
   const onEditorViewChangeRef = useRef(onEditorViewChange)
   const onContentEditRef = useRef(onContentEdit)
+  const onEditConsumedRef = useRef(onEditConsumed)
+  const lastAppliedEditRequestIdRef = useRef<number | undefined>(undefined)
 
   const editorInstanceKey = useMemo(() => createEditorInstanceKey(documentKey, editorRevision), [documentKey, editorRevision])
 
@@ -289,6 +296,10 @@ export function MarkdownEditor({
   useEffect(() => {
     onContentEditRef.current = onContentEdit
   }, [onContentEdit])
+
+  useEffect(() => {
+    onEditConsumedRef.current = onEditConsumed
+  }, [onEditConsumed])
 
   const isEditorFocused = useCallback(() => {
     const view = editorViewRef.current
@@ -550,20 +561,48 @@ export function MarkdownEditor({
   }
 
   useEffect(() => {
-    if (!editorView || !insertRequest) return undefined
-    const selection = editorView.state.selection.main
-    editorView.dispatch({
-      changes: { from: selection.from, to: selection.to, insert: insertRequest.text },
-      selection: { anchor: selection.from + insertRequest.text.length },
-      scrollIntoView: true,
-    })
-    editorView.focus()
-    const frame = window.requestAnimationFrame(() => {
+    if (!editorView || !editRequest) return undefined
+    if (lastAppliedEditRequestIdRef.current === editRequest.id) return undefined
+
+    // Mark the request before dispatching. The dispatch synchronously notifies the
+    // controlled parent and can cause this effect to run again before the parent
+    // has cleared editRequest.
+    lastAppliedEditRequestIdRef.current = editRequest.id
+
+    if (editRequest.kind === 'insert') {
+      const selection = editorView.state.selection.main
+      editorView.dispatch({
+        changes: { from: selection.from, to: selection.to, insert: editRequest.text },
+        selection: { anchor: selection.from + editRequest.text.length },
+        scrollIntoView: true,
+      })
+      editorView.focus()
       emitChange(editorView.state.doc.toString(), editorView)
-      onInsertConsumed?.(insertRequest.id)
-    })
-    return () => window.cancelAnimationFrame(frame)
-  }, [editorView, emitChange, insertRequest, onInsertConsumed])
+    } else {
+      let changed = false
+      for (const replacement of editRequest.replacements) {
+        if (!replacement.oldText || replacement.oldText === replacement.newText) continue
+        const markdown = editorView.state.doc.toString()
+        const changes = []
+        let from = markdown.indexOf(replacement.oldText)
+        while (from >= 0) {
+          changes.push({ from, to: from + replacement.oldText.length, insert: replacement.newText })
+          from = markdown.indexOf(replacement.oldText, from + replacement.oldText.length)
+        }
+        if (changes.length > 0) {
+          editorView.dispatch({ changes })
+          changed = true
+        }
+      }
+      if (changed) {
+        editorView.focus()
+        emitChange(editorView.state.doc.toString(), editorView)
+      }
+    }
+
+    onEditConsumedRef.current?.(editRequest.id)
+    return undefined
+  }, [editorView, editRequest, emitChange])
 
   useEffect(() => {
     if (!editorView) return undefined

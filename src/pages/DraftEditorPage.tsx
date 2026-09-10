@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearchParams } from 'react-router'
 import { useAdminBackground } from '../app/AdminBackgroundContext'
 import { ArticleMarkdownWorkspace } from '../components/ArticleMarkdownWorkspace'
+import type { MarkdownEditRequest } from '../components/MarkdownEditor'
 import { EditorConflictResolverDialog } from '../components/EditorConflictResolverDialog'
 import { ErrorState } from '../components/ErrorState'
 import { LoadingState } from '../components/LoadingState'
@@ -19,7 +20,7 @@ import { resolveMarkdownResourceUrl } from '../lib/markdownResource'
 import type { PublicConfigResponse } from '../shared/apiTypes'
 import type { DraftAsset, DraftAssetListResponse } from '../shared/assetTypes'
 import type { DraftListResponse, DraftRecord, PublishDraftResponse } from '../shared/draftTypes'
-import { removeMarkdownImageReferences } from '../shared/markdownAssets'
+import { applyMarkdownTextReplacements, createMarkdownAssetReplacements, removeMarkdownImageReferences } from '../shared/markdownAssets'
 import type { PostAsset, PostAssetIndexResponse, PostTreeResponse } from '../shared/postTypes'
 import { buildPostAssetPaths } from '../features/posts/postPathUtils'
 import { usePageStyles } from './pageStyles'
@@ -148,7 +149,7 @@ type State =
       sourceAssets: PostAsset[]
       publicConfig?: PublicConfigResponse
       postRelativeIds: string[]
-      insertRequest?: { id: number; text: string }
+      editRequest?: MarkdownEditRequest
       assetObjectUrls: Record<string, string>
       message?: string
       saving?: boolean
@@ -325,13 +326,19 @@ export function DraftEditorPage() {
   const duplicateDraft = state.drafts.some((draft) => draft.id !== state.draft.id && draft.relativeId === normalizedRelativeId)
   const duplicatePost = state.postRelativeIds.includes(normalizedRelativeId) && state.draft.sourceRelativeId !== normalizedRelativeId
   const canSaveDraft = isValidRelativeId(state.draft.relativeId) && !duplicateDraft && !duplicatePost
-  const insertMarkdown = (text: string) => setState((current) => (current.status === 'ready' ? { ...current, insertRequest: { id: Date.now(), text } } : current))
-  const replaceMarkdownPath = (oldPath: string, newPath: string) =>
+  const insertMarkdown = (text: string) => setState((current) => (current.status === 'ready' ? { ...current, editRequest: { id: Date.now(), kind: 'insert', text } } : current))
+  const replaceMarkdownPath = (oldPath: string, newPath: string, oldFilename?: string, newFilename?: string) => {
+    const replacements = createMarkdownAssetReplacements(oldPath, newPath, oldFilename, newFilename)
     setState((current) =>
       current.status === 'ready'
-        ? { ...current, draft: { ...current.draft, markdown: current.draft.markdown.split(oldPath).join(newPath) } }
+        ? {
+            ...current,
+            draft: { ...current.draft, markdown: applyMarkdownTextReplacements(current.draft.markdown, replacements) },
+            editRequest: { id: Date.now(), kind: 'replace-all', replacements },
+          }
         : current,
     )
+  }
   const deleteSourceAssetFromDraft = (asset: PostAsset) => {
     const nextMarkdown = removeMarkdownImageReferences(state.draft.markdown, asset.markdownPath)
     setState({ ...state, saving: true, committing: true, message: t('assets.submittingDelete') })
@@ -511,9 +518,9 @@ export function DraftEditorPage() {
             onAssetObjectUrlsChange={(assetObjectUrls) =>
               setState((current) => (current.status === 'ready' ? { ...current, assetObjectUrls } : current))
             }
-            insertRequest={state.insertRequest}
-            onInsertConsumed={(id) =>
-              setState((current) => (current.status === 'ready' && current.insertRequest?.id === id ? { ...current, insertRequest: undefined } : current))
+            editRequest={state.editRequest}
+            onEditConsumed={(id) =>
+              setState((current) => (current.status === 'ready' && current.editRequest?.id === id ? { ...current, editRequest: undefined } : current))
             }
             onPasteImages={(files) => void assetPanelRef.current?.handleIncomingImageFiles(files, 'paste')}
             onSaveShortcut={save}

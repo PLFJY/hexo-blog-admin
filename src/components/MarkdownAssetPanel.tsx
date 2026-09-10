@@ -178,7 +178,7 @@ type MarkdownAssetPanelProps = {
   onAssetsChange: (assets: DraftAsset[]) => void
   onDraftIdChange?: (draftId: string) => void
   onInsertMarkdown: (markdown: string) => void
-  onMarkdownPathReplace?: (oldPath: string, newPath: string) => void
+  onMarkdownPathReplace?: (oldPath: string, newPath: string, oldFilename?: string, newFilename?: string) => void
   onSourceAssetRename?: (asset: PostAsset, filename: string) => void
   onSourceAssetDelete?: (asset: PostAsset) => void
   uploadDisabled?: boolean
@@ -391,7 +391,9 @@ export const MarkdownAssetPanel = forwardRef<MarkdownAssetPanelHandle, MarkdownA
 
       setMessage({ kind: 'info', text: t('assets.uploading') })
       const nextAsset = await upload(result.file, { insertMarkdown: false })
-      if (nextAsset.markdownPath !== asset.markdownPath) onMarkdownPathReplace?.(asset.markdownPath, nextAsset.markdownPath)
+      if (nextAsset.markdownPath !== asset.markdownPath || nextAsset.filename !== asset.filename) {
+        onMarkdownPathReplace?.(asset.markdownPath, nextAsset.markdownPath, asset.filename, nextAsset.filename)
+      }
       if (nextAsset.key !== asset.key) {
         await sendJson<{ deleted: boolean }>(`/assets?key=${encodeURIComponent(asset.key)}`, 'DELETE')
         await refresh(nextAsset.draftId)
@@ -420,7 +422,7 @@ export const MarkdownAssetPanel = forwardRef<MarkdownAssetPanelHandle, MarkdownA
     void sendJson<RenameDraftAssetResponse>('/assets/rename', 'POST', { key: asset.key, filename })
       .then((response) => {
         onAssetsChange(response.manifest.assets)
-        onMarkdownPathReplace?.(asset.markdownPath, response.asset.markdownPath)
+        onMarkdownPathReplace?.(asset.markdownPath, response.asset.markdownPath, asset.filename, response.asset.filename)
         setMessage({ kind: 'success', text: t('assets.renameSuccess') })
       })
       .catch((error: unknown) => setMessage({ kind: 'error', text: error instanceof Error ? error.message : 'Unknown error' }))

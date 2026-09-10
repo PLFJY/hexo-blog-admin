@@ -7,6 +7,7 @@ import { useNavigate, useSearchParams } from 'react-router'
 import { useAdminBackground } from '../app/AdminBackgroundContext'
 import { useAppTheme } from '../app/themeContext'
 import { ArticleMarkdownWorkspace } from '../components/ArticleMarkdownWorkspace'
+import type { MarkdownEditRequest } from '../components/MarkdownEditor'
 import { EditorConflictResolverDialog } from '../components/EditorConflictResolverDialog'
 import { ErrorState } from '../components/ErrorState'
 import { LoadingState } from '../components/LoadingState'
@@ -21,6 +22,7 @@ import type { PublicConfigResponse } from '../shared/apiTypes'
 import type { DraftAsset, DraftAssetListResponse } from '../shared/assetTypes'
 import type { DraftRecord } from '../shared/draftTypes'
 import { extractFrontMatterTitle } from '../shared/frontMatter'
+import { applyMarkdownTextReplacements, createMarkdownAssetReplacements } from '../shared/markdownAssets'
 import type { PostAssetIndexResponse, PostContentResponse, PublishPostResponse } from '../shared/postTypes'
 import type { PostAsset } from '../shared/postTypes'
 import { usePageStyles } from './pageStyles'
@@ -111,7 +113,7 @@ type State =
       assets: DraftAsset[]
       sourceAssets: PostAsset[]
       publicConfig?: PublicConfigResponse
-      insertRequest?: { id: number; text: string }
+      editRequest?: MarkdownEditRequest
       message?: string
       savedDraft?: DraftRecord
       assetObjectUrls: Record<string, string>
@@ -264,9 +266,17 @@ export function SourcePostEditorPage() {
   if (state.status === 'error') return <ErrorState message={state.message} onRetry={() => window.location.reload()} />
 
   const setMarkdown = (markdown: string) => setState((current) => (current.status === 'ready' ? { ...current, markdown } : current))
-  const insertMarkdown = (text: string) => setState((current) => (current.status === 'ready' ? { ...current, insertRequest: { id: Date.now(), text } } : current))
-  const replaceMarkdownPath = (oldPath: string, newPath: string) =>
-    setState((current) => (current.status === 'ready' ? { ...current, markdown: current.markdown.split(oldPath).join(newPath) } : current))
+  const insertMarkdown = (text: string) => setState((current) => (current.status === 'ready' ? { ...current, editRequest: { id: Date.now(), kind: 'insert', text } } : current))
+  const replaceMarkdownPath = (oldPath: string, newPath: string, oldFilename?: string, newFilename?: string) => {
+    const replacements = createMarkdownAssetReplacements(oldPath, newPath, oldFilename, newFilename)
+    setState((current) => (current.status === 'ready'
+      ? {
+          ...current,
+          markdown: applyMarkdownTextReplacements(current.markdown, replacements),
+          editRequest: { id: Date.now(), kind: 'replace-all', replacements },
+        }
+      : current))
+  }
   const renameSourceAsset = (asset: PostAsset, filename: string) => {
     setState({ ...state, committing: true, message: t('assets.submittingRename') })
     void sendJson<{ commitSha: string; markdown: string; asset: PostAsset }>('/posts/asset/rename', 'POST', {
@@ -478,9 +488,9 @@ export function SourcePostEditorPage() {
             onAssetObjectUrlsChange={(assetObjectUrls) =>
               setState((current) => (current.status === 'ready' ? { ...current, assetObjectUrls } : current))
             }
-            insertRequest={state.insertRequest}
-            onInsertConsumed={(id) =>
-              setState((current) => (current.status === 'ready' && current.insertRequest?.id === id ? { ...current, insertRequest: undefined } : current))
+            editRequest={state.editRequest}
+            onEditConsumed={(id) =>
+              setState((current) => (current.status === 'ready' && current.editRequest?.id === id ? { ...current, editRequest: undefined } : current))
             }
             onPasteImages={(files) => void assetPanelRef.current?.handleIncomingImageFiles(files, 'paste')}
             onSaveShortcut={saveAsDraft}

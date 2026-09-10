@@ -2,7 +2,7 @@ import { makeStyles, mergeClasses, tokens } from "@fluentui/react-components";
 import { EditorView } from "@uiw/react-codemirror";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MarkdownEditor } from "./MarkdownEditor";
-import type { PreviewSyncPosition } from "./MarkdownEditor";
+import type { MarkdownEditRequest, PreviewSyncPosition } from "./MarkdownEditor";
 import { MarkdownPreview } from "./MarkdownPreview";
 import { buildApiUrl } from "../lib/apiClient";
 import type { ResolvedMarkdownResourceUrl } from "../lib/markdownResource";
@@ -340,8 +340,8 @@ type ArticleMarkdownWorkspaceProps = {
   resolveResourceUrl?: (src: string) => ResolvedMarkdownResourceUrl;
   assets?: DraftAsset[];
   onAssetObjectUrlsChange?: (urls: Record<string, string>) => void;
-  insertRequest?: { id: number; text: string };
-  onInsertConsumed?: (id: number) => void;
+  editRequest?: MarkdownEditRequest;
+  onEditConsumed?: (id: number) => void;
   onPasteImages?: (files: File[]) => void;
 };
 
@@ -685,8 +685,8 @@ export function ArticleMarkdownWorkspace({
   resolveResourceUrl,
   assets = [],
   onAssetObjectUrlsChange,
-  insertRequest,
-  onInsertConsumed,
+  editRequest,
+  onEditConsumed,
   onPasteImages,
 }: ArticleMarkdownWorkspaceProps) {
   const styles = useStyles();
@@ -1850,8 +1850,8 @@ export function ArticleMarkdownWorkspace({
           onPreviewSyncPositionChange={handlePreviewSyncPositionChange}
           onEditorViewChange={handleEditorViewChange}
           onContentEdit={handleEditorContentEdit}
-          insertRequest={insertRequest}
-          onInsertConsumed={onInsertConsumed}
+          editRequest={editRequest}
+          onEditConsumed={onEditConsumed}
           onPasteImages={onPasteImages}
         />
       </div>
