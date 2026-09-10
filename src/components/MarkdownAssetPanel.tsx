@@ -28,6 +28,7 @@ import type { DraftAsset, DraftAssetListResponse, DraftAssetUploadResponse, Imag
 import type { PostAsset } from '../shared/postTypes'
 import { usePageStyles } from '../pages/pageStyles'
 import { ImageCompressionDialog } from './ImageCompressionDialog'
+import { ImagePreviewDialog } from './ImagePreviewDialog'
 
 const useStyles = makeStyles({
   hiddenInput: { display: 'none' },
@@ -83,6 +84,10 @@ const useStyles = makeStyles({
     display: 'block',
     width: '72px',
     height: '48px',
+    padding: 0,
+    border: 0,
+    backgroundColor: 'transparent',
+    cursor: 'zoom-in',
   },
   publicUrlPreview: {
     outline: `2px solid ${tokens.colorBrandBackground}`,
@@ -215,6 +220,7 @@ export const MarkdownAssetPanel = forwardRef<MarkdownAssetPanelHandle, MarkdownA
   const [busyKey, setBusyKey] = useState<string | null>(null)
   const [sourceRenameAsset, setSourceRenameAsset] = useState<ImageWarehouseSourceAsset | null>(null)
   const [compressionDialog, setCompressionDialog] = useState<{ file: File; busy?: boolean; busyLabel?: string } | null>(null)
+  const [imagePreview, setImagePreview] = useState<{ src: string; fallbackSrc?: string; alt: string } | null>(null)
   const [publicPreviewFallbackKeys, setPublicPreviewFallbackKeys] = useState<Set<string>>(() => new Set())
 
   const warehouseAssets: Array<ImageWarehouseSourceAsset | (DraftAsset & { kind: 'temp' })> = [
@@ -449,7 +455,11 @@ export const MarkdownAssetPanel = forwardRef<MarkdownAssetPanelHandle, MarkdownA
   }
 
   const openPreview = (asset: ImageWarehouseSourceAsset | (DraftAsset & { kind: 'temp' })) => {
-    window.open(previewUrl(asset), '_blank', 'noopener,noreferrer')
+    setImagePreview({
+      src: previewUrl(asset),
+      fallbackSrc: asset.publicUrl ? fallbackPreviewUrl(asset) : undefined,
+      alt: asset.filename,
+    })
   }
 
   return (
@@ -492,7 +502,7 @@ export const MarkdownAssetPanel = forwardRef<MarkdownAssetPanelHandle, MarkdownA
           const usingPublicUrl = Boolean(asset.publicUrl && !publicPreviewFallbackKeys.has(key))
           return (
             <li className={styles.assetItem} key={key}>
-              <span className={styles.previewFrame}>
+              <button className={styles.previewFrame} type="button" onClick={() => openPreview(asset)} aria-label={`${t('assets.preview')}: ${asset.filename}`}>
                 <img
                   className={mergeClasses(styles.preview, assetPublicUrlDebug && usingPublicUrl && styles.publicUrlPreview)}
                   src={previewUrl(asset)}
@@ -507,7 +517,7 @@ export const MarkdownAssetPanel = forwardRef<MarkdownAssetPanelHandle, MarkdownA
                   }}
                 />
                 {assetPublicUrlDebug && usingPublicUrl ? <span className={styles.publicUrlBadge}>PUBLIC</span> : null}
-              </span>
+              </button>
               <span className={styles.meta}>
                 <span>
                   <Badge appearance="tint" color={asset.kind === 'source' ? 'brand' : 'success'}>{asset.kind === 'source' ? t('assets.source') : t('assets.temp')}</Badge>
@@ -562,6 +572,13 @@ export const MarkdownAssetPanel = forwardRef<MarkdownAssetPanelHandle, MarkdownA
         onCompress={() => resolveCompressionDecision('compress')}
         onUploadOriginal={() => resolveCompressionDecision('original')}
         onCancel={() => resolveCompressionDecision('cancel')}
+      />
+      <ImagePreviewDialog
+        open={Boolean(imagePreview)}
+        src={imagePreview?.src}
+        fallbackSrc={imagePreview?.fallbackSrc}
+        alt={imagePreview?.alt}
+        onClose={() => setImagePreview(null)}
       />
     </section>
   )

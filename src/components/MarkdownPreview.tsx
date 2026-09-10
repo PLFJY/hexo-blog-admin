@@ -7,11 +7,12 @@ import markdownItMark from 'markdown-it-mark'
 import markdownItSub from 'markdown-it-sub'
 import markdownItSup from 'markdown-it-sup'
 import { makeStyles, tokens } from '@fluentui/react-components'
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from 'react'
 import 'katex/dist/katex.min.css'
 import { useAppTheme } from '../app/themeContext'
 import { extractFrontMatterTitle, stripFrontMatter } from '../shared/frontMatter'
 import type { ResolvedMarkdownResourceUrl } from '../lib/markdownResource'
+import { ImagePreviewDialog } from './ImagePreviewDialog'
 
 const useStyles = makeStyles({
   root: {
@@ -104,6 +105,7 @@ const useStyles = makeStyles({
     '& img': {
       maxWidth: '100%',
       borderRadius: tokens.borderRadiusMedium,
+      cursor: 'zoom-in',
     },
     '& .hba-public-url-image': {
       position: 'relative',
@@ -358,6 +360,9 @@ function createMarkdownRenderer(
       if (resolved.fallbackUrl && resolved.fallbackUrl !== resolved.url) token.attrSet('data-public-url-fallback', resolved.fallbackUrl)
       publicAsset = resolved.publicAsset
     }
+    token.attrSet('data-image-preview', 'true')
+    token.attrSet('role', 'button')
+    token.attrSet('tabindex', '0')
     const imageHtml = defaultImageRenderer ? defaultImageRenderer(tokens, index, options, env, self) : self.renderToken(tokens, index, options)
     return publicAsset
       ? `<span class="hba-public-url-image">${imageHtml}<span class="hba-public-url-image__badge">PUBLIC</span></span>`
@@ -432,6 +437,7 @@ export function MarkdownPreview({
   const styles = useStyles()
   const { resolvedMode } = useAppTheme()
   const rootRef = useRef<HTMLDivElement>(null)
+  const [imagePreview, setImagePreview] = useState<{ src: string; fallbackSrc?: string; alt: string } | null>(null)
   const onPreviewRootReadyRef = useRef(onPreviewRootReady)
   const onPreviewContentChangeRef = useRef(onPreviewContentChange)
   const onMermaidRenderErrorsChangeRef = useRef(onMermaidRenderErrorsChange)
@@ -458,6 +464,30 @@ export function MarkdownPreview({
     const lineCount = sourceLineCount(markdown)
     return `${rendered}<div data-source-line="${lineCount}" data-source-end-line="${lineCount}" class="hba-source-line-sentinel"></div>`
   }, [markdown, renderer])
+
+  const openImagePreview = (image: HTMLImageElement) => {
+    setImagePreview({
+      src: image.currentSrc || image.src,
+      fallbackSrc: image.dataset.publicUrlFallback,
+      alt: image.alt,
+    })
+  }
+
+  const handleImageClick = (event: ReactMouseEvent<HTMLDivElement>) => {
+    const image = event.target instanceof Element ? event.target.closest('img') : null
+    if (!(image instanceof HTMLImageElement)) return
+    event.preventDefault()
+    event.stopPropagation()
+    openImagePreview(image)
+  }
+
+  const handleImageKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    const image = event.target
+    if (!(image instanceof HTMLImageElement)) return
+    event.preventDefault()
+    openImagePreview(image)
+  }
 
   useEffect(() => {
     onPreviewRootReadyRef.current = onPreviewRootReady
@@ -665,6 +695,9 @@ export function MarkdownPreview({
 
     const images = Array.from(element.querySelectorAll('img'))
     for (const image of images) {
+      image.dataset.imagePreview = 'true'
+      image.setAttribute('role', 'button')
+      image.tabIndex = 0
       image.addEventListener('load', invalidateAfterImageChange)
       image.addEventListener('error', invalidateAfterImageChange)
       if (image.complete) onPreviewContentChangeRef.current?.()
@@ -680,5 +713,22 @@ export function MarkdownPreview({
     }
   }, [html])
 
-  return <div className={styles.root} ref={rootRef} dangerouslySetInnerHTML={{ __html: html }} />
+  return (
+    <>
+      <div
+        className={styles.root}
+        ref={rootRef}
+        onClick={handleImageClick}
+        onKeyDown={handleImageKeyDown}
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+      <ImagePreviewDialog
+        open={Boolean(imagePreview)}
+        src={imagePreview?.src}
+        fallbackSrc={imagePreview?.fallbackSrc}
+        alt={imagePreview?.alt}
+        onClose={() => setImagePreview(null)}
+      />
+    </>
+  )
 }

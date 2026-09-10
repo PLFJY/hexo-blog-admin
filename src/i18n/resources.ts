@@ -98,6 +98,7 @@ export const resources = {
       },
       drafts: {
         title: '草稿箱',
+        statusPanelTitle: '草稿操作状态',
         description: '草稿箱 Markdown 和图片 metadata 存 D1，图片 blob 临时存 R2。',
         assetCacheTitle: 'R2 临时资源缓存',
         assetCacheDescription: '草稿图片 blob 会缓存在 R2，并把每篇草稿的图片 metadata 存入 D1。',
@@ -583,6 +584,7 @@ export const resources = {
       },
       drafts: {
         title: 'Drafts',
+        statusPanelTitle: 'Draft operation status',
         description: 'Draft Markdown and image metadata go to D1, and temporary image blobs go to R2.',
         assetCacheTitle: 'R2 temp asset cache',
         assetCacheDescription: 'Draft image blobs are cached in R2 and per-draft metadata is stored in D1.',
