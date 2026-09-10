@@ -15,7 +15,7 @@ const useStyles = makeStyles({
     display: "grid",
     gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
     gap: tokens.spacingHorizontalL,
-    alignItems: "start",
+    alignItems: "stretch",
     width: "100%",
     minWidth: 0,
     maxWidth: "100%",
@@ -33,10 +33,7 @@ const useStyles = makeStyles({
     flexDirection: "column",
   },
   previewColumn: {
-    paddingTop: `calc(32px + ${tokens.spacingVerticalXS})`,
-    [`@media ${SINGLE_COLUMN_MEDIA_QUERY}`]: {
-      paddingTop: 0,
-    },
+    justifyContent: "flex-end",
   },
 });
 
