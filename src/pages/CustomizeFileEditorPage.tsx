@@ -9,8 +9,7 @@ import { MarkdownEditor } from '../components/MarkdownEditor'
 import { getJson, sendJson } from '../lib/apiClient'
 import type { CustomizeFileResponse, CustomizeSaveResponse } from '../shared/customizeTypes'
 import { usePageStyles } from './pageStyles'
-import { BackToCustomizeButton, CustomizeSaveStatusPanel } from './customizeShared'
-import { useCommitDeployTracker } from './useCommitDeployTracker'
+import { BackToCustomizeButton } from './customizeShared'
 
 type State =
   | { status: 'loading' }
@@ -22,7 +21,6 @@ export function CustomizeFileEditorPage() {
   const params = useParams()
   const fileId = params.fileId ?? ''
   const [state, setState] = useState<State>({ status: 'loading' })
-  const tracker = useCommitDeployTracker()
   const { t } = useTranslation()
 
   const load = () => {
@@ -68,8 +66,12 @@ export function CustomizeFileEditorPage() {
       content: state.content,
     })
       .then((response) => {
-        setState({ ...state, saving: false, file: { ...state.file, content: state.content, exists: true } })
-        tracker.start(response.commitSha)
+        setState({
+          ...state,
+          saving: false,
+          file: { ...state.file, content: state.content, exists: true },
+          message: t('customize.savedWithCommit', { commitSha: response.commitSha }),
+        })
       })
       .catch((error: unknown) => setState({ ...state, saving: false, message: error instanceof Error ? error.message : 'Unknown error' }))
   }
@@ -89,8 +91,6 @@ export function CustomizeFileEditorPage() {
           <Text>{state.message}</Text>
         </section>
       ) : null}
-      <CustomizeSaveStatusPanel status={tracker.status} />
-
       <section className={styles.card}>
         <div className={styles.row}>
           <Title3>{t('customize.rawEditor')}</Title3>

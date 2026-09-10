@@ -12,7 +12,6 @@ export async function getSetupStatus(env: WorkerEnv): Promise<SetupStatus> {
   if (!hasValue(env.POSTS_DIR)) missing.push('POSTS_DIR')
   if (!hasValue(env.BLOG_PUBLIC_URL)) missing.push('BLOG_PUBLIC_URL')
   if (!hasValue(env.ADMIN_INDEX_PATH)) missing.push('ADMIN_INDEX_PATH')
-  if (!hasValue(env.WORKFLOW_FILE)) missing.push('WORKFLOW_FILE')
   if (!hasValue(env.GITHUB_TOKEN)) missing.push('GITHUB_TOKEN')
   if (!hasValue(env.ADMIN_USERNAME)) missing.push('ADMIN_USERNAME')
   if (!hasValue(env.ADMIN_PASSWORD)) missing.push('ADMIN_PASSWORD')

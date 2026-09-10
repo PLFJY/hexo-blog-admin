@@ -1,6 +1,6 @@
 import { Body1, Button, Popover, PopoverSurface, PopoverTrigger, Spinner, Text, Title1, Title3, makeStyles, tokens } from '@fluentui/react-components'
 import { DeleteRegular, DocumentEditRegular, FolderRegular, EyeOffRegular, EyeRegular } from '@fluentui/react-icons'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useLocation, useNavigate } from 'react-router'
 import { EmptyState } from '../components/EmptyState'
@@ -9,9 +9,7 @@ import { LoadingState } from '../components/LoadingState'
 import { getJson, sendJson } from '../lib/apiClient'
 import { getCachedAdminIndex, setCachedAdminIndex } from '../lib/indexCache'
 import type { PostFile, PostTreeNode, PostTreeResponse, TogglePostPublishedResponse } from '../shared/postTypes'
-import { CustomizeSaveStatusPanel } from './customizeShared'
 import { usePageStyles } from './pageStyles'
-import { useCommitDeployTracker } from './useCommitDeployTracker'
 
 const usePostStyles = makeStyles({
   treeGrid: { display: 'grid', gap: tokens.spacingVerticalM },
@@ -146,7 +144,6 @@ type PostsState =
   | { status: 'error'; message: string }
 
 type PostsLocationState = {
-  commitSha?: string
   message?: string
 }
 
@@ -247,8 +244,6 @@ export function PostsPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const location = useLocation()
-  const tracker = useCommitDeployTracker()
-  const handledCommitSha = useRef<string | undefined>(undefined)
   const [state, setState] = useState<PostsState>({ status: 'loading' })
   const locationState = location.state as PostsLocationState | null
   const postsById = useMemo(
@@ -341,21 +336,14 @@ export function PostsPage() {
   }, [])
 
   useEffect(() => {
-    const commitSha = locationState?.commitSha
-    if (!commitSha || handledCommitSha.current === commitSha) return
-    handledCommitSha.current = commitSha
-    tracker.start(commitSha)
+    if (!locationState) return
     if (locationState?.message) {
       queueMicrotask(() => {
         setState((current) => (current.status === 'ready' ? { ...current, message: locationState.message } : current))
       })
     }
     navigate('/posts', { replace: true, state: null })
-  }, [locationState?.commitSha])
-
-  useEffect(() => {
-    if (tracker.status.indexSynced) queueMicrotask(load)
-  }, [tracker.status.indexSynced])
+  }, [locationState, navigate])
   if (state.status === 'loading') return <LoadingState />
   if (state.status === 'error') return <ErrorState message={state.message} onRetry={load} />
 
@@ -373,7 +361,6 @@ export function PostsPage() {
         </div>
         <Body1>{t('posts.description')}</Body1>
       </header>
-      <CustomizeSaveStatusPanel status={tracker.status} />
       {state.index.posts.length === 0 ? (
         <EmptyState title={t('posts.emptyTitle')} description={t('posts.emptyDescription')} />
       ) : (

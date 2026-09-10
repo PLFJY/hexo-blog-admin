@@ -1,5 +1,3 @@
-import type { DeployRecord } from './deployTypes'
-
 export type CustomizePanelGroup = 'basic' | 'visual' | 'navigation' | 'pages' | 'data' | 'advanced'
 
 export type CustomizeAdapterSummary = {
@@ -72,13 +70,6 @@ export type CustomizeFileSaveRequest = {
 export type CustomizePanelSaveRequest<T = unknown> = {
   id: string
   data: T
-}
-
-export type CustomizeSaveStatus = {
-  commitSha?: string
-  deploy?: DeployRecord
-  indexSynced?: boolean
-  message?: string
 }
 
 export type MarkdownPageData = {

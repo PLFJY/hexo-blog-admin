@@ -75,7 +75,6 @@ Recommended permissions:
 ```txt
 Metadata: Read
 Contents: Read and write
-Actions: Read and write
 ```
 
 Store the token as a Cloudflare Worker secret. Do not write it into repository files.
@@ -102,7 +101,6 @@ GITHUB_BRANCH=main
 POSTS_DIR=source/_posts
 BLOG_PUBLIC_URL=https://your-blog-domain
 ADMIN_INDEX_PATH=/admin-index.json
-WORKFLOW_FILE=Build Pages.yml
 ```
 
 Variable meanings:
@@ -111,11 +109,10 @@ Variable meanings:
 | --- | --- |
 | `GITHUB_OWNER` | GitHub account or organization that owns the blog repository, for example `PLFJY`. |
 | `GITHUB_REPO` | Blog repository name, for example `blog`. The admin reads posts and publishes drafts to this repository. |
-| `GITHUB_BRANCH` | Blog repository branch, for example `main`. Post reads, draft commits, and workflow dispatches use this branch. |
+| `GITHUB_BRANCH` | Blog repository branch, for example `main`. Post reads and draft commits use this branch. |
 | `POSTS_DIR` | Hexo posts directory, for example `source/_posts`. Used to calculate Markdown paths from `relativeId`. |
 | `BLOG_PUBLIC_URL` | Public URL of the deployed blog. The admin reads `ADMIN_INDEX_PATH` from this site. |
 | `ADMIN_INDEX_PATH` | Blog build artifact path for the public admin index summary, for example `/admin-index.json`. |
-| `WORKFLOW_FILE` | GitHub Actions workflow filename in the blog repository, for example `Build Pages.yml` or `deploy.yml`. |
 
 These variables have no fallback and no default value. If any required item is missing, the app shows SetupRequiredPage and blocks the main admin UI.
 
@@ -356,7 +353,7 @@ ADMIN_INDEX_PATH=/admin-index.json
 
 - React 19 + Vite + TypeScript app shell.
 - Fluent UI v9 dark themed layout with responsive `NavDrawer`.
-- React Router routes for dashboard, posts, drafts, deploy, and settings.
+- React Router routes for dashboard, posts, drafts, and settings.
 - Chinese and English i18n with localStorage language preference.
 - Cloudflare Worker APIs:
   - `/api/health`
@@ -371,8 +368,6 @@ ADMIN_INDEX_PATH=/admin-index.json
   - `/api/drafts`
   - `/api/drafts/:id`
   - `/api/drafts/publish`
-  - `/api/deploy/latest`
-  - `/api/deploy/dispatch`
 - Setup gate for missing Worker variables, secrets, KV, D1, and R2 bindings.
 - Dedicated admin login page backed by Worker Secrets `ADMIN_USERNAME` / `ADMIN_PASSWORD`.
 - Account management in Settings; regular account passwords are stored in KV as salted hashes.
@@ -386,4 +381,3 @@ ADMIN_INDEX_PATH=/admin-index.json
 - Manages draft image cache entries, including listing and deleting temporary R2 images.
 - Publishes both Markdown and cached R2 draft images to the blog repository.
 - Publishes drafts to the blog repository through a GitHub batch commit.
-- Queries and dispatches the GitHub Actions deployment workflow.

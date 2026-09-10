@@ -10,10 +10,9 @@ import {
   handleSaveCustomizeFile,
   handleSaveCustomizePanel,
 } from './routes/customizeRoutes'
-import { handleDeployStatus, handleDispatchDeploy, handleLatestDeploy } from './routes/deployRoutes'
 import { handleCreateDraft, handleDraftById, handleDrafts, handlePublishDraft } from './routes/draftRoutes'
 import { handleGitHubRepo } from './routes/githubRoutes'
-import { handleAdminIndex, handleSyncOnlineAdminIndex } from './routes/indexRoutes'
+import { handleAdminIndex } from './routes/indexRoutes'
 import {
   handleDeletePostAsset,
   handleDeletePost,
@@ -141,11 +140,6 @@ async function handleApiRequest(request: Request, env: WorkerEnv, pathname: stri
   if (pathname === '/api/assets/blob') return handleAssetBlob(env, request)
   if (pathname === '/api/assets/rename') return handleAssetRename(env, request)
   if (pathname === '/api/assets/cache') return handleAssetCache(env, request)
-  if (pathname === '/api/deploy/latest') return handleLatestDeploy(env)
-  if (pathname === '/api/deploy/status') return handleDeployStatus(env, request)
-  if (pathname === '/api/deploy/dispatch' && request.method === 'POST') return handleDispatchDeploy(env, request)
-  if (pathname === '/api/index/sync-online' && request.method === 'POST') return handleSyncOnlineAdminIndex(env)
-
   return json({ error: 'NOT_FOUND' }, { status: 404 })
 }
 

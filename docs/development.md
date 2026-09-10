@@ -13,7 +13,6 @@
 - 使用 Cloudflare D1 保存草稿正文和草稿图片 metadata。
 - 使用 Cloudflare R2 临时保存草稿图片 blob。
 - 使用 Cloudflare KV 保存登录用户和 UI 配置。
-- 触发并查询 GitHub Actions 部署 workflow。
 
 ## 技术栈
 
@@ -32,7 +31,7 @@ src/
   features/posts/      前后端共用的 Hexo 文章路径规则
   i18n/                中英文翻译资源
   lib/                 前端 API、缓存、图片压缩、编辑快照、Markdown 资源解析
-  pages/               Dashboard、文章、草稿、部署、设置、初始化等页面
+  pages/               Dashboard、文章、草稿、设置、初始化等页面
   shared/              前后端共享的 API 和领域类型
   worker/              Cloudflare Worker 入口、路由、服务层和工具函数
 scripts/               仓库自身辅助脚本
@@ -77,7 +76,6 @@ GITHUB_BRANCH
 POSTS_DIR
 BLOG_PUBLIC_URL
 ADMIN_INDEX_PATH
-WORKFLOW_FILE
 ```
 
 必须配置的 Secret：
@@ -138,7 +136,6 @@ KV 保存：
 - `/drafts`：草稿列表。
 - `/drafts/edit?draftId=...`：草稿编辑页；没有 `draftId` 时创建新草稿。
 - `/cache`：R2 暂存图片缓存管理。
-- `/deploy`：GitHub Actions 部署状态与触发。
 - `/settings`：配置状态、GitHub 状态、背景图、用户管理。
 
 路由进入主应用后先经过 `SetupGate`，缺少变量、Secret 或绑定时显示初始化向导；配置完整后再经过 `AuthGate`，未登录时跳转 `/login`。
@@ -224,7 +221,6 @@ KV 保存：
 文章索引与正式文章：
 
 - `GET /api/index`
-- `POST /api/index/sync-online`
 - `GET /api/posts/tree`
 - `GET /api/posts/content?relativeId=...`
 - `GET /api/posts/assets?relativeId=...`
@@ -251,12 +247,6 @@ KV 保存：
 - `GET /api/assets/cache`
 - `DELETE /api/assets/cache`
 
-部署：
-
-- `GET /api/deploy/latest`
-- `GET /api/deploy/status?commitSha=...`
-- `POST /api/deploy/dispatch`
-
 ## GitHub 集成
 
 GitHub API 封装在 `src/worker/services/github/`：
@@ -264,7 +254,6 @@ GitHub API 封装在 `src/worker/services/github/`：
 - `githubClient.ts`：统一设置 GitHub headers、API version、User-Agent 和 Bearer token。
 - `githubContent.ts`：读取 Markdown 或图片文件内容。
 - `githubGitCommit.ts`：使用 Git Data API 批量创建 blob、tree、commit，并 fast-forward 更新分支。
-- `githubActions.ts`：读取最新 workflow run、按 commit 查询 workflow run、触发 workflow dispatch。
 - `githubRepo.ts`：检查仓库连接状态。
 
 批量提交不会使用 contents API 的单文件更新，而是直接创建 tree，方便一次提交 Markdown、多个图片和删除项。
@@ -278,8 +267,7 @@ GitHub API 封装在 `src/worker/services/github/`：
 1. 组合 `BLOG_PUBLIC_URL + ADMIN_INDEX_PATH`。
 2. 使用 `Cache-Control: no-cache` 和 `cf.cacheTtl = 0` 直接 fetch 线上 `admin-index.json`。
 3. `/api/index` 和 `/api/posts/tree` 都返回这份线上结果。
-4. `/api/index/sync-online` 保留为“强制重新 fetch online admin-index 并返回”，不再同步到 KV。
-5. `sourceCommitSha` 以 `admin-index.json` 自身字段为准。
+4. `sourceCommitSha` 以 `admin-index.json` 自身字段为准。
 
 前端通过 `src/lib/indexCache.ts` 把最近一次成功读取的 admin-index 保存在浏览器 localStorage。页面进入时先渲染浏览器缓存，再懒刷新线上索引；刷新失败时继续显示本地缓存并提示错误。
 
@@ -317,8 +305,6 @@ Worker 的 `/api/posts/assets?relativeId=...` 会：
    - Markdown 引用：`<slug>/<filename>`
 4. Worker 用 Git Data API 创建一个 batch commit。
 5. 发布成功后删除 D1 草稿和对应 R2 暂存图片。
-6. 前端按 commit SHA 轮询 GitHub Actions 状态。
-7. workflow 成功后前端调用 `/api/index/sync-online`，重新 fetch 线上 admin-index 并更新浏览器 localStorage 缓存。
 
 ## 路径安全规则
 
@@ -399,4 +385,3 @@ Worker 的 `/api/posts/assets?relativeId=...` 会：
 - 源站图片预览失败：确认 `post.assetIndexPath` 指向的 shard 已发布，shard 内 `assets[].repoPath` 在 `POSTS_DIR` 下，且 GitHub token 有 contents read 权限。
 - 草稿图片上传失败：检查 D1/R2 binding，确认 `BLOG_ASSET_CACHE` 可写。
 - 发布失败：检查 GitHub token 是否有 contents write 权限，目标分支是否允许 fast-forward 更新。
-- 部署状态不更新：检查 `WORKFLOW_FILE` 是否和 GitHub Actions workflow 文件名完全一致。

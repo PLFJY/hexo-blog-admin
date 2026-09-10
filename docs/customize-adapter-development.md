@@ -11,7 +11,7 @@
 - `common` adapter 永远启用，负责 Hexo 通用内容，例如 `_config.yml` 和 About 页面。
 - 通用 Hexo 能力在前端显示为“Hexo 设置”，主题能力显示为“Redefine 设置”这类按主题命名的入口。
 - 主题 adapter 按 `admin-index.json` v3 的 `customize.detectedTheme` 启用，例如 `detectedTheme: redefine` 会启用 `redefine` adapter。
-- 新主题只需要新增自己的 adapter 并注册，不需要改 Worker 路由、保存流程或部署追踪流程。
+- 新主题只需要新增自己的 adapter 并注册，不需要改 Worker 路由或保存流程。
 - 每个主题 adapter 的代码应放在 `src/customize/<theme-name>/` 独立目录中，例如 Redefine 位于 `src/customize/redefine/`。
 - `admin-index.json` v3 只保存 `site` / `customize` 摘要和文章轻索引，不保存配置文件正文。
 - 文章图片索引不属于设置 adapter；它由 per-post asset shard 管理。
@@ -22,8 +22,7 @@
 2. 结构化面板读取 `/api/customize/panel?id=...`。
 3. Raw 文件读取 `/api/customize/file?id=...`。
 4. 保存时 Worker 通过 GitHub Git Data API 写入博客源站仓库。
-5. 前端拿到 `commitSha` 后轮询 GitHub Actions 部署状态。
-6. 部署成功后调用 `/api/index/sync-online` 重新读取线上 admin-index，并更新浏览器本地缓存。
+5. 前端拿到 `commitSha` 后显示保存成功信息。
 
 这意味着设置首页不应该为了展示能力摘要实时扫描 GitHub 仓库。GitHub 源文件读取只发生在进入具体面板或 Raw File Editor 时。
 
@@ -341,8 +340,7 @@ type MarkdownPageData = {
 - 每个 panel 的 GET 能返回结构化数据。
 - 每个 panel 的 PUT 能生成 GitHub commit。
 - Raw File Editor 能读写 adapter 声明文件。
-- 保存后前端能按 `commitSha` 追踪部署。
-- 部署成功后能重新读取线上 admin-index，并更新浏览器本地缓存。
+- 保存后前端能显示包含 `commitSha` 的成功信息。
 - `pnpm typecheck` 通过。
 - `pnpm build` 通过。
 

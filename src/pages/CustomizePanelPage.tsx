@@ -45,8 +45,7 @@ import type {
   NamedLinkItem,
 } from '../shared/customizeTypes'
 import { usePageStyles } from './pageStyles'
-import { BackToCustomizeButton, CustomizeSaveStatusPanel } from './customizeShared'
-import { useCommitDeployTracker } from './useCommitDeployTracker'
+import { BackToCustomizeButton } from './customizeShared'
 
 const useStyles = makeStyles({
   section: {
@@ -311,7 +310,6 @@ export function CustomizePanelPage() {
   const params = useParams()
   const panelId = params.panelId ?? ''
   const [state, setState] = useState<State>({ status: 'loading' })
-  const tracker = useCommitDeployTracker()
   const { t } = useTranslation()
 
   const load = () => {
@@ -358,8 +356,11 @@ export function CustomizePanelPage() {
       data: state.data,
     })
       .then((response) => {
-        setState({ ...state, saving: false })
-        tracker.start(response.commitSha)
+        setState({
+          ...state,
+          saving: false,
+          message: t('customize.savedWithCommit', { commitSha: response.commitSha }),
+        })
       })
       .catch((error: unknown) => setState({ ...state, saving: false, message: error instanceof Error ? error.message : 'Unknown error' }))
   }
@@ -381,8 +382,6 @@ export function CustomizePanelPage() {
           <Text>{state.message}</Text>
         </section>
       ) : null}
-      <CustomizeSaveStatusPanel status={tracker.status} />
-
       <section className={styles.card}>
         <div className={styles.row}>
           <Button appearance="primary" icon={<SaveRegular />} onClick={save} disabled={state.saving}>

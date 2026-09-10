@@ -3,7 +3,6 @@ import { AppShell } from './app/AppShell'
 import { AuthGate } from './app/AuthGate'
 import { SetupGate } from './app/SetupGate'
 import { DashboardPage } from './pages/DashboardPage'
-import { DeployPage } from './pages/DeployPage'
 import { CachePage } from './pages/CachePage'
 import { CustomizeFileEditorPage } from './pages/CustomizeFileEditorPage'
 import { CustomizeHomePage } from './pages/CustomizeHomePage'
@@ -49,7 +48,6 @@ export const router = createBrowserRouter([
               { path: 'customize', element: <Navigate to="/hexo-settings" replace /> },
               { path: 'customize/panel/:panelId', element: <CustomizePanelPage /> },
               { path: 'customize/file/:fileId', element: <CustomizeFileEditorPage /> },
-              { path: 'deploy', element: <DeployPage /> },
               { path: 'settings', element: <SettingsPage /> },
               { path: '*', element: <NotFoundPage /> },
             ],

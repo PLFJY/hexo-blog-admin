@@ -444,7 +444,6 @@ export function SourcePostEditorPage() {
               setState({ ...state, markdown, message: t('posts.renameSuccess', { relativeId, commitSha }) })
               navigate('/posts', {
                 state: {
-                  commitSha,
                   message: t('posts.renameSuccess', { relativeId, commitSha }),
                 },
               })

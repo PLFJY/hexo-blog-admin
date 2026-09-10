@@ -29,10 +29,6 @@ export async function fetchOnlineAdminIndex(env: WorkerEnv): Promise<PostTreeRes
   return (await response.json()) as PostTreeResponse
 }
 
-export async function syncOnlineAdminIndex(env: WorkerEnv): Promise<PostTreeResponse> {
-  return await fetchOnlineAdminIndex(env)
-}
-
 export async function getAdminIndex(env: WorkerEnv): Promise<PostTreeResponse> {
   return await fetchOnlineAdminIndex(env)
 }

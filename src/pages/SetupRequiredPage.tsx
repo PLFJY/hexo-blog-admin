@@ -252,7 +252,7 @@ const setupGroups: SetupGroup[] = [
     id: 'github',
     titleKey: 'setup.groups.github.title',
     descriptionKey: 'setup.groups.github.description',
-    items: ['GITHUB_OWNER', 'GITHUB_REPO', 'GITHUB_BRANCH', 'GITHUB_TOKEN', 'WORKFLOW_FILE'],
+    items: ['GITHUB_OWNER', 'GITHUB_REPO', 'GITHUB_BRANCH', 'GITHUB_TOKEN'],
   },
   {
     id: 'site',
@@ -288,7 +288,6 @@ function setupValuePlaceholder(item: string) {
   if (item === 'BLOG_PUBLIC_URL') return 'https://your-blog-domain'
   if (item === 'BLOG_ASSET_PUBLIC_URL') return 'https://your-r2-public-domain'
   if (item === 'ADMIN_INDEX_PATH') return '/admin-index.json'
-  if (item === 'WORKFLOW_FILE') return 'Build Pages.yml'
   if (item === 'ADMIN_USERNAME') return 'admin'
   if (item === 'ADMIN_PASSWORD') return 'your-admin-password'
   if (item === 'GITHUB_TOKEN') return 'github_pat_...'

@@ -15,7 +15,6 @@ export type SetupStatus = {
     BLOG_PUBLIC_URL?: string
     BLOG_ASSET_PUBLIC_URL?: string
     ADMIN_INDEX_PATH: string
-    WORKFLOW_FILE: string
   }
 }
 

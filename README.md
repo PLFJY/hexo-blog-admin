@@ -75,7 +75,6 @@ pnpm deploy
 ```txt
 Metadata: Read
 Contents: Read and write
-Actions: Read and write
 ```
 
 请把 token 保存为 Cloudflare Worker Secret，不要写入仓库文件。
@@ -102,7 +101,6 @@ GITHUB_BRANCH=main
 POSTS_DIR=source/_posts
 BLOG_PUBLIC_URL=https://你的博客域名
 ADMIN_INDEX_PATH=/admin-index.json
-WORKFLOW_FILE=Build Pages.yml
 ```
 
 变量用途：
@@ -111,11 +109,10 @@ WORKFLOW_FILE=Build Pages.yml
 | --- | --- |
 | `GITHUB_OWNER` | 博客仓库所属账号或组织，例如 `PLFJY`。 |
 | `GITHUB_REPO` | 博客仓库名，例如 `blog`。后台读取文章和发布草稿都会操作这个仓库。 |
-| `GITHUB_BRANCH` | 博客仓库发布分支，例如 `main`。读取文章、提交草稿和触发 Action 都使用这个分支。 |
+| `GITHUB_BRANCH` | 博客仓库发布分支，例如 `main`。读取文章和提交草稿都使用这个分支。 |
 | `POSTS_DIR` | Hexo 文章目录，例如 `source/_posts`。用于计算 `relativeId` 对应的 Markdown 路径。 |
 | `BLOG_PUBLIC_URL` | 已部署博客的公开地址。后台会从这里读取 `ADMIN_INDEX_PATH`。 |
 | `ADMIN_INDEX_PATH` | 博客构建产物里的后台公开索引摘要路径，例如 `/admin-index.json`。 |
-| `WORKFLOW_FILE` | 博客仓库里负责构建部署的 GitHub Actions workflow 文件名，例如 `Build Pages.yml` 或 `deploy.yml`。 |
 
 这些变量没有 fallback，也没有默认值。缺少任意一项时，后台会显示 SetupRequiredPage 并阻止进入主界面。
 
@@ -390,7 +387,7 @@ ADMIN_INDEX_PATH=/admin-index.json
 
 - React 19 + Vite + TypeScript 应用外壳。
 - Fluent UI v9 深色主题布局和响应式 `NavDrawer`。
-- Dashboard、Posts、Drafts、Deploy、Settings 的 React Router 路由。
+- Dashboard、Posts、Drafts、Settings 的 React Router 路由。
 - 中文和英文 i18n，支持 localStorage 语言偏好。
 - Cloudflare Worker API：
   - `/api/health`
@@ -406,8 +403,6 @@ ADMIN_INDEX_PATH=/admin-index.json
   - `/api/drafts`
   - `/api/drafts/:id`
   - `/api/drafts/publish`
-  - `/api/deploy/latest`
-  - `/api/deploy/dispatch`
 - 缺少 Worker variables、secrets、KV、D1、R2 bindings 时的 Setup Gate。
 - 独立管理员登录页，内置管理员账号来自 Worker Secret `ADMIN_USERNAME` / `ADMIN_PASSWORD`。
 - 设置页账号管理，新增账号的密码以加盐哈希保存到 KV。
@@ -421,4 +416,3 @@ ADMIN_INDEX_PATH=/admin-index.json
 - 管理草稿图片缓存，支持查看和删除 R2 临时图片。
 - 发布草稿时，将 Markdown 和 R2 中的草稿图片一起提交到博客仓库。
 - 将草稿通过 GitHub batch commit 发布到博客仓库。
-- 查询和触发 GitHub Actions 部署 workflow。

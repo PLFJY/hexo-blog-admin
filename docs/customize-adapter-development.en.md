@@ -11,7 +11,7 @@ The settings system separates common Hexo behavior from theme-specific behavior 
 - The `common` adapter is always enabled. It owns generic Hexo content such as `_config.yml` and the About page.
 - Common Hexo behavior appears in the frontend as “Hexo Settings”; theme behavior appears as theme-named entries such as “Redefine Settings”.
 - Theme adapters are enabled from `customize.detectedTheme` in `admin-index.json` v3. For example, `detectedTheme: redefine` enables the `redefine` adapter.
-- Adding a new theme should only require a new adapter and registry entry. Worker routes, save flow, and deployment tracking should remain unchanged.
+- Adding a new theme should only require a new adapter and registry entry. Worker routes and save flow should remain unchanged.
 - Each theme adapter should live in its own `src/customize/<theme-name>/` directory. Redefine, for example, lives in `src/customize/redefine/`.
 - `admin-index.json` v3 stores only `site` / `customize` summaries and the lightweight post index. It does not store configuration file contents.
 - Article image indexes are not settings adapter data; they are managed by per-post asset shards.
@@ -22,8 +22,7 @@ The save flow is shared:
 2. Structured panels read `/api/customize/panel?id=...`.
 3. Raw file editing reads `/api/customize/file?id=...`.
 4. On save, the Worker writes to the source blog repository through GitHub's Git Data API.
-5. The frontend receives `commitSha` and polls GitHub Actions deployment status.
-6. After a successful deploy, the frontend calls `/api/index/sync-online` to refetch the online admin-index and update the browser-local cache.
+5. The frontend receives `commitSha` and displays a save-success message.
 
 This means settings home pages should not scan the GitHub repository in real time just to display capabilities. Source files are read from GitHub only after the user opens a structured panel or Raw File Editor.
 
@@ -341,8 +340,7 @@ After adding an adapter, verify:
 - Every panel GET returns structured data.
 - Every panel PUT creates a GitHub commit.
 - Raw File Editor can read and save declared files.
-- The frontend can track deployment by `commitSha`.
-- After successful deployment, the online admin-index can be refetched and the browser-local cache updates.
+- The frontend displays a success message containing the `commitSha` after saving.
 - `pnpm typecheck` passes.
 - `pnpm build` passes.
 

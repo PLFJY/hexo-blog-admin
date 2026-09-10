@@ -1,5 +1,5 @@
-import { Body1, Button, Link, Spinner, Text, Title1, Title3, makeStyles, tokens } from '@fluentui/react-components'
-import { ArrowRightRegular, DocumentEditRegular, OpenRegular, RocketRegular, SettingsRegular } from '@fluentui/react-icons'
+import { Body1, Button, Spinner, Text, Title1, Title3, makeStyles, tokens } from '@fluentui/react-components'
+import { ArrowRightRegular, DocumentEditRegular, OpenRegular, SettingsRegular } from '@fluentui/react-icons'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { NavLink } from 'react-router'
@@ -9,7 +9,6 @@ import { StatusBadge } from '../components/StatusBadge'
 import { getJson } from '../lib/apiClient'
 import { getCachedAdminIndex, setCachedAdminIndex } from '../lib/indexCache'
 import type { GitHubRepoStatus, SetupStatus } from '../shared/apiTypes'
-import type { DeployLatestResponse } from '../shared/deployTypes'
 import type { DraftListResponse } from '../shared/draftTypes'
 import { extractFrontMatterTitle } from '../shared/frontMatter'
 import type { PostTreeResponse } from '../shared/postTypes'
@@ -115,19 +114,12 @@ type DashboardState =
       github: GitHubRepoStatus
       posts: PostTreeResponse
       drafts: DraftListResponse
-      deploy: DeployLatestResponse
       syncing?: boolean
     }
   | { status: 'error'; message: string }
 
 function statusColor(ok: boolean) {
   return ok ? 'success' : 'danger'
-}
-
-function deployColor(status: DeployLatestResponse['deploy']['status']) {
-  if (status === 'success') return 'success'
-  if (status === 'failed') return 'danger'
-  return 'informative'
 }
 
 export function DashboardPage() {
@@ -144,9 +136,8 @@ export function DashboardPage() {
         getJson<SetupStatus>('/setup/status'),
         getJson<GitHubRepoStatus>('/github/repo'),
         getJson<DraftListResponse>('/drafts'),
-        getJson<DeployLatestResponse>('/deploy/latest'),
-      ]).then(([setup, github, drafts, deploy]) => {
-        setState({ status: 'ready', setup, github, posts: cachedPosts, drafts, deploy, syncing: true })
+      ]).then(([setup, github, drafts]) => {
+        setState({ status: 'ready', setup, github, posts: cachedPosts, drafts, syncing: true })
         // 然后去同步最新的 posts
         void getJson<PostTreeResponse>('/posts/tree').then((index) => {
           setCachedAdminIndex(index)
@@ -161,11 +152,10 @@ export function DashboardPage() {
         getJson<GitHubRepoStatus>('/github/repo'),
         getJson<PostTreeResponse>('/posts/tree'),
         getJson<DraftListResponse>('/drafts'),
-        getJson<DeployLatestResponse>('/deploy/latest'),
       ])
-        .then(([setup, github, posts, drafts, deploy]) => {
+        .then(([setup, github, posts, drafts]) => {
           setCachedAdminIndex(posts)
-          setState({ status: 'ready', setup, github, posts, drafts, deploy })
+          setState({ status: 'ready', setup, github, posts, drafts })
         })
         .catch((error: unknown) =>
           setState({ status: 'error', message: error instanceof Error ? error.message : 'Unknown error' }),
@@ -219,11 +209,6 @@ export function DashboardPage() {
             {state.github.fullName ?? state.github.error ?? '-'}
           </StatusBadge>
         </article>
-        <article className={localStyles.metricCard}>
-          <Text className={localStyles.muted}>{t('dashboard.deploy')}</Text>
-          <Text className={localStyles.metricValue}>{state.deploy.deploy.status}</Text>
-          <StatusBadge status={deployColor(state.deploy.deploy.status)}>{state.deploy.deploy.status}</StatusBadge>
-        </article>
       </section>
       <section className={localStyles.twoColumn}>
         <section className={styles.card}>
@@ -237,11 +222,6 @@ export function DashboardPage() {
           <Text>{t('dashboard.branch')}: {state.setup.config.GITHUB_BRANCH}</Text>
           <Text>{t('dashboard.postsDir')}: {state.setup.config.POSTS_DIR}</Text>
           <Text>{t('dashboard.indexGeneratedAt')}: {state.posts.generatedAt ?? '-'}</Text>
-          {state.deploy.deploy.workflowRunUrl ? (
-            <Link href={state.deploy.deploy.workflowRunUrl} target="_blank" rel="noreferrer">
-              {t('deploy.run')}
-            </Link>
-          ) : null}
         </section>
         <section className={styles.card}>
           <Title3>{t('dashboard.quickActions')}</Title3>
@@ -251,9 +231,6 @@ export function DashboardPage() {
             </Button>
             <Button as={NavLink} to="/drafts" icon={<DocumentEditRegular />} className={localStyles.actionButton}>
               {t('dashboard.openDrafts')} <ArrowRightRegular />
-            </Button>
-            <Button as={NavLink} to="/deploy" icon={<RocketRegular />} className={localStyles.actionButton}>
-              {t('dashboard.openDeploy')} <ArrowRightRegular />
             </Button>
             <Button as={NavLink} to="/settings" icon={<SettingsRegular />} className={localStyles.actionButton}>
               {t('dashboard.openSettings')} <ArrowRightRegular />
