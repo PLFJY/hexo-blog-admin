@@ -29,3 +29,15 @@ export type PublishDraftResponse = {
   commitSha: string
   relativeId: string
 }
+
+export type BatchDraftAction = 'delete'
+
+export type BatchDraftsRequest = {
+  draftIds: string[]
+  action: BatchDraftAction
+}
+
+export type BatchDraftsResponse = {
+  deleted: number
+  draftIds: string[]
+}

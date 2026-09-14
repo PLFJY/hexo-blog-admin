@@ -1,4 +1,4 @@
-import type { DraftListResponse, PublishDraftRequest, PublishDraftResponse, SaveDraftRequest } from '../../shared/draftTypes'
+import type { BatchDraftsRequest, BatchDraftsResponse, DraftListResponse, PublishDraftRequest, PublishDraftResponse, SaveDraftRequest } from '../../shared/draftTypes'
 import { ensureFrontMatterDate, extractFrontMatterTitle } from '../../shared/frontMatter'
 import type { WorkerEnv } from '../env'
 import { buildPostAssetPaths, buildPostPaths } from '../../features/posts/postPathUtils'
@@ -7,7 +7,7 @@ import { createBatchCommit } from '../services/github/githubGitCommit'
 import { getGitHubFileBase64 } from '../services/github/githubContent'
 import { getAdminIndex } from '../services/indexer/adminIndex'
 import { getPostSourceAssets } from '../services/indexer/postAssetIndex'
-import { deleteDraft, getDraft, isValidRelativeId, listDrafts, saveDraft } from '../services/d1/d1Drafts'
+import { deleteDraft, deleteDrafts, getDraft, isValidRelativeId, listDrafts, saveDraft } from '../services/d1/d1Drafts'
 import { requireConfig } from '../utils/config'
 import { assertSafeImageFilename, assertSafeRepoPath } from '../utils/pathSafety'
 import { json } from '../utils/response'
@@ -33,6 +33,21 @@ export async function handleDrafts(env: WorkerEnv): Promise<Response> {
     drafts: await listDrafts(env),
   }
 
+  return json(response)
+}
+
+export async function handleBatchDrafts(env: WorkerEnv, request: Request): Promise<Response> {
+  if (request.method !== 'POST') return json({ error: 'METHOD_NOT_ALLOWED' }, { status: 405 })
+  const body = (await request.json()) as Partial<BatchDraftsRequest>
+  if (!Array.isArray(body.draftIds) || body.draftIds.length === 0 || body.draftIds.some((id) => typeof id !== 'string')) {
+    return json({ error: 'BAD_REQUEST', message: 'draftIds must be a non-empty array' }, { status: 400 })
+  }
+  if (body.action !== 'delete') {
+    return json({ error: 'BAD_REQUEST', message: 'Unsupported draft batch action' }, { status: 400 })
+  }
+
+  const result = await deleteDrafts(env, body.draftIds)
+  const response: BatchDraftsResponse = result
   return json(response)
 }
 

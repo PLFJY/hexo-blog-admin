@@ -118,3 +118,18 @@ export type TogglePostPublishedResponse = {
   published: boolean
   markdown: string
 }
+
+export type BatchPostAction = 'delete' | 'published'
+
+export type BatchPostsRequest = {
+  relativeIds: string[]
+  action: BatchPostAction
+  published?: boolean
+}
+
+export type BatchPostsResponse = {
+  commitSha: string
+  relativeIds: string[]
+  action: BatchPostAction
+  published?: boolean
+}

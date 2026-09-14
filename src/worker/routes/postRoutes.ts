@@ -1,4 +1,4 @@
-import type { PostContentResponse, PublishPostRequest, PublishPostResponse, TogglePostPublishedRequest, TogglePostPublishedResponse } from '../../shared/postTypes'
+import type { BatchPostsRequest, BatchPostsResponse, PostContentResponse, PublishPostRequest, PublishPostResponse, TogglePostPublishedRequest, TogglePostPublishedResponse } from '../../shared/postTypes'
 import type { WorkerEnv } from '../env'
 import { buildPostAssetPaths, buildPostPaths } from '../../features/posts/postPathUtils'
 import { ensureFrontMatterDate, extractFrontMatterTitle, setFrontMatterBoolean } from '../../shared/frontMatter'
@@ -46,6 +46,8 @@ const arrayBufferToBase64 = (buffer: ArrayBuffer) => {
   }
   return btoa(binary)
 }
+
+const unique = <T,>(items: T[]) => Array.from(new Set(items))
 
 export async function handlePostsTree(env: WorkerEnv): Promise<Response> {
   return json(await getAdminIndex(env))
@@ -101,9 +103,6 @@ export async function handleRenamePostAsset(env: WorkerEnv, request: Request): P
   const index = await getAdminIndex(env)
   const post = index.posts.find((item) => item.relativeId === relativeId)
   if (!post) return json({ error: 'NOT_FOUND', message: 'Post not found' }, { status: 404 })
-  if (newRelativeId !== relativeId && index.posts.some((item) => item.relativeId === newRelativeId)) {
-    return json({ error: 'CONFLICT', message: `Post relativeId already exists: ${newRelativeId}` }, { status: 409 })
-  }
   const sourceAssets = await getPostSourceAssets(env, relativeId, index)
   const asset = sourceAssets.find((item) => item.repoPath === oldRepoPath)
   if (!asset) return json({ error: 'NOT_FOUND', message: 'Asset not found in admin-index' }, { status: 404 })
@@ -177,7 +176,7 @@ export async function handleRenamePost(env: WorkerEnv, request: Request): Promis
 
   const oldPaths = buildPostPaths({ postsDir: config.POSTS_DIR, relativeId })
   const newPaths = buildPostPaths({ postsDir: config.POSTS_DIR, relativeId: newRelativeId })
-  const currentMarkdown = body.markdown ?? (await getGitHubFile(env, post.path || oldPaths.postPath).then((file) => file.content))
+  const currentMarkdown: string = body.markdown ?? (await getGitHubFile(env, post.path || oldPaths.postPath).then((file) => file.content))
   const markdown = replaceAll(currentMarkdown, `${oldPaths.postSlug}/`, `${newPaths.postSlug}/`)
   const assetFiles = await Promise.all(
     sourceAssets.map(async (asset) => {
@@ -219,6 +218,69 @@ export async function handleDeletePost(env: WorkerEnv, request: Request): Promis
     deletions,
   })
   return json({ commitSha: commit.commitSha, relativeId })
+}
+
+export async function handleBatchPosts(env: WorkerEnv, request: Request): Promise<Response> {
+  if (request.method !== 'POST') return json({ error: 'METHOD_NOT_ALLOWED' }, { status: 405 })
+  const body = (await request.json()) as Partial<BatchPostsRequest>
+  if (!Array.isArray(body.relativeIds) || body.relativeIds.length === 0 || body.relativeIds.some((id) => typeof id !== 'string')) {
+    return json({ error: 'BAD_REQUEST', message: 'relativeIds must be a non-empty array' }, { status: 400 })
+  }
+  if (body.action !== 'delete' && body.action !== 'published') {
+    return json({ error: 'BAD_REQUEST', message: 'Unsupported post batch action' }, { status: 400 })
+  }
+  if (body.action === 'published' && typeof body.published !== 'boolean') {
+    return json({ error: 'BAD_REQUEST', message: 'published is required for this action' }, { status: 400 })
+  }
+
+  const relativeIds = unique(body.relativeIds.map((relativeId) => assertSafeRelativeId(relativeId)))
+  const config = requireConfig(env)
+  const index = await getAdminIndex(env)
+  const posts = relativeIds.map((relativeId) => index.posts.find((item) => item.relativeId === relativeId))
+  if (posts.some((post) => !post)) {
+    const missingIndex = posts.findIndex((post) => !post)
+    const missing = relativeIds[missingIndex]
+    return json({ error: 'NOT_FOUND', message: `Post not found: ${missing}` }, { status: 404 })
+  }
+  const resolvedPosts = posts as NonNullable<(typeof posts)[number]>[]
+
+  if (body.action === 'delete') {
+    const deletions = unique(
+      (
+        await Promise.all(
+          resolvedPosts.map(async (post) => {
+            const sourceAssets = await getPostSourceAssets(env, post.relativeId, index)
+            const paths = buildPostPaths({ postsDir: config.POSTS_DIR, relativeId: post.relativeId })
+            return [post.path || paths.postPath, ...sourceAssets.map((asset) => assertSafeRepoPath(env, asset.repoPath))]
+          }),
+        )
+      ).flat(),
+    )
+    const commit = await createBatchCommit(env, {
+      branch: config.GITHUB_BRANCH,
+      message: `Delete ${resolvedPosts.length} posts`,
+      files: [],
+      deletions,
+    })
+    const response: BatchPostsResponse = { commitSha: commit.commitSha, relativeIds, action: body.action }
+    return json(response)
+  }
+
+  const files = await Promise.all(
+    resolvedPosts.map(async (post) => {
+      const fallbackPath = buildPostPaths({ postsDir: config.POSTS_DIR, relativeId: post.relativeId }).postPath
+      const path = post.path || fallbackPath
+      const currentMarkdown = await getGitHubFile(env, path).then((file) => file.content)
+      return { path, encoding: 'utf-8' as const, content: setFrontMatterBoolean(currentMarkdown, 'published', body.published!) }
+    }),
+  )
+  const commit = await createBatchCommit(env, {
+    branch: config.GITHUB_BRANCH,
+    message: `${body.published ? 'Publish' : 'Unpublish'} ${resolvedPosts.length} posts`,
+    files,
+  })
+  const response: BatchPostsResponse = { commitSha: commit.commitSha, relativeIds, action: body.action, published: body.published }
+  return json(response)
 }
 
 export async function handlePublishPost(env: WorkerEnv, request: Request): Promise<Response> {

@@ -132,3 +132,38 @@ export async function deleteDraft(env: WorkerEnv, id: string): Promise<{ deleted
   const result = await db(env).prepare('DELETE FROM drafts WHERE id = ?1').bind(draftId).run()
   return { deleted: (result.meta?.changes ?? 0) > 0 }
 }
+
+export async function deleteDrafts(env: WorkerEnv, ids: string[]): Promise<{ deleted: number; draftIds: string[] }> {
+  await ensureD1Schema(env)
+  const draftIds = Array.from(new Set(ids.map(resolveDraftId)))
+  if (draftIds.length === 0) return { deleted: 0, draftIds: [] }
+
+  const placeholders = draftIds.map(() => '?').join(', ')
+  const existingRows =
+    (
+      await db(env)
+        .prepare(`SELECT id FROM drafts WHERE id IN (${placeholders})`)
+        .bind(...draftIds)
+        .all<{ id: string }>()
+    ).results ?? []
+  const existingIds = existingRows.map((row) => row.id)
+  if (existingIds.length === 0) return { deleted: 0, draftIds: [] }
+
+  const existingPlaceholders = existingIds.map(() => '?').join(', ')
+  const assetRows =
+    (
+      await db(env)
+        .prepare(`SELECT r2_key FROM draft_assets WHERE draft_id IN (${existingPlaceholders})`)
+        .bind(...existingIds)
+        .all<{ r2_key: string }>()
+    ).results ?? []
+  await Promise.all(assetRows.map((row) => env.BLOG_ASSET_CACHE?.delete(row.r2_key)))
+
+  // Keep the database work to one batch: remove manifests and draft rows together.
+  await db(env).batch([
+    db(env).prepare(`DELETE FROM draft_assets WHERE draft_id IN (${existingPlaceholders})`).bind(...existingIds),
+    db(env).prepare(`DELETE FROM drafts WHERE id IN (${existingPlaceholders})`).bind(...existingIds),
+  ])
+
+  return { deleted: existingIds.length, draftIds: existingIds.map(visibleDraftId) }
+}

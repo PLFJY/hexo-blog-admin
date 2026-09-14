@@ -1,6 +1,7 @@
 import {
   Body1,
   Button,
+  Checkbox,
   Popover,
   PopoverSurface,
   PopoverTrigger,
@@ -19,7 +20,7 @@ import { ErrorState } from '../components/ErrorState'
 import { LoadingState } from '../components/LoadingState'
 import { deleteEditorSnapshot } from '../lib/editorSnapshot'
 import { getJson, sendJson } from '../lib/apiClient'
-import type { DraftListResponse, DraftRecord } from '../shared/draftTypes'
+import type { BatchDraftsResponse, DraftListResponse, DraftRecord } from '../shared/draftTypes'
 import { extractFrontMatterTitle } from '../shared/frontMatter'
 import { usePageStyles } from './pageStyles'
 
@@ -33,7 +34,7 @@ const useDraftStyles = makeStyles({
   },
   draftItem: {
     display: 'grid',
-    gridTemplateColumns: 'minmax(0, 1fr) auto',
+    gridTemplateColumns: 'auto minmax(0, 1fr) auto',
     gap: tokens.spacingHorizontalM,
     alignItems: 'center',
     padding: tokens.spacingHorizontalM,
@@ -61,6 +62,17 @@ const useDraftStyles = makeStyles({
     minWidth: 0,
     width: '100%',
     textAlign: 'left',
+  },
+  selectionCheckbox: { marginTop: tokens.spacingVerticalXS },
+  bulkBar: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: tokens.spacingHorizontalS,
+    margin: `${tokens.spacingVerticalM} 0`,
+    padding: tokens.spacingVerticalS,
+    borderRadius: tokens.borderRadiusMedium,
+    backgroundColor: tokens.colorNeutralBackground3,
   },
   dangerPrimaryButton: {
     color: tokens.colorNeutralForegroundOnBrand,
@@ -92,7 +104,7 @@ const useDraftStyles = makeStyles({
 
 type DraftsState =
   | { status: 'loading' }
-  | { status: 'ready'; drafts: DraftRecord[]; openingDraftId?: string; deletingDraftId?: string; message?: string }
+  | { status: 'ready'; drafts: DraftRecord[]; openingDraftId?: string; deletingDraftId?: string; batchDeleting?: boolean; selectedDraftIds: string[]; message?: string }
   | { status: 'error'; message: string }
 
 export function DraftsPage() {
@@ -109,7 +121,7 @@ export function DraftsPage() {
   const load = () => {
     setState({ status: 'loading' })
     void getJson<DraftListResponse>('/drafts')
-      .then(({ drafts }) => setState({ status: 'ready', drafts, message: routeMessage }))
+      .then(({ drafts }) => setState({ status: 'ready', drafts, selectedDraftIds: [], message: routeMessage }))
       .catch((error: unknown) => setState({ status: 'error', message: error instanceof Error ? error.message : 'Unknown error' }))
   }
 
@@ -140,6 +152,34 @@ export function DraftsPage() {
       )
   }
 
+  const toggleDraftSelection = (draft: DraftRecord) => {
+    if (state.status !== 'ready' || state.batchDeleting) return
+    const selected = new Set(state.selectedDraftIds)
+    if (selected.has(draft.id)) selected.delete(draft.id)
+    else selected.add(draft.id)
+    setState({ ...state, selectedDraftIds: Array.from(selected) })
+  }
+
+  const selectAllDrafts = () => {
+    if (state.status !== 'ready' || state.batchDeleting) return
+    const allSelected = state.selectedDraftIds.length === state.drafts.length
+    setState({ ...state, selectedDraftIds: allSelected ? [] : state.drafts.map((draft) => draft.id) })
+  }
+
+  const removeSelectedDrafts = () => {
+    if (state.status !== 'ready' || state.selectedDraftIds.length === 0 || state.batchDeleting) return
+    if (!window.confirm(t('drafts.confirmBatchDeleteDescription', { count: state.selectedDraftIds.length }))) return
+    const ids = state.selectedDraftIds
+    setState({ ...state, batchDeleting: true, message: undefined })
+    void sendJson<BatchDraftsResponse>('/drafts/batch', 'POST', { draftIds: ids, action: 'delete' })
+      .then((response) => {
+        response.draftIds.forEach((draftId) => deleteEditorSnapshot(`draft:${draftId}`))
+        const deleted = new Set(response.draftIds)
+        setState({ ...state, drafts: state.drafts.filter((draft) => !deleted.has(draft.id)), selectedDraftIds: [], batchDeleting: false, message: t('drafts.batchDeleteSuccess', { count: response.deleted }) })
+      })
+      .catch((error: unknown) => setState({ ...state, batchDeleting: false, message: error instanceof Error ? error.message : 'Unknown error' }))
+  }
+
   useEffect(() => {
     queueMicrotask(load)
   }, [])
@@ -159,14 +199,20 @@ export function DraftsPage() {
           <Button onClick={() => navigate('/drafts/edit')}>{t('drafts.newDraft')}</Button>
         </div>
         {state.message ? <Text>{state.message}</Text> : null}
+        <div className={draftStyles.bulkBar}>
+          <Checkbox checked={state.drafts.length > 0 && state.selectedDraftIds.length === state.drafts.length} disabled={state.drafts.length === 0 || state.batchDeleting} onChange={selectAllDrafts} label={t('drafts.selectAll')} />
+          {state.selectedDraftIds.length > 0 ? <Text>{t('drafts.selectedCount', { count: state.selectedDraftIds.length })}</Text> : null}
+          <Button appearance="primary" className={draftStyles.dangerPrimaryButton} disabled={state.selectedDraftIds.length === 0 || state.batchDeleting} icon={state.batchDeleting ? <Spinner size="tiny" /> : <DeleteRegular />} onClick={removeSelectedDrafts}>{t('drafts.deleteSelected')}</Button>
+        </div>
         <ul className={draftStyles.draftList}>
           {state.drafts.map((draft) => (
             <li className={draftStyles.draftItem} key={draft.id}>
+              <Checkbox className={draftStyles.selectionCheckbox} checked={state.selectedDraftIds.includes(draft.id)} onChange={() => toggleDraftSelection(draft)} aria-label={draft.relativeId || t('dashboard.untitledDraft')} />
               <Button
                 appearance="subtle"
                 className={draftStyles.draftOpenButton}
                 icon={state.openingDraftId === draft.id ? <Spinner size="tiny" /> : <DocumentEditRegular />}
-                disabled={state.openingDraftId === draft.id}
+                disabled={state.openingDraftId === draft.id || state.batchDeleting}
                 onClick={() => openDraft(draft)}
               >
                 <span className={draftStyles.draftMeta}>
@@ -175,7 +221,7 @@ export function DraftsPage() {
                 </span>
               </Button>
               <DeleteDraftPopover
-                disabled={!draft.id || state.deletingDraftId === draft.id}
+                disabled={!draft.id || state.deletingDraftId === draft.id || state.batchDeleting}
                 busy={state.deletingDraftId === draft.id}
                 onConfirm={() => removeDraft(draft)}
               />

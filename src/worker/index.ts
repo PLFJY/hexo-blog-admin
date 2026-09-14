@@ -10,11 +10,12 @@ import {
   handleSaveCustomizeFile,
   handleSaveCustomizePanel,
 } from './routes/customizeRoutes'
-import { handleCreateDraft, handleDraftById, handleDrafts, handlePublishDraft } from './routes/draftRoutes'
+import { handleBatchDrafts, handleCreateDraft, handleDraftById, handleDrafts, handlePublishDraft } from './routes/draftRoutes'
 import { handleGitHubRepo } from './routes/githubRoutes'
 import { handleAdminIndex } from './routes/indexRoutes'
 import {
   handleDeletePostAsset,
+  handleBatchPosts,
   handleDeletePost,
   handlePostAssetBlob,
   handlePostAssets,
@@ -128,9 +129,11 @@ async function handleApiRequest(request: Request, env: WorkerEnv, pathname: stri
   if (pathname === '/api/posts/rename') return handleRenamePost(env, request)
   if (pathname === '/api/posts/publish') return handlePublishPost(env, request)
   if (pathname === '/api/posts/published') return handleTogglePostPublished(env, request)
+  if (pathname === '/api/posts/batch') return handleBatchPosts(env, request)
   if (pathname === '/api/posts/delete') return handleDeletePost(env, request)
   if (pathname === '/api/drafts' && request.method === 'GET') return handleDrafts(env)
   if (pathname === '/api/drafts' && request.method === 'POST') return handleCreateDraft(env, request)
+  if (pathname === '/api/drafts/batch') return handleBatchDrafts(env, request)
   if (pathname === '/api/drafts/publish' && request.method === 'POST') return handlePublishDraft(env, request)
   if (pathname.startsWith('/api/drafts/')) {
     const id = decodeURIComponent(pathname.slice('/api/drafts/'.length))
