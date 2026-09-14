@@ -1,4 +1,4 @@
-import { Button, Field, Input, Text, Title1, makeStyles, mergeClasses, tokens } from '@fluentui/react-components'
+import { Button, Field, Input, Spinner, Text, Title1, makeStyles, mergeClasses, tokens } from '@fluentui/react-components'
 import { LockClosedRegular } from '@fluentui/react-icons'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -97,6 +97,7 @@ export function LoginPage({ onLoggedIn }: LoginPageProps) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [loggingIn, setLoggingIn] = useState(false)
 
   const refreshSetup = async (options?: { commit?: boolean }) => {
     const setup = await getJson<SetupStatus>('/setup/status')
@@ -113,14 +114,20 @@ export function LoginPage({ onLoggedIn }: LoginPageProps) {
     })
   }, [])
 
-  const login = () => {
+  const login = async () => {
+    if (loggingIn) return
+
     setError('')
-    void sendJson<{ authenticated: boolean }>('/auth/login', 'POST', { username, password })
-      .then(() => {
-        onLoggedIn?.()
-        navigate('/')
-      })
-      .catch(() => setError(t('auth.invalidPassword')))
+    setLoggingIn(true)
+
+    try {
+      await sendJson<{ authenticated: boolean }>('/auth/login', 'POST', { username, password })
+      onLoggedIn?.()
+      navigate('/')
+    } catch {
+      setError(t('auth.invalidPassword'))
+      setLoggingIn(false)
+    }
   }
 
   if (setupState.status === 'loading') return <LoadingState />
@@ -147,7 +154,7 @@ export function LoginPage({ onLoggedIn }: LoginPageProps) {
               className={styles.form}
               onSubmit={(event) => {
                 event.preventDefault()
-                login()
+                void login()
               }}
             >
               <Field label={t('auth.username')}>
@@ -165,13 +172,19 @@ export function LoginPage({ onLoggedIn }: LoginPageProps) {
                   onKeyDown={(event) => {
                     if (event.key !== 'Enter') return
                     event.preventDefault()
-                    login()
+                    void login()
                   }}
                   autoComplete="current-password"
                 />
               </Field>
-              <Button appearance="primary" icon={<LockClosedRegular />} type="submit">
-                {t('auth.login')}
+              <Button
+                appearance="primary"
+                aria-busy={loggingIn}
+                disabled={loggingIn}
+                icon={loggingIn ? <Spinner size="tiny" /> : <LockClosedRegular />}
+                type="submit"
+              >
+                {loggingIn ? t('auth.loggingIn') : t('auth.login')}
               </Button>
             </form>
           </>
