@@ -171,7 +171,7 @@ export async function handleAssetBlob(env: WorkerEnv, request: Request): Promise
 
   return new Response(object.body, {
     headers: {
-      'content-type': object.httpMetadata?.contentType ?? 'application/octet-stream',
+      'content-type': object.contentType,
       'cache-control': 'private, max-age=60',
     },
   })
