@@ -23,6 +23,7 @@ import type { DraftListResponse, DraftRecord, PublishDraftResponse } from '../sh
 import { applyMarkdownTextReplacements, createMarkdownAssetReplacements, removeMarkdownImageReferences } from '../shared/markdownAssets'
 import type { PostAsset, PostAssetIndexResponse, PostTreeResponse } from '../shared/postTypes'
 import { buildPostAssetPaths } from '../features/posts/postPathUtils'
+import { isValidRelativeId, normalizeRelativeId } from '../features/posts/relativeId'
 import { usePageStyles } from './pageStyles'
 
 const useStyles = makeStyles({
@@ -106,13 +107,7 @@ const emptyDraft = (): DraftRecord => ({
   updatedAt: new Date().toISOString(),
 })
 
-const normalizeRelativeId = (relativeId: string) => relativeId.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '').replace(/\/+/g, '/')
-const isValidRelativeId = (relativeId: string) => {
-  const normalized = normalizeRelativeId(relativeId)
-  if (!normalized || normalized.startsWith('.') || normalized.includes('..')) return false
-  if (normalized.split('/').some((part) => !part || part === '.' || part === '..' || part === '.git')) return false
-  return /^[a-zA-Z0-9][a-zA-Z0-9/_-]*[a-zA-Z0-9_-]$/.test(normalized)
-}
+
 
 async function fetchSourceAssets(relativeId: string, postIndex: PostTreeResponse): Promise<PostAsset[]> {
   const normalized = normalizeRelativeId(relativeId)
