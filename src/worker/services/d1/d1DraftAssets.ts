@@ -2,6 +2,14 @@ import type { DraftAsset, DraftAssetManifest } from '../../../shared/assetTypes'
 import type { WorkerEnv } from '../../env'
 import { assertSafeImageFilename, assertSafeRelativeId } from '../../utils/pathSafety'
 import { buildPostAssetPaths } from '../assets/assetPath'
+import {
+  dedupeFilename,
+  nextSequentialFilename,
+  resolveAssetLayout,
+  resolveAssetNaming,
+  splitFilename,
+} from '../assets/assetLayout'
+import { listGitHubDirNames } from '../github/githubContent'
 import { createDraftId, resolveDraftId } from './draftIds'
 import { ensureD1Schema } from './d1Schema'
 
@@ -45,6 +53,31 @@ const bucket = (env: WorkerEnv) => {
 }
 
 const safeRelativePathSegment = (relativeId: string) => assertSafeRelativeId(relativeId)
+
+/** Image names already staged in a shared asset dir (not yet published). */
+async function stagedSharedDirNames(env: WorkerEnv, assetDir: string): Promise<string[]> {
+  const result = await db(env)
+    .prepare('SELECT final_repo_path FROM draft_assets WHERE final_repo_path LIKE ?1')
+    .bind(`${assetDir}/%`)
+    .all<{ final_repo_path: string }>()
+  const prefix = `${assetDir}/`
+  return (result.results ?? [])
+    .map((row) => row.final_repo_path.slice(prefix.length))
+    .filter((name) => name && !name.includes('/'))
+}
+
+/**
+ * Resolve the final filename inside a shared asset dir so uploads never clobber
+ * each other: sequential naming matches a numeric image folder, otherwise the
+ * uploaded name is kept and de-duplicated with `-2`, `-3`,` ...`.
+ */
+async function resolveSharedFilename(env: WorkerEnv, assetDir: string, filename: string): Promise<string> {
+  const taken = new Set([...(await listGitHubDirNames(env, assetDir)), ...(await stagedSharedDirNames(env, assetDir))])
+  if (resolveAssetNaming(env) === 'sequential') {
+    return nextSequentialFilename(taken, splitFilename(filename).ext)
+  }
+  return dedupeFilename(taken, filename)
+}
 
 const nowIso = () => new Date().toISOString()
 
@@ -135,12 +168,17 @@ export async function putDraftAsset(env: WorkerEnv, options: PutDraftAssetOption
   const relativeId = assertSafeRelativeId(options.relativeId)
   const requestedDraftId = options.draftId ? resolveDraftId(options.draftId) : ''
   const draftId = requestedDraftId ? assertSafeRelativeId(requestedDraftId) : createDraftId(relativeId)
-  const filename = assertSafeImageFilename(options.filename)
+  const requestedFilename = assertSafeImageFilename(options.filename)
+  const layout = resolveAssetLayout(env)
+  const filename = layout.assetDir
+    ? await resolveSharedFilename(env, layout.assetDir, requestedFilename)
+    : requestedFilename
   const key = `draft-assets/${safeRelativePathSegment(draftId)}/${crypto.randomUUID()}-${filename}`
   const paths = buildPostAssetPaths({
     postsDir: options.postsDir,
     relativeId,
     filename,
+    ...layout,
   })
   const now = nowIso()
   await db(env)
@@ -230,7 +268,7 @@ export async function renameDraftAsset(
 
   const nextFilename = assertSafeImageFilename(filename)
   const relativeId = assertSafeRelativeId(oldRow.relative_id)
-  const paths = buildPostAssetPaths({ postsDir, relativeId, filename: nextFilename })
+  const paths = buildPostAssetPaths({ postsDir, relativeId, filename: nextFilename, ...resolveAssetLayout(env) })
   const duplicate = await db(env)
     .prepare(
       `SELECT id
@@ -313,7 +351,12 @@ export async function moveDraftAssetManifest(env: WorkerEnv, options: MoveDraftA
   await Promise.all(
     manifest.assets.map(async (asset) => {
       const filename = assertSafeImageFilename(asset.filename)
-      const paths = buildPostAssetPaths({ postsDir: options.postsDir, relativeId, filename })
+      const paths = buildPostAssetPaths({
+        postsDir: options.postsDir,
+        relativeId,
+        filename,
+        ...resolveAssetLayout(env),
+      })
       await db(env)
         .prepare(
           `UPDATE draft_assets

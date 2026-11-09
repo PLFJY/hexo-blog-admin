@@ -1,6 +1,7 @@
 import type { BatchPostsRequest, BatchPostsResponse, PostContentResponse, PublishPostRequest, PublishPostResponse, TogglePostPublishedRequest, TogglePostPublishedResponse } from '../../shared/postTypes'
 import type { WorkerEnv } from '../env'
 import { buildPostAssetPaths, buildPostPaths } from '../../features/posts/postPathUtils'
+import { hasSharedAssetDir, resolveAssetLayout } from '../services/assets/assetLayout'
 import { ensureFrontMatterDate, extractFrontMatterTitle, setFrontMatterBoolean } from '../../shared/frontMatter'
 import { removeMarkdownImageReferences } from '../../shared/markdownAssets'
 import { deleteDraftAssetManifest, getDraftAsset, getDraftAssetManifest } from '../services/d1/d1DraftAssets'
@@ -107,7 +108,7 @@ export async function handleRenamePostAsset(env: WorkerEnv, request: Request): P
   const asset = sourceAssets.find((item) => item.repoPath === oldRepoPath)
   if (!asset) return json({ error: 'NOT_FOUND', message: 'Asset not found in admin-index' }, { status: 404 })
 
-  const paths = buildPostAssetPaths({ postsDir: config.POSTS_DIR, relativeId, filename })
+  const paths = buildPostAssetPaths({ postsDir: config.POSTS_DIR, relativeId, filename, ...resolveAssetLayout(env) })
   const duplicate = sourceAssets.some((item) => item.repoPath !== oldRepoPath && (item.repoPath === paths.finalRepoPath || item.markdownPath === paths.markdownPath))
   if (duplicate) return json({ error: 'CONFLICT', message: 'Asset filename already exists' }, { status: 409 })
 
@@ -177,15 +178,22 @@ export async function handleRenamePost(env: WorkerEnv, request: Request): Promis
   const oldPaths = buildPostPaths({ postsDir: config.POSTS_DIR, relativeId })
   const newPaths = buildPostPaths({ postsDir: config.POSTS_DIR, relativeId: newRelativeId })
   const currentMarkdown: string = body.markdown ?? (await getGitHubFile(env, post.path || oldPaths.postPath).then((file) => file.content))
-  const markdown = replaceAll(currentMarkdown, `${oldPaths.postSlug}/`, `${newPaths.postSlug}/`)
-  const assetFiles = await Promise.all(
-    sourceAssets.map(async (asset) => {
-      const filename = assertSafeImageFilename(asset.filename)
-      const image = await getGitHubFileBase64(env, assertSafeRepoPath(env, asset.repoPath))
-      const paths = buildPostAssetPaths({ postsDir: config.POSTS_DIR, relativeId: newRelativeId, filename })
-      return { path: paths.finalRepoPath, encoding: 'base64' as const, content: image.contentBase64 }
-    }),
-  )
+  // A shared asset dir keeps images independent of the post path, so renaming a
+  // post must not move or rewrite them.
+  const sharedAssets = hasSharedAssetDir(env)
+  const markdown = sharedAssets
+    ? currentMarkdown
+    : replaceAll(currentMarkdown, `${oldPaths.postSlug}/`, `${newPaths.postSlug}/`)
+  const assetFiles = sharedAssets
+    ? []
+    : await Promise.all(
+        sourceAssets.map(async (asset) => {
+          const filename = assertSafeImageFilename(asset.filename)
+          const image = await getGitHubFileBase64(env, assertSafeRepoPath(env, asset.repoPath))
+          const paths = buildPostAssetPaths({ postsDir: config.POSTS_DIR, relativeId: newRelativeId, filename })
+          return { path: paths.finalRepoPath, encoding: 'base64' as const, content: image.contentBase64 }
+        }),
+      )
   const commit = await createBatchCommit(env, {
     branch: config.GITHUB_BRANCH,
     message: `Rename post ${relativeId} to ${newRelativeId}`,
@@ -193,7 +201,9 @@ export async function handleRenamePost(env: WorkerEnv, request: Request): Promis
       { path: newPaths.postPath, encoding: 'utf-8', content: markdown },
       ...assetFiles,
     ],
-    deletions: [post.path || oldPaths.postPath, ...sourceAssets.map((asset) => assertSafeRepoPath(env, asset.repoPath))],
+    deletions: sharedAssets
+      ? [post.path || oldPaths.postPath]
+      : [post.path || oldPaths.postPath, ...sourceAssets.map((asset) => assertSafeRepoPath(env, asset.repoPath))],
   })
 
   return json({ commitSha: commit.commitSha, relativeId: newRelativeId, markdown })

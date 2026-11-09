@@ -2,6 +2,7 @@ import type { BatchDraftsRequest, BatchDraftsResponse, DraftListResponse, Publis
 import { ensureFrontMatterDate, extractFrontMatterTitle } from '../../shared/frontMatter'
 import type { WorkerEnv } from '../env'
 import { buildPostAssetPaths, buildPostPaths } from '../../features/posts/postPathUtils'
+import { resolveAssetLayout } from '../services/assets/assetLayout'
 import { getDraftAsset, getDraftAssetManifest, moveDraftAssetManifest } from '../services/d1/d1DraftAssets'
 import { createBatchCommit } from '../services/github/githubGitCommit'
 import { getGitHubFileBase64 } from '../services/github/githubContent'
@@ -134,7 +135,12 @@ export async function handlePublishDraft(env: WorkerEnv, request: Request): Prom
     ? (await Promise.all(
         sourceAssets.map(async (asset) => {
           const filename = assertSafeImageFilename(asset.filename)
-          const assetPaths = buildPostAssetPaths({ postsDir: config.POSTS_DIR, relativeId: draft.relativeId, filename })
+          const assetPaths = buildPostAssetPaths({
+            postsDir: config.POSTS_DIR,
+            relativeId: draft.relativeId,
+            filename,
+            ...resolveAssetLayout(env),
+          })
           if (draftAssetPaths.has(assetPaths.finalRepoPath)) return undefined
           const image = await getGitHubFileBase64(env, assertSafeRepoPath(env, asset.repoPath))
           return {

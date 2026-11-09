@@ -122,9 +122,16 @@ async function fetchSourceAssets(relativeId: string, postIndex: PostTreeResponse
     .catch(() => [])
 }
 
-function mapSourceAssetsToCurrentRelativeId(sourceAssets: PostAsset[], sourceRelativeId: string | undefined, currentRelativeId: string): PostAsset[] {
+function mapSourceAssetsToCurrentRelativeId(
+  sourceAssets: PostAsset[],
+  sourceRelativeId: string | undefined,
+  currentRelativeId: string,
+  sharedAssetDir?: string,
+): PostAsset[] {
   const normalizedSource = sourceRelativeId ? normalizeRelativeId(sourceRelativeId) : ''
   const normalizedCurrent = normalizeRelativeId(currentRelativeId)
+  // Shared asset dirs (e.g. source/imgs/posts) do not depend on the post path.
+  if (sharedAssetDir) return sourceAssets
   if (!normalizedSource || normalizedSource === normalizedCurrent) return sourceAssets
   return sourceAssets.map((asset) => ({
     ...asset,
@@ -230,6 +237,7 @@ export function DraftEditorPage() {
             await fetchSourceAssets(sourceAssetRelativeId, postIndex),
             nextDraft.sourceRelativeId,
             nextDraft.relativeId,
+            publicConfig.POST_ASSET_DIR,
           )
           setState({
             status: 'ready',
@@ -255,6 +263,7 @@ export function DraftEditorPage() {
                   await fetchSourceAssets(sourceAssetRelativeId, freshIndex),
                   nextDraft.sourceRelativeId,
                   nextDraft.relativeId,
+                  publicConfig.POST_ASSET_DIR,
                 )
                 setState((current) =>
                   current.status === 'ready'
