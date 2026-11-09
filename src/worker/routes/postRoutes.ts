@@ -2,6 +2,7 @@ import type { BatchPostsRequest, BatchPostsResponse, PostContentResponse, Publis
 import type { WorkerEnv } from '../env'
 import { buildPostAssetPaths, buildPostPaths } from '../../features/posts/postPathUtils'
 import { hasSharedAssetDir, resolveAssetLayout } from '../services/assets/assetLayout'
+import { isSharedAssetNameTaken, sharedAssetsSafeToDelete } from '../services/assets/assetUsage'
 import { ensureFrontMatterDate, extractFrontMatterTitle, setFrontMatterBoolean } from '../../shared/frontMatter'
 import { removeMarkdownImageReferences } from '../../shared/markdownAssets'
 import { deleteDraftAssetManifest, getDraftAsset, getDraftAssetManifest } from '../services/d1/d1DraftAssets'
@@ -109,7 +110,10 @@ export async function handleRenamePostAsset(env: WorkerEnv, request: Request): P
   if (!asset) return json({ error: 'NOT_FOUND', message: 'Asset not found in admin-index' }, { status: 404 })
 
   const paths = buildPostAssetPaths({ postsDir: config.POSTS_DIR, relativeId, filename, ...resolveAssetLayout(env) })
-  const duplicate = sourceAssets.some((item) => item.repoPath !== oldRepoPath && (item.repoPath === paths.finalRepoPath || item.markdownPath === paths.markdownPath))
+  const duplicate =
+    sourceAssets.some((item) => item.repoPath !== oldRepoPath && (item.repoPath === paths.finalRepoPath || item.markdownPath === paths.markdownPath)) ||
+    // Shared dirs are global: the new name must be free for every post and draft.
+    (filename !== asset.filename && (await isSharedAssetNameTaken(env, filename)))
   if (duplicate) return json({ error: 'CONFLICT', message: 'Asset filename already exists' }, { status: 409 })
 
   const image = await getGitHubFileBase64(env, oldRepoPath)
@@ -220,7 +224,10 @@ export async function handleDeletePost(env: WorkerEnv, request: Request): Promis
   if (!post) return json({ error: 'NOT_FOUND', message: 'Post not found' }, { status: 404 })
   const sourceAssets = await getPostSourceAssets(env, relativeId, index)
   const paths = buildPostPaths({ postsDir: config.POSTS_DIR, relativeId })
-  const deletions = [post.path || paths.postPath, ...sourceAssets.map((asset) => assertSafeRepoPath(env, asset.repoPath))]
+  // Shared dirs allow one image to be used by several posts: only delete what
+  // nothing else references.
+  const deletable = await sharedAssetsSafeToDelete(env, index, sourceAssets, [relativeId])
+  const deletions = [post.path || paths.postPath, ...deletable.map((asset) => assertSafeRepoPath(env, asset.repoPath))]
   const commit = await createBatchCommit(env, {
     branch: config.GITHUB_BRANCH,
     message: `Delete post ${relativeId}`,
@@ -255,16 +262,17 @@ export async function handleBatchPosts(env: WorkerEnv, request: Request): Promis
   const resolvedPosts = posts as NonNullable<(typeof posts)[number]>[]
 
   if (body.action === 'delete') {
+    const deletableAssets = await Promise.all(
+      resolvedPosts.map(async (post) => {
+        const sourceAssets = await getPostSourceAssets(env, post.relativeId, index)
+        return await sharedAssetsSafeToDelete(env, index, sourceAssets, relativeIds)
+      }),
+    )
     const deletions = unique(
-      (
-        await Promise.all(
-          resolvedPosts.map(async (post) => {
-            const sourceAssets = await getPostSourceAssets(env, post.relativeId, index)
-            const paths = buildPostPaths({ postsDir: config.POSTS_DIR, relativeId: post.relativeId })
-            return [post.path || paths.postPath, ...sourceAssets.map((asset) => assertSafeRepoPath(env, asset.repoPath))]
-          }),
-        )
-      ).flat(),
+      resolvedPosts.map((post, position) => {
+        const paths = buildPostPaths({ postsDir: config.POSTS_DIR, relativeId: post.relativeId })
+        return [post.path || paths.postPath, ...deletableAssets[position].map((asset) => assertSafeRepoPath(env, asset.repoPath))]
+      }).flat(),
     )
     const commit = await createBatchCommit(env, {
       branch: config.GITHUB_BRANCH,

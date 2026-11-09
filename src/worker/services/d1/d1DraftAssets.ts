@@ -10,6 +10,7 @@ import {
   splitFilename,
 } from '../assets/assetLayout'
 import { listGitHubDirNames } from '../github/githubContent'
+import { AssetNameTakenError, isSharedAssetNameTaken } from '../assets/assetUsage'
 import { createDraftId, resolveDraftId } from './draftIds'
 import { ensureD1Schema } from './d1Schema'
 
@@ -267,6 +268,11 @@ export async function renameDraftAsset(
   if (!oldRow) throw new Error('Asset not found')
 
   const nextFilename = assertSafeImageFilename(filename)
+  // In a shared dir a rename has to be unique across the whole directory, not
+  // just inside this draft, otherwise it can overwrite another post's image.
+  if (nextFilename !== oldRow.filename && (await isSharedAssetNameTaken(env, nextFilename))) {
+    throw new AssetNameTakenError(nextFilename)
+  }
   const relativeId = assertSafeRelativeId(oldRow.relative_id)
   const paths = buildPostAssetPaths({ postsDir, relativeId, filename: nextFilename, ...resolveAssetLayout(env) })
   const duplicate = await db(env)

@@ -10,6 +10,7 @@ import {
   deleteDraftAssets,
 } from '../services/d1/d1DraftAssets'
 import { withDraftAssetManifestPublicUrls, withDraftAssetMutationPublicUrls } from '../services/assets/publicDraftAssetUrl'
+import { AssetNameTakenError } from '../services/assets/assetUsage'
 import { requireConfig } from '../utils/config'
 import { json } from '../utils/response'
 
@@ -146,7 +147,14 @@ export async function handleAssetRename(env: WorkerEnv, request: Request): Promi
   if (request.method !== 'POST') return json({ error: 'METHOD_NOT_ALLOWED' }, { status: 405 })
   const body = (await request.json()) as RenameAssetRequest
   if (!body.key || !body.filename) return json({ error: 'BAD_REQUEST', message: 'key and filename are required' }, { status: 400 })
-  return json(withDraftAssetMutationPublicUrls(env, await renameDraftAsset(env, body.key, body.filename, requireConfig(env).POSTS_DIR)))
+  try {
+    return json(withDraftAssetMutationPublicUrls(env, await renameDraftAsset(env, body.key, body.filename, requireConfig(env).POSTS_DIR)))
+  } catch (error) {
+    if (error instanceof AssetNameTakenError) {
+      return json({ error: 'CONFLICT', message: error.message }, { status: 409 })
+    }
+    throw error
+  }
 }
 
 export async function handleAssetCache(env: WorkerEnv, request: Request): Promise<Response> {
