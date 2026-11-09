@@ -17,7 +17,8 @@ export async function getSetupStatus(env: WorkerEnv): Promise<SetupStatus> {
   if (!hasValue(env.ADMIN_PASSWORD)) missing.push('ADMIN_PASSWORD')
   if (!env.BLOG_ADMIN_KV) missing.push('BLOG_ADMIN_KV')
   if (!env.BLOG_ADMIN_DB) missing.push('BLOG_ADMIN_DB')
-  if (!env.BLOG_ASSET_CACHE) missing.push('BLOG_ASSET_CACHE')
+  // R2 is optional: draft image staging falls back to the KV namespace below.
+  if (!env.BLOG_ASSET_CACHE && !env.BLOG_ADMIN_KV) missing.push('BLOG_ASSET_CACHE')
 
   if (env.BLOG_ADMIN_DB) {
     try {

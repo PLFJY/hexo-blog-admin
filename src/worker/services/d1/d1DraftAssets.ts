@@ -4,6 +4,7 @@ import { assertSafeImageFilename, assertSafeRelativeId } from '../../utils/pathS
 import { buildPostAssetPaths } from '../assets/assetPath'
 import { createDraftId, resolveDraftId } from './draftIds'
 import { ensureD1Schema } from './d1Schema'
+import { deleteAssetBlob, getAssetBlob, putAssetBlob, type AssetBlob } from '../storage/assetBlobStore'
 
 type DraftAssetRow = {
   id: string
@@ -39,11 +40,6 @@ const db = (env: WorkerEnv) => {
   return env.BLOG_ADMIN_DB
 }
 
-const bucket = (env: WorkerEnv) => {
-  if (!env.BLOG_ASSET_CACHE) throw new Error('BLOG_ASSET_CACHE binding is not configured')
-  return env.BLOG_ASSET_CACHE
-}
-
 const safeRelativePathSegment = (relativeId: string) => assertSafeRelativeId(relativeId)
 
 const nowIso = () => new Date().toISOString()
@@ -68,18 +64,7 @@ const manifestFromRows = (draftId: string, relativeId: string, rows: DraftAssetR
 })
 
 const putObject = async (env: WorkerEnv, key: string, body: ArrayBuffer, asset: DraftAsset) => {
-  await bucket(env).put(key, body, {
-    httpMetadata: {
-      contentType: asset.contentType,
-    },
-    customMetadata: {
-      draftId: asset.draftId,
-      relativeId: asset.relativeId,
-      filename: asset.filename,
-      markdownPath: asset.markdownPath,
-      finalRepoPath: asset.finalRepoPath,
-    },
-  })
+  await putAssetBlob(env, key, body, asset.contentType)
 }
 
 async function getAssetRowByKey(env: WorkerEnv, key: string): Promise<DraftAssetRow | null> {
@@ -176,7 +161,7 @@ export async function putDraftAsset(env: WorkerEnv, options: PutDraftAssetOption
 
   // Re-uploading the same markdown path replaces the old R2 object but preserves one metadata row.
   await putObject(env, key, options.body, asset)
-  if (existing) await bucket(env).delete(existing.r2_key)
+  if (existing) await deleteAssetBlob(env, existing.r2_key)
 
   if (existing) {
     await db(env)
@@ -207,13 +192,13 @@ export async function putDraftAsset(env: WorkerEnv, options: PutDraftAssetOption
   return { asset, manifest: await getDraftAssetManifest(env, draftId, relativeId) }
 }
 
-export async function getDraftAsset(env: WorkerEnv, key: string): Promise<R2ObjectBody | null> {
-  return (await env.BLOG_ASSET_CACHE?.get(key)) ?? null
+export async function getDraftAsset(env: WorkerEnv, key: string): Promise<AssetBlob | null> {
+  return getAssetBlob(env, key)
 }
 
 export async function deleteDraftAsset(env: WorkerEnv, key: string): Promise<{ deleted: boolean }> {
   const row = await getAssetRowByKey(env, key)
-  await env.BLOG_ASSET_CACHE?.delete(key)
+  await deleteAssetBlob(env, key)
   if (!row) return { deleted: false }
   await db(env).prepare('DELETE FROM draft_assets WHERE r2_key = ?1').bind(key).run()
   return { deleted: true }
@@ -293,7 +278,7 @@ export async function deleteDraftAssets(env: WorkerEnv, options: { keys?: string
         .all<DraftAssetRow>()
     ).results ?? []
 
-  await Promise.all(rows.map((row) => env.BLOG_ASSET_CACHE?.delete(row.r2_key)))
+  await Promise.all(rows.map((row) => deleteAssetBlob(env, row.r2_key)))
   if (rows.length > 0) {
     await db(env)
       .prepare(`DELETE FROM draft_assets WHERE id IN (${rows.map(() => '?').join(', ')})`)
@@ -333,6 +318,6 @@ export async function moveDraftAssetManifest(env: WorkerEnv, options: MoveDraftA
 
 export async function deleteDraftAssetManifest(env: WorkerEnv, draftId: string): Promise<void> {
   const manifest = await getDraftAssetManifest(env, draftId)
-  await Promise.all(manifest.assets.map((asset) => env.BLOG_ASSET_CACHE?.delete(asset.key)))
+  await Promise.all(manifest.assets.map((asset) => deleteAssetBlob(env, asset.key)))
   await db(env).prepare('DELETE FROM draft_assets WHERE draft_id = ?1').bind(draftId).run()
 }

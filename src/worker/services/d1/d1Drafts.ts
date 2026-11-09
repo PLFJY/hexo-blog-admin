@@ -2,6 +2,7 @@ import type { DraftRecord, SaveDraftRequest } from '../../../shared/draftTypes'
 import { extractFrontMatterTitle } from '../../../shared/frontMatter'
 import type { WorkerEnv } from '../../env'
 import { deleteDraftAssetManifest } from './d1DraftAssets'
+import { deleteAssetBlob } from '../storage/assetBlobStore'
 import { ensureD1Schema } from './d1Schema'
 import { createDraftId, isValidRelativeId, normalizeRelativeId, resolveDraftId, visibleDraftId } from './draftIds'
 
@@ -157,7 +158,7 @@ export async function deleteDrafts(env: WorkerEnv, ids: string[]): Promise<{ del
         .bind(...existingIds)
         .all<{ r2_key: string }>()
     ).results ?? []
-  await Promise.all(assetRows.map((row) => env.BLOG_ASSET_CACHE?.delete(row.r2_key)))
+  await Promise.all(assetRows.map((row) => deleteAssetBlob(env, row.r2_key)))
 
   // Keep the database work to one batch: remove manifests and draft rows together.
   await db(env).batch([
