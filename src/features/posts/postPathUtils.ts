@@ -13,6 +13,14 @@ export type PostPaths = {
 
 export type BuildPostAssetPathsOptions = BuildPostPathsOptions & {
   filename: string
+  /**
+   * Optional shared asset directory (repo path, e.g. `source/imgs/posts`).
+   * When set, images are stored there instead of the post's own folder, and the
+   * markdown path no longer depends on the post location.
+   */
+  assetDir?: string
+  /** Markdown prefix used for shared asset dirs, e.g. `imgs/posts`. */
+  markdownPrefix?: string
 }
 
 export type PostAssetPaths = {
@@ -47,6 +55,15 @@ export function buildPostPaths(options: BuildPostPathsOptions): PostPaths {
 export function buildPostAssetPaths(options: BuildPostAssetPathsOptions): PostAssetPaths {
   const paths = buildPostPaths(options)
   const filename = normalizePath(options.filename).split('/').at(-1) ?? options.filename
+  const assetDir = normalizePath(options.assetDir ?? '')
+  const sharedPrefix = normalizePath(options.markdownPrefix ?? '')
+
+  if (assetDir) {
+    return {
+      finalRepoPath: `${assetDir}/${filename}`,
+      markdownPath: `${sharedPrefix || assetDir.replace(/^source\//, '')}/${filename}`,
+    }
+  }
 
   return {
     finalRepoPath: `${paths.assetDir}${filename}`,

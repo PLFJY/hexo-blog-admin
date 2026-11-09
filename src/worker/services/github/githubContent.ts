@@ -1,6 +1,6 @@
 import type { WorkerEnv } from '../../env'
 import { requireConfig } from '../../utils/config'
-import { githubJson } from './githubClient'
+import { githubFetch, githubJson } from './githubClient'
 
 type GitHubContentResponse = {
   type: string
@@ -61,4 +61,35 @@ export async function getGitHubFile(env: WorkerEnv, repoPath: string): Promise<{
     content: decodeBase64Utf8(payload.content),
     sha: payload.sha,
   }
+}
+
+type GitHubDirEntry = {
+  name: string
+  type: string
+}
+
+/**
+ * Names of the files inside a repo directory on the configured branch.
+ * Returns [] when the directory does not exist, so callers can treat a shared
+ * asset directory as empty until the first image is published.
+ */
+export async function listGitHubDirNames(env: WorkerEnv, repoPath: string): Promise<string[]> {
+  const config = requireConfig(env)
+  const owner = encodeURIComponent(env.GITHUB_OWNER ?? '')
+  const repo = encodeURIComponent(env.GITHUB_REPO ?? '')
+  const path = repoPath
+    .split('/')
+    .filter(Boolean)
+    .map((part) => encodeURIComponent(part))
+    .join('/')
+  const response = await githubFetch(
+    env,
+    `/repos/${owner}/${repo}/contents/${path}?ref=${encodeURIComponent(config.GITHUB_BRANCH)}`,
+  )
+  if (response.status === 404) return []
+  if (!response.ok) throw new Error(`GitHub contents request failed: ${response.status}`)
+
+  const payload = (await response.json()) as GitHubDirEntry[] | GitHubDirEntry
+  if (!Array.isArray(payload)) return []
+  return payload.filter((entry) => entry.type === 'file').map((entry) => entry.name)
 }

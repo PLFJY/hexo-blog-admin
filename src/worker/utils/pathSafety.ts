@@ -30,8 +30,10 @@ export function assertSafeImageFilename(filename: string) {
 
 export function assertSafeRepoPath(env: WorkerEnv, repoPath: string) {
   const postsDir = requireConfig(env).POSTS_DIR.replace(/^\/+|\/+$/g, '')
+  const assetDir = (env.POST_ASSET_DIR ?? '').trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '').replace(/\/+/g, '/')
   const normalized = repoPath.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '').replace(/\/+/g, '/')
-  if (!normalized.startsWith(`${postsDir}/`)) throw new Error('repoPath must be under POSTS_DIR')
+  const allowed = assetDir && normalized.startsWith(`${assetDir}/`) ? assetDir : postsDir
+  if (!normalized.startsWith(`${allowed}/`)) throw new Error('repoPath must be under POSTS_DIR')
   if (normalized.includes('..') || normalized.split('/').includes('.git')) throw new Error('Invalid repoPath')
   return normalized
 }

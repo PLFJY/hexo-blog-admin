@@ -23,7 +23,14 @@ import { parse as parseYaml } from 'yaml'
 const rootDir = process.cwd()
 const postsDir = process.env.ADMIN_INDEX_POSTS_DIR ?? 'source/_posts'
 const outputPath = process.env.ADMIN_INDEX_OUTPUT ?? 'public/admin-index.json'
-const assetMode = 'post-folder'
+// `ADMIN_INDEX_ASSET_DIR=source/imgs/posts` switches to a shared image folder:
+// images are attributed to posts by the `![](imgs/posts/x.png)` refs found in the
+// markdown, instead of scanning a per-post asset folder.
+const sharedAssetDir = (process.env.ADMIN_INDEX_ASSET_DIR ?? '').trim().replace(/\/+$/, '')
+const sharedAssetMarkdownPrefix =
+  (process.env.ADMIN_INDEX_ASSET_MARKDOWN_PREFIX ?? '').trim().replace(/^\/+|\/+$/g, '') ||
+  sharedAssetDir.replace(/^source\//, '')
+const assetMode = sharedAssetDir ? 'shared-dir' : 'post-folder'
 const assetIndexMode = 'per-post-json'
 const assetIndexBasePath = '/admin-index/post-assets/'
 const execFileAsync = promisify(execFile)
@@ -75,6 +82,37 @@ async function collectAssets(assetDirAbsolute, assetDirRepo, postSlug) {
     if (error?.code === 'ENOENT') return []
     throw error
   }
+}
+
+async function collectSharedAssets(markdown) {
+  if (!sharedAssetDir) return []
+
+  const refPattern = /!\[[^\]]*\]\(([^)\s]+)(?:\s+["'][^"']*["'])?\)/g
+  const found = new Map()
+
+  for (const match of markdown.matchAll(refPattern)) {
+    let ref = match[1].trim().replace(/^\.\//, '')
+    if (ref.startsWith('/')) ref = ref.slice(1)
+    if (!ref.startsWith(`${sharedAssetMarkdownPrefix}/`)) continue
+
+    const filename = decodeURIComponent(ref.slice(sharedAssetMarkdownPrefix.length + 1))
+    if (!filename || filename.includes('/')) continue
+    if (!imageExtensions.has(path.extname(filename).toLowerCase())) continue
+    if (found.has(filename)) continue
+
+    const absolutePath = path.join(rootDir, sharedAssetDir, filename)
+    const size = await fs.stat(absolutePath).then((stat) => stat.size).catch(() => undefined)
+    if (size === undefined) continue
+
+    found.set(filename, {
+      filename,
+      repoPath: `${sharedAssetDir}/${filename}`,
+      markdownPath: ref,
+      size,
+    })
+  }
+
+  return [...found.values()].sort((a, b) => a.filename.localeCompare(b.filename, undefined, { numeric: true }))
 }
 
 function parseFrontMatter(markdown) {
@@ -401,12 +439,14 @@ async function main() {
     const relativeId = trimMarkdownExtension(relativeMarkdownPath)
     const postSlug = path.basename(relativeId)
     const folderPath = toPosix(path.dirname(relativeId)).replace(/^\.$/, '')
-    const assetDirRepo = [postsDir, folderPath, postSlug].filter(Boolean).join('/')
+    const assetDirRepo = sharedAssetDir || [postsDir, folderPath, postSlug].filter(Boolean).join('/')
     const markdown = await fs.readFile(absolutePath, 'utf8')
     const frontMatter = parseFrontMatter(markdown)
     const publishedAt = normalizeDate(frontMatter.date) ?? await getGitFileDate(repoPath)
     const published = normalizePublished(frontMatter.published)
-    const assets = await collectAssets(path.join(rootDir, assetDirRepo), assetDirRepo, postSlug)
+    const assets = sharedAssetDir
+      ? await collectSharedAssets(markdown)
+      : await collectAssets(path.join(rootDir, assetDirRepo), assetDirRepo, postSlug)
     const post = {
       relativeId,
       title: typeof frontMatter.title === 'string' ? frontMatter.title : postSlug,
@@ -420,7 +460,7 @@ async function main() {
       folderPath,
       postSlug,
       assetDir: `${assetDirRepo}/`,
-      markdownAssetPrefix: postSlug,
+      markdownAssetPrefix: sharedAssetDir ? sharedAssetMarkdownPrefix : postSlug,
       date: publishedAt,
       updated: normalizeDate(frontMatter.updated),
       tags: normalizeStringArray(frontMatter.tags),

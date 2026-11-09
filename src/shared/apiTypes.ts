@@ -15,6 +15,9 @@ export type SetupStatus = {
     BLOG_PUBLIC_URL?: string
     BLOG_ASSET_PUBLIC_URL?: string
     ADMIN_INDEX_PATH: string
+    POST_ASSET_DIR?: string
+    POST_ASSET_MARKDOWN_PREFIX?: string
+    POST_ASSET_NAMING?: string
   }
 }
 

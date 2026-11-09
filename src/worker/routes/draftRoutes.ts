@@ -2,6 +2,7 @@ import type { BatchDraftsRequest, BatchDraftsResponse, DraftListResponse, Publis
 import { ensureFrontMatterDate, extractFrontMatterTitle } from '../../shared/frontMatter'
 import type { WorkerEnv } from '../env'
 import { buildPostAssetPaths, buildPostPaths } from '../../features/posts/postPathUtils'
+import { hasSharedAssetDir, resolveAssetLayout } from '../services/assets/assetLayout'
 import { getDraftAsset, getDraftAssetManifest, moveDraftAssetManifest } from '../services/d1/d1DraftAssets'
 import { createBatchCommit } from '../services/github/githubGitCommit'
 import { getGitHubFileBase64 } from '../services/github/githubContent'
@@ -130,11 +131,19 @@ export async function handlePublishDraft(env: WorkerEnv, request: Request): Prom
     }),
   )).filter((file): file is { path: string; encoding: 'base64'; content: string } => Boolean(file))
   const draftAssetPaths = new Set(draftAssetFiles.map((file) => file.path))
-  const sourceAssetFiles = sourceRename
+  // Shared dirs keep images at a fixed path, so a rename must neither rewrite nor
+  // delete them (the paths are identical before and after the rename).
+  const sharedAssetDir = hasSharedAssetDir(env)
+  const sourceAssetFiles = sourceRename && !sharedAssetDir
     ? (await Promise.all(
         sourceAssets.map(async (asset) => {
           const filename = assertSafeImageFilename(asset.filename)
-          const assetPaths = buildPostAssetPaths({ postsDir: config.POSTS_DIR, relativeId: draft.relativeId, filename })
+          const assetPaths = buildPostAssetPaths({
+            postsDir: config.POSTS_DIR,
+            relativeId: draft.relativeId,
+            filename,
+            ...resolveAssetLayout(env),
+          })
           if (draftAssetPaths.has(assetPaths.finalRepoPath)) return undefined
           const image = await getGitHubFileBase64(env, assertSafeRepoPath(env, asset.repoPath))
           return {
@@ -146,7 +155,9 @@ export async function handlePublishDraft(env: WorkerEnv, request: Request): Prom
       )).filter((file): file is { path: string; encoding: 'base64'; content: string } => Boolean(file))
     : []
   const oldSourcePaths = sourceRename && sourcePost
-    ? [sourcePost.path || buildPostPaths({ postsDir: config.POSTS_DIR, relativeId: sourceRelativeId! }).postPath, ...sourceAssets.map((asset) => assertSafeRepoPath(env, asset.repoPath))]
+    ? sharedAssetDir
+      ? [sourcePost.path || buildPostPaths({ postsDir: config.POSTS_DIR, relativeId: sourceRelativeId! }).postPath]
+      : [sourcePost.path || buildPostPaths({ postsDir: config.POSTS_DIR, relativeId: sourceRelativeId! }).postPath, ...sourceAssets.map((asset) => assertSafeRepoPath(env, asset.repoPath))]
     : []
   const commit = await createBatchCommit(env, {
     branch: body.branch || config.GITHUB_BRANCH,

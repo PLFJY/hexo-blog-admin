@@ -9,6 +9,9 @@ export type WorkerEnv = {
   BLOG_PUBLIC_URL?: string
   BLOG_ASSET_PUBLIC_URL?: string
   ADMIN_INDEX_PATH?: string
+  POST_ASSET_DIR?: string
+  POST_ASSET_MARKDOWN_PREFIX?: string
+  POST_ASSET_NAMING?: string
   BLOG_ADMIN_KV?: KVNamespace
   BLOG_ADMIN_DB?: D1Database
   BLOG_ASSET_CACHE?: R2Bucket

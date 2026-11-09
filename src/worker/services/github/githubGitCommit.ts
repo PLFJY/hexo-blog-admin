@@ -44,6 +44,11 @@ export async function createBatchCommit(
     })),
   )
 
+  // A path that is both written and deleted would be dropped by git (the later
+  // tree entry wins), so a delete can never override a file in the same commit.
+  const writtenPaths = new Set(blobs.map(({ file }) => file.path))
+  const deletions = Array.from(new Set(request.deletions ?? [])).filter((path) => !writtenPaths.has(path))
+
   const tree = [
     ...blobs.map(({ file, blob }) => ({
       path: file.path,
@@ -51,7 +56,7 @@ export async function createBatchCommit(
       type: 'blob',
       sha: blob.sha,
     })),
-    ...(request.deletions ?? []).map((path) => ({
+    ...deletions.map((path) => ({
       path,
       mode: '100644',
       type: 'blob',
